@@ -25,7 +25,7 @@ export function Reveal({ ranking, handleOf, awards }: { ranking: number[]; handl
       )}
       <ol className="mt-2 text-sm" reversed>
         {ranking.slice(ranking.length - shown).reverse().map((n, i) => (
-          <li key={n} value={ranking.length - shown + 1 + i}>Line {n} · {handleOf[n]}</li>
+          <li key={n} value={ranking.length - i}>Line {n} · {handleOf[n]}</li>
         ))}
       </ol>
       {!done && <button onClick={() => setShown(ranking.length)} className="mt-2 text-xs underline">Skip</button>}

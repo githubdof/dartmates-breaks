@@ -101,6 +101,15 @@ describe("verifyInputs", () => {
   it("rejects a missing commitment", () => {
     expect(verifyInputs({ ...base, seedCommitment: null }).ok).toBe(false);
   });
+  it.each([
+    ["a bad base64 secret", { secret: "%%%not base64%%%" }],
+    ["an odd-length hex beacon", { beaconRandomness: "abc" }],
+    ["an unsupported version", { version: 99 }],
+  ])("reports %s as uncheckable instead of throwing", (_, patch) => {
+    const r = verifyInputs({ ...base, ...patch });
+    expect(r.ok).toBe(false);
+    expect(r.reasons.some((x) => x.startsWith("inputs could not be checked"))).toBe(true);
+  });
   it("round-trips base64 with b64ToBytes", () => {
     expect(bytesToHex(b64ToBytes(base.secret))).toBe(v.secret);
   });

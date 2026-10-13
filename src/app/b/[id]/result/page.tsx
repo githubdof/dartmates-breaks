@@ -8,10 +8,11 @@ import { Share } from "./share";
 import { QUICKNET } from "@/crypto/beacon";
 import type { PublicInputs } from "@/crypto/verify";
 import { env } from "@/lib/env";
+import { isUuid } from "@/lib/is-uuid";
 
 export default async function ResultPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  if (!isUuid(id)) notFound();
   const res = await db.transaction((tx) => getDrawResult(tx, id));
   if (!res) notFound();
   const handleOf = new Map(res.entries.map((e) => [e.number, e.handleAtDraw]));
