@@ -16,6 +16,7 @@ Fill both env files with the keys printed by `supabase start`, then generate the
 
 ```bash
 DRAW_KEY_V1=$(openssl rand -base64 32)   # paste the output into the env files
+IP_HASH_KEY=$(openssl rand -base64 32)   # likewise, a separate value
 ```
 
 Environment variables:
@@ -25,11 +26,12 @@ Environment variables:
 | `DATABASE_URL` | Postgres connection string (direct `54322` locally) |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase project access |
 | `DRAW_KEY_V1` | 32 random bytes, base64; used for draw commitments |
+| `IP_HASH_KEY` | 32 random bytes, base64 (`openssl rand -base64 32`); HMAC key for the IP hashes stored on events |
 | `CRON_SECRET` | Shared secret protecting `/api/tick` |
 | `APP_URL` | Public base URL of the app |
 | `ADMIN_EMAILS` | Optional comma-separated emails promoted to admin on sign-in |
-| `BEACON` | `fake` swaps the public randomness beacon for a deterministic one. Local and e2e only; refused in production |
-| `E2E_SECRET` | Enables the `/test/login` helper route used by e2e. Never set in production |
+| `BEACON` | `fake` swaps the public randomness beacon for a deterministic one. Local, CI and e2e only; never set on Vercel (the app refuses to boot when `VERCEL_ENV` is set) |
+| `E2E_SECRET` | Enables the `/test/login` helper route used by e2e. Local and CI only; never set on Vercel (the route 404s and the app refuses to boot when `VERCEL_ENV` is set) |
 
 `.env.test` and `.env.local` point at the same local database, so `ENV_FILE=.env.local pnpm db:migrate` serves both.
 
@@ -62,13 +64,13 @@ Sign-in emails are caught by Mailpit at http://127.0.0.1:54324.
 
 - Unit and domain: `pnpm test`. Needs the local database and `.env.test`.
 - Concurrency: `pnpm test:concurrency`.
-- End to end: `pnpm test:e2e`. Runs with `BEACON=fake` and an `E2E_SECRET` so tests can sign in through `/test/login`; neither may be set in production.
+- End to end: `pnpm test:e2e`. Runs with `BEACON=fake` and an `E2E_SECRET` so tests can sign in through `/test/login`; neither may be set on any Vercel deploy (production or preview).
 - Security posture: `pnpm test:ci`. Asserts every public table has forced RLS with no policies, and that the `anon` role reads nothing. In CI it runs on a plain `postgres:16` service with a stub `auth` schema (`supabase/ci-auth-stub.sql`).
 
 ## Deploy
 
 - Hosting: Vercel Pro (for per-minute cron) and Supabase Pro.
-- Set all variables from the table above in Vercel, except `BEACON` and `E2E_SECRET`. `CRON_SECRET` must match the secret the cron request sends to `/api/tick` (`vercel.json` schedules it every minute).
+- Set all variables from the table above in Vercel, except `BEACON` and `E2E_SECRET`, which must never be set on Vercel, not even for preview deploys. A draw made with the fake beacon shows a "Fake beacon — development only" warning on its result page. `CRON_SECRET` must match the secret the cron request sends to `/api/tick` (`vercel.json` schedules it every minute).
 - Configure custom SMTP in Supabase Auth, for example Resend, so sign-in emails are deliverable.
 - Email templates: in the hosted Supabase dashboard (Authentication > Email Templates), paste `supabase/templates/magic_link.html` into "Magic Link" and `supabase/templates/confirmation.html` into "Confirm signup", with the subjects from `supabase/config.toml`. Both show the 6-digit code and a link to `/auth/callback`. The local stack picks them up from `config.toml` after `pnpm supabase stop && pnpm supabase start`.
 - Keep "Confirm email" ON in hosted Supabase Auth: admin promotion through `ADMIN_EMAILS` relies on a confirmed email.

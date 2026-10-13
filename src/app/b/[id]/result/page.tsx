@@ -32,6 +32,9 @@ export default async function ResultPage({ params }: { params: Promise<{ id: str
   return (
     <main className="mx-auto max-w-md p-4">
       <h1 className="text-xl font-semibold">{res.breakTitle} — result</h1>
+      {res.draw.beaconSignature === "fake" && (
+        <p role="alert" className="mt-2 rounded border border-red-600 bg-red-50 p-2 text-sm font-medium text-red-700">Fake beacon — development only</p>
+      )}
       <Reveal ranking={res.ranking} handleOf={Object.fromEntries(handleOf)} awards={res.awards} />
       <p className="mt-2 text-xs text-neutral-600">
         Drawn {res.draw.createdAt.toLocaleString()} · Requested by @{res.hostHandle}

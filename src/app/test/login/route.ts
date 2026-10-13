@@ -6,7 +6,8 @@ import { users } from "@/db/schema";
 
 export async function GET(req: NextRequest) {
   const secret = process.env.E2E_SECRET;
-  if (!secret || process.env.VERCEL_ENV === "production") return new NextResponse("Not found", { status: 404 });
+  // Refused on every Vercel deploy (production, preview, development), not only production.
+  if (!secret || process.env.VERCEL_ENV) return new NextResponse("Not found", { status: 404 });
   const q = req.nextUrl.searchParams;
   if (q.get("secret") !== secret) return new NextResponse("Forbidden", { status: 403 });
   const email = q.get("email");

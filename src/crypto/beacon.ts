@@ -23,10 +23,10 @@ export function roundAfter(time: Date, delaySeconds: number): number {
   return Math.ceil((t - QUICKNET.genesis) / QUICKNET.period) + 1;
 }
 
-/** Fake beacon only when BEACON=fake (tests, e2e); never in production. */
+/** Fake beacon only when BEACON=fake (local tests, CI, e2e); refused on any Vercel deploy. */
 export function beaconFromEnv(): BeaconSource {
   if (process.env.BEACON === "fake") {
-    if (process.env.VERCEL_ENV === "production") throw new Error("fake beacon in production");
+    if (process.env.VERCEL_ENV) throw new Error(`fake beacon refused on Vercel (VERCEL_ENV=${process.env.VERCEL_ENV})`);
     return new FakeBeacon();
   }
   return new DrandBeacon();

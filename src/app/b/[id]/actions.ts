@@ -2,8 +2,8 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { createHash } from "node:crypto";
 import { action } from "@/lib/action";
+import { hashIp } from "@/lib/ip-hash";
 import { parseInput } from "@/lib/parse-input";
 import { claimLines, claimRandom, claimAllOpen, markSent, markPaid, releaseLine } from "@/domain/lines/commands";
 
@@ -13,7 +13,7 @@ const nums = z.array(z.number().int().min(1).max(1100)).min(1).max(200);
 async function ipHash() {
   const h = await headers();
   const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
-  return ip ? createHash("sha256").update(ip).digest("hex").slice(0, 32) : undefined;
+  return ip ? hashIp(ip) : undefined;
 }
 const done = (breakId: string) => revalidatePath(`/b/${breakId}`);
 

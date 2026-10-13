@@ -48,15 +48,15 @@ describe("DrandBeacon (stubbed fetch)", () => {
 
 describe("beaconFromEnv", () => {
   afterEach(() => { vi.unstubAllEnvs(); });
-  it("returns the fake beacon when BEACON=fake", () => {
+  it("returns the fake beacon when BEACON=fake off Vercel", () => {
     vi.stubEnv("BEACON", "fake");
-    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("VERCEL_ENV", "");
     expect(beaconFromEnv()).toBeInstanceOf(FakeBeacon);
   });
-  it("refuses the fake beacon in production", () => {
+  it.each(["production", "preview", "development"])("refuses the fake beacon on Vercel (%s)", (vercelEnv) => {
     vi.stubEnv("BEACON", "fake");
-    vi.stubEnv("VERCEL_ENV", "production");
-    expect(() => beaconFromEnv()).toThrow(/production/);
+    vi.stubEnv("VERCEL_ENV", vercelEnv);
+    expect(() => beaconFromEnv()).toThrow(/refused on Vercel/);
   });
   it("defaults to drand", () => {
     vi.stubEnv("BEACON", "");
