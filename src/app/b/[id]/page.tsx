@@ -6,12 +6,14 @@ import { unpaidByBuyer } from "@/domain/lines/queries";
 import { getCaller } from "@/auth/session";
 import { formatCents } from "@/lib/money";
 import { isOverdue } from "@/domain/lines/rules";
+import { isUuid } from "@/lib/is-uuid";
 import { Grid, type GridLine } from "./grid";
 import { ClaimPanel } from "./claim-panel";
 import { HostPanel } from "./host-panel";
 
 export default async function BreakPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!isUuid(id)) notFound();
   const page = await db.transaction((tx) => getBreakPage(tx, id));
   if (!page) notFound();
   const caller = await getCaller();
@@ -52,7 +54,7 @@ export default async function BreakPage({ params }: { params: Promise<{ id: stri
           paymentHandles={page.host.paymentHandles} paymentInstructions={page.break.paymentInstructions} seedCommitment={page.break.seedCommitment} />
       )}
       {!caller && page.break.status === "open" && <Link href={`/login?next=/b/${id}`} className="mt-4 block rounded bg-black p-3 text-center text-white">Sign in to claim lines</Link>}
-      {isHost && <HostPanel breakId={id} status={page.break.status} unpaid={unpaid.map((u) => ({ ownerId: u.owner_id, handle: u.handle, numbers: u.numbers, sent: u.sent, amountCents: u.amount_cents }))} />}
+      {isHost && <HostPanel breakId={id} status={page.break.status} unpaid={unpaid.map((u) => ({ ownerId: u.owner_id, handle: u.handle, numbers: u.numbers, sent: u.sent, sentNumbers: u.sent_numbers, amountCents: u.amount_cents }))} />}
       {page.break.seedCommitment && <p className="mt-6 text-xs text-neutral-500">Draw locked before opening: <code>{page.break.seedCommitment.slice(0, 16)}…</code></p>}
     </main>
   );

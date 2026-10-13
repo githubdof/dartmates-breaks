@@ -248,7 +248,10 @@ describe("unpaidByBuyer", () => {
       await markSent(tx, c(a), { breakId: b.id, numbers: [2, 5] });
       const rows = await unpaidByBuyer(tx, b.id);
       expect(rows).toHaveLength(1);
-      expect(rows[0]).toMatchObject({ owner_id: a.id, handle: a.handle, numbers: [2, 5], sent: true, amount_cents: 3000 });
+      expect(rows[0]).toMatchObject({ owner_id: a.id, handle: a.handle, numbers: [2, 5], sent: true, sent_numbers: [2, 5], amount_cents: 3000 });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [7], batchId: randomUUID() });
+      const [partial] = await unpaidByBuyer(tx, b.id);
+      expect(partial).toMatchObject({ numbers: [2, 5, 7], sent: false, sent_numbers: [2, 5] });
       expect(rows[0].oldest_claim).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       const claimedAt = (await lineRows(tx, b.id))[1].claimedAt!;
       expect(new Date(rows[0].oldest_claim).getTime()).toBe(Math.floor(claimedAt.getTime()));

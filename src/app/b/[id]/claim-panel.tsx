@@ -16,7 +16,9 @@ export function ClaimPanel(p: { breakId: string; openNumbers: number[]; allowRan
   const [pending, start] = useTransition();
   const unpaidMine = p.mine.filter((m) => !m.paidAt);
   const unsentMine = unpaidMine.filter((m) => !m.sentAt);
-  const owed = unpaidMine.length * p.priceCents;
+  const sentMine = unpaidMine.filter((m) => m.sentAt);
+  // Lines already marked sent are not owed again; only unsent lines go into the amount and the pay links.
+  const owed = unsentMine.length * p.priceCents;
   const links = payLinks(p.paymentHandles, owed);
   const lock = p.seedCommitment ? ` · Draw locked before opening: ${p.seedCommitment.slice(0, 16)}…` : "";
 
@@ -49,9 +51,12 @@ export function ClaimPanel(p: { breakId: string; openNumbers: number[]; allowRan
         <button disabled={pending || p.openNumbers.length === 0} onClick={() => runClaim(() => claimRest(p.breakId, batchId))} className="rounded border px-3 py-2 text-sm">Take the rest</button>
       </div>
       {msg && <p className="text-sm">{msg}</p>}
-      {unpaidMine.length > 0 && (
+      {sentMine.length > 0 && (
+        <p className="rounded bg-blue-50 p-3 text-sm">Sent — awaiting host confirmation: lines {sentMine.map((m) => m.number).join(", ")}.</p>
+      )}
+      {unsentMine.length > 0 && (
         <div className="rounded bg-neutral-50 p-3 text-sm">
-          <p>You owe <b>{formatCents(owed)}</b> for lines {unpaidMine.map((m) => m.number).join(", ")}.</p>
+          <p>You owe <b>{formatCents(owed)}</b> for lines {unsentMine.map((m) => m.number).join(", ")}.</p>
           <p className="whitespace-pre-line text-neutral-700">{p.paymentInstructions}</p>
           <p className="text-xs text-neutral-600">Leave the payment note blank.</p>
           <div className="mt-2 flex gap-2">
@@ -59,7 +64,7 @@ export function ClaimPanel(p: { breakId: string; openNumbers: number[]; allowRan
             {links.paypal && <a href={links.paypal} target="_blank" rel="noreferrer" className="rounded bg-yellow-500 px-3 py-2">Open PayPal</a>}
             {p.paymentHandles.venmo && <button onClick={() => navigator.clipboard.writeText(p.paymentHandles.venmo!)} className="rounded border px-3 py-2">Copy handle</button>}
           </div>
-          {unsentMine.length > 0 && <button disabled={pending} onClick={() => runSent(unsentMine.map((m) => m.number))} className="mt-2 w-full rounded bg-green-700 p-2 text-white">I&apos;ve sent payment</button>}
+          <button disabled={pending} onClick={() => runSent(unsentMine.map((m) => m.number))} className="mt-2 w-full rounded bg-green-700 p-2 text-white">I&apos;ve sent payment</button>
         </div>
       )}
     </section>
