@@ -70,6 +70,13 @@ Sign-in emails are caught by Mailpit at http://127.0.0.1:54324.
 - Hosting: Vercel Pro (for per-minute cron) and Supabase Pro.
 - Set all variables from the table above in Vercel, except `BEACON` and `E2E_SECRET`. `CRON_SECRET` must match the secret the cron request sends to `/api/tick` (`vercel.json` schedules it every minute).
 - Configure custom SMTP in Supabase Auth, for example Resend, so sign-in emails are deliverable.
+- Email templates: in the hosted Supabase dashboard (Authentication > Email Templates), paste `supabase/templates/magic_link.html` into "Magic Link" and `supabase/templates/confirmation.html` into "Confirm signup", with the subjects from `supabase/config.toml`. Both show the 6-digit code and a link to `/auth/callback`. The local stack picks them up from `config.toml` after `pnpm supabase stop && pnpm supabase start`.
+- Keep "Confirm email" ON in hosted Supabase Auth: admin promotion through `ADMIN_EMAILS` relies on a confirmed email.
+
+## Roles
+
+- Admin: emails listed in `ADMIN_EMAILS` are promoted on sign-in (a `user.role_changed` event is recorded). Demotion is manual SQL: remove the email from `ADMIN_EMAILS` first, then `update users set role='member' where email='…';`.
+- Host: until invite codes exist (Plan 4), grant the host role by hand: `update users set role='host' where email='…';`.
 - Migrations are forward-only. Run them from CI or locally with the direct Postgres connection string, not the pooler on port 6543 (`ENV_FILE=.env.production pnpm db:migrate`).
 
 ## Verify a draw
