@@ -22,14 +22,16 @@ export async function completeOnboarding(tx: Tx, caller: Caller, p: { handle: st
   const handle = normalizeHandle(p.handle);
   const displayName = p.displayName.normalize("NFKC").trim();
   if (displayName.length < 1 || displayName.length > 40) throw new InvalidInput("Display name must be 1–40 characters");
+  let updated: { id: string }[];
   try {
-    await tx.update(users).set({ handle, displayName, ageConfirmedAt: sql`coalesce(${users.ageConfirmedAt}, now())` }).where(sql`${users.id} = ${caller.id} and ${users.handle} is null`);
+    updated = await tx.update(users).set({ handle, displayName, ageConfirmedAt: sql`coalesce(${users.ageConfirmedAt}, now())` }).where(sql`${users.id} = ${caller.id} and ${users.handle} is null`).returning({ id: users.id });
   } catch (e) {
     // drizzle wraps the driver error (DrizzleQueryError); the postgres error is on `.cause`
     const pg = (e as any)?.cause ?? e;
     if (pg?.code === "23505") throw new InvalidInput("That handle is taken");
     throw e;
   }
+  if (updated.length === 0) throw new InvalidInput("Your account is already set up");
   await tx.insert(legalAcceptances).values({ userId: caller.id, docKind: "terms", version: TERMS_VERSION, ipHash: p.ipHash ?? null });
   await appendEvent(tx, { actorId: caller.id, type: "user.onboarded", payload: { handle } });
 }

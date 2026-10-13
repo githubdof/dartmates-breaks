@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser } from "../../../tests/helpers/fixtures";
 import { completeOnboarding, normalizeHandle, TERMS_VERSION } from "./commands";
-import { users, legalAcceptances } from "@/db/schema";
+import { users, legalAcceptances, events } from "@/db/schema";
 import { InvalidInput } from "@/domain/errors";
 
 const caller = (id: string) => ({ id, role: "member" as const, onboarded: false, banned: false });
@@ -28,6 +28,19 @@ describe("completeOnboarding", () => {
       const acc = await tx.select().from(legalAcceptances).where(sql`${legalAcceptances.userId} = ${u.id}`);
       expect(acc).toHaveLength(1);
       expect(acc[0]).toMatchObject({ docKind: "terms", version: TERMS_VERSION, ipHash: "abc" });
+    });
+  });
+  it("a repeat onboarding throws and leaves one acceptance and one event", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      await tx.update(users).set({ handle: null, displayName: null, ageConfirmedAt: null }).where(sql`${users.id} = ${u.id}`);
+      const p = { handle: "repeat1", displayName: "R", ageConfirmed: true, acceptedTerms: true };
+      await completeOnboarding(tx, caller(u.id), p);
+      await expect(completeOnboarding(tx, caller(u.id), { ...p, handle: "repeat2" })).rejects.toThrow(/already set up/);
+      const acc = await tx.select().from(legalAcceptances).where(sql`${legalAcceptances.userId} = ${u.id}`);
+      expect(acc).toHaveLength(1);
+      const evs = await tx.select().from(events).where(sql`${events.actorId} = ${u.id} and ${events.type} = 'user.onboarded'`);
+      expect(evs).toHaveLength(1);
     });
   });
   it("requires the 18+ and terms checkboxes", async () => {

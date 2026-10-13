@@ -1,3 +1,4 @@
+import { unstable_rethrow } from "next/navigation";
 import { db } from "@/db/client";
 import { getCaller } from "@/auth/session";
 import { DomainError } from "@/domain/errors";
@@ -13,6 +14,9 @@ export async function action<T>(fn: (tx: Tx, caller: Caller) => Promise<T>): Pro
     const data = await db.transaction((tx) => fn(tx, caller));
     return { ok: true, data };
   } catch (e) {
+    // Let NEXT_REDIRECT / NEXT_NOT_FOUND propagate. Note a redirect thrown inside `fn` rolls the
+    // transaction back; callers should redirect after `action` returns instead.
+    unstable_rethrow(e);
     if (e instanceof DomainError) return { ok: false, code: e.code, message: e.message };
     console.error(e);
     return { ok: false, code: "INTERNAL", message: "Something went wrong. Please try again." };
