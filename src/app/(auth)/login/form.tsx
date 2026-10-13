@@ -17,14 +17,14 @@ export function LoginForm({ next, linkError }: { next: string; linkError?: boole
       <h1 className="text-xl font-semibold">Sign in</h1>
       {linkError && <p className="mt-2 text-sm text-red-600">That link expired or was opened on another device — request a new one or use the code.</p>}
       {!sent?.sent ? (
-        <form action={send} className="mt-4 space-y-3">
+        <form key="send" action={send} className="mt-4 space-y-3">
           <input type="hidden" name="next" value={next} />
           <input name="email" type="email" required placeholder="you@example.com" className="w-full rounded border p-3" />
           <button disabled={sending} className="w-full rounded bg-black p-3 text-white">Email me a sign-in link</button>
           {sent?.error && <p className="text-sm text-red-600">{sent.error}</p>}
         </form>
       ) : (
-        <form action={verify} className="mt-4 space-y-3">
+        <form key="verify" action={verify} className="mt-4 space-y-3">
           <p className="text-sm">We sent a link and a 6-digit code to <b>{sent.email}</b>. Tap the link, or enter the code here.</p>
           <input type="hidden" name="email" value={sent.email} />
           <input type="hidden" name="next" value={next} />
