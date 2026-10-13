@@ -8,7 +8,8 @@ import { safeNext } from "@/lib/safe-next";
 export async function exchange(form: FormData) {
   const code = String(form.get("code") ?? "");
   const tokenHash = String(form.get("token_hash") ?? "");
-  const type = (String(form.get("type") ?? "") || "email") as EmailOtpType;
+  const rawType = String(form.get("type") ?? "");
+  const type: EmailOtpType = rawType === "magiclink" || rawType === "signup" ? rawType : "email";
   const next = safeNext(form.get("next"));
   const supabase = await createServerSupabase();
   const { error } = tokenHash

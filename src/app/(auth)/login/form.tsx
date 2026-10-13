@@ -6,7 +6,7 @@ import { sendMagicLink, verifyOtp } from "./actions";
 type SendState = { error?: string; sent?: boolean; email?: string } | null;
 type VerifyState = { error?: string; redirect?: string } | null;
 
-export function LoginForm({ next }: { next: string }) {
+export function LoginForm({ next, linkError }: { next: string; linkError?: boolean }) {
   const router = useRouter();
   const [sent, send, sending] = useActionState<SendState, FormData>(sendMagicLink, null);
   const [verified, verify, verifying] = useActionState<VerifyState, FormData>(verifyOtp, null);
@@ -15,6 +15,7 @@ export function LoginForm({ next }: { next: string }) {
   return (
     <main className="mx-auto max-w-sm p-4">
       <h1 className="text-xl font-semibold">Sign in</h1>
+      {linkError && <p className="mt-2 text-sm text-red-600">That link expired or was opened on another device — request a new one or use the code.</p>}
       {!sent?.sent ? (
         <form action={send} className="mt-4 space-y-3">
           <input type="hidden" name="next" value={next} />
