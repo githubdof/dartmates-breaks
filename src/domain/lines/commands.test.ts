@@ -5,6 +5,7 @@ import { withTx } from "../../../tests/helpers/db";
 import { makeUser, openBreakWithLines, lineRows } from "../../../tests/helpers/fixtures";
 import { claimLines, claimRandom, claimAllOpen, markSent, markPaid, unmarkPaid, releaseLine, recomputeFill } from "./commands";
 import { isOverdue } from "./rules";
+import { unpaidByBuyer } from "./queries";
 import { breaks, lines, events } from "@/db/schema";
 import { CapExceeded, InvalidInput, LineTaken, NotAuthorized, NotOpen, OwnerChanged } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
@@ -93,6 +94,29 @@ describe("claimLines", () => {
       // host may hold at most 10% of 20 = 2
       await expect(claimLines(tx, c(host, "host"), { breakId: b.id, numbers: [4, 5, 6], batchId: randomUUID() })).rejects.toBeInstanceOf(CapExceeded);
       expect((await claimLines(tx, c(host, "host"), { breakId: b.id, numbers: [4, 5], batchId: randomUUID() })).got).toEqual([4, 5]);
+    });
+  });
+  it("enforces the platform-wide unpaid cap across breaks", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b1 = await openBreakWithLines(tx, { hostId: host.id, lineCount: 30 });
+      const b2 = await openBreakWithLines(tx, { hostId: host.id, lineCount: 10 });
+      await claimLines(tx, c(a), { breakId: b1.id, numbers: Array.from({ length: 25 }, (_, i) => i + 1), batchId: randomUUID() });
+      await expect(claimLines(tx, c(a), { breakId: b2.id, numbers: [1, 2, 3, 4, 5, 6], batchId: randomUUID() })).rejects.toBeInstanceOf(CapExceeded);
+      await expect(claimRandom(tx, c(a), { breakId: b2.id, count: 6, batchId: randomUUID() })).rejects.toBeInstanceOf(CapExceeded);
+      await expect(claimAllOpen(tx, c(a), { breakId: b2.id, batchId: randomUUID() })).rejects.toBeInstanceOf(CapExceeded);
+      expect((await claimLines(tx, c(a), { breakId: b2.id, numbers: [1, 2, 3, 4, 5], batchId: randomUUID() })).got).toEqual([1, 2, 3, 4, 5]);
+    });
+  });
+  it("a retry of lines already held succeeds even if a cap was lowered below what the caller holds", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id });
+      const batchId = randomUUID();
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [1, 2, 3], batchId });
+      await tx.update(breaks).set({ maxLinesPerUser: 2 }).where(sql`${breaks.id} = ${b.id}`);
+      expect(await claimLines(tx, c(a), { breakId: b.id, numbers: [1, 2, 3], batchId })).toEqual({ got: [1, 2, 3], taken: [] });
+      await expect(claimLines(tx, c(a), { breakId: b.id, numbers: [4], batchId: randomUUID() })).rejects.toBeInstanceOf(CapExceeded);
     });
   });
   it("never claims a line reserved for a mini", async () => {
@@ -196,6 +220,42 @@ describe("markSent / markPaid / recomputeFill", () => {
   });
 });
 
+describe("markSent", () => {
+  it("validates numbers, logs only newly-sent lines, and treats a repeat as a no-op", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx); const bb = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [1, 2], batchId: randomUUID() });
+      await expect(markSent(tx, c(a), { breakId: b.id, numbers: [999] })).rejects.toBeInstanceOf(InvalidInput);
+      await expect(markSent(tx, c(a), { breakId: b.id, numbers: [] })).rejects.toBeInstanceOf(InvalidInput);
+      await markSent(tx, c(a), { breakId: b.id, numbers: [1] });
+      await markSent(tx, c(a), { breakId: b.id, numbers: [1, 2] });
+      await markSent(tx, c(a), { breakId: b.id, numbers: [1, 2] }); // all already sent: no error, no event
+      await expect(markSent(tx, c(bb), { breakId: b.id, numbers: [1] })).rejects.toBeInstanceOf(NotAuthorized);
+      const evs = await tx.select().from(events).where(sql`${events.breakId} = ${b.id} and ${events.type} = 'line.sent'`)
+        .orderBy(sql`jsonb_array_length(${events.payload}->'numbers')`);
+      expect(evs.map((e) => e.payload)).toEqual([{ numbers: [1] }, { numbers: [2] }]);
+    });
+  });
+});
+
+describe("unpaidByBuyer", () => {
+  it("groups unpaid lines per buyer with an ISO oldest_claim", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, linePriceCents: 1500 });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [2, 5], batchId: randomUUID() });
+      await markSent(tx, c(a), { breakId: b.id, numbers: [2, 5] });
+      const rows = await unpaidByBuyer(tx, b.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ owner_id: a.id, handle: a.handle, numbers: [2, 5], sent: true, amount_cents: 3000 });
+      expect(rows[0].oldest_claim).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      const claimedAt = (await lineRows(tx, b.id))[1].claimedAt!;
+      expect(new Date(rows[0].oldest_claim).getTime()).toBe(Math.floor(claimedAt.getTime()));
+    });
+  });
+});
+
 describe("releaseLine", () => {
   it("host releases an unpaid claim; buyer can withdraw; paid lines cannot be released", async () => {
     await withTx(async (tx) => {
@@ -208,7 +268,9 @@ describe("releaseLine", () => {
       await expect(releaseLine(tx, c(host, "host"), { breakId: b.id, number: 3, reason: "host_dropped" })).rejects.toThrow(/paid/);
       const rows = await lineRows(tx, b.id);
       expect(rows[0].ownerId).toBeNull(); expect(rows[0].claimedAt).toBeNull(); expect(rows[0].priceCents).toBeNull();
-      const evs = await tx.select().from(events).where(sql`${events.breakId} = ${b.id} and ${events.type} = 'line.released'`);
+      // events.id is a random uuid and created_at = now() is identical within one tx, so order by the released number.
+      const evs = await tx.select().from(events).where(sql`${events.breakId} = ${b.id} and ${events.type} = 'line.released'`)
+        .orderBy(sql`(${events.payload}->>'number')::int`);
       expect(evs.map((e) => e.payload)).toEqual([{ number: 1, reason: "host_dropped" }, { number: 2, reason: "withdrawn" }]);
     });
   });

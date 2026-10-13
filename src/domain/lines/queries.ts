@@ -21,11 +21,11 @@ export async function myLines(tx: Tx, userId: string) {
   return [...byBreak.values()];
 }
 
-/** Host view: unpaid lines grouped per buyer for one-tap Paid. */
+/** Host view: unpaid lines grouped per buyer for one-tap Paid. `oldest_claim` is an ISO-8601 UTC string (raw execute returns timestamps as non-ISO text). */
 export async function unpaidByBuyer(tx: Tx, breakId: string) {
-  return tx.execute<{ owner_id: string; handle: string; numbers: number[]; sent: boolean; amount_cents: number; oldest_claim: string }>(sql`
+  return tx.execute<{ owner_id: string; handle: string | null; numbers: number[]; sent: boolean; amount_cents: number; oldest_claim: string }>(sql`
     select l.owner_id, u.handle, array_agg(l.number order by l.number) as numbers, bool_and(l.sent_at is not null) as sent,
-           sum(l.price_cents)::int as amount_cents, min(l.claimed_at)::text as oldest_claim
+           sum(l.price_cents)::int as amount_cents, to_char(min(l.claimed_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as oldest_claim
     from lines l join users u on u.id = l.owner_id
     where l.break_id = ${breakId} and l.paid_at is null and l.owner_id is not null
     group by l.owner_id, u.handle order by min(l.claimed_at)`);

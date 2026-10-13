@@ -22,6 +22,10 @@ async function heldBy(tx: Tx, breakId: string, userId: string): Promise<number> 
   const [r] = await tx.select({ n: sql<number>`count(*)::int` }).from(lines).where(sql`${lines.breakId} = ${breakId} and ${lines.ownerId} = ${userId} and ${lines.isBonus} = false`);
   return r.n;
 }
+/** Serializes a buyer's claims across breaks so the platform-wide unpaid cap can't be overshot by parallel claims. */
+async function lockUser(tx: Tx, userId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"user:" + userId}))`);
+}
 async function globalUnpaid(tx: Tx, userId: string): Promise<number> {
   const [r] = await tx.select({ n: sql<number>`count(*)::int` }).from(lines).where(sql`${lines.ownerId} = ${userId} and ${lines.paidAt} is null`);
   return r.n;
@@ -45,6 +49,7 @@ async function finishClaim(tx: Tx, b: BreakRow, caller: Caller, got: number[], b
 export async function claimLines(tx: Tx, caller: Caller, p: { breakId: string; numbers: number[]; batchId: string; ipHash?: string }): Promise<{ got: number[]; taken: number[] }> {
   assertOnboarded(caller);
   const b = await lockBreak(tx, p.breakId);
+  await lockUser(tx, caller.id); // lock order: break row -> user (advisory xact lock) -> lines
   assertClaimable(b);
   const numbers = validateNumbers(p.numbers, b.lineCount);
   const mine = (await tx.select({ number: lines.number }).from(lines)
@@ -54,7 +59,8 @@ export async function claimLines(tx: Tx, caller: Caller, p: { breakId: string; n
   const free = wanted.length === 0 ? [] : (await tx.select({ number: lines.number }).from(lines)
     .where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} is null and ${lines.reservedForMiniId} is null and ${inArray(lines.number, wanted)}`)).map((r) => r.number);
   const isHost = caller.id === b.hostId;
-  assertCaps({ requested: free.length, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaid(tx, caller.id) });
+  // A retry where the caller already holds everything requested claims nothing new, so no cap applies.
+  if (free.length > 0) assertCaps({ requested: free.length, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaid(tx, caller.id) });
   const got = await assign(tx, b, caller, free, p.batchId);
   const taken = wanted.filter((n) => !got.includes(n));
   if (got.length === 0 && mine.length === 0) throw new LineTaken(taken);
@@ -65,6 +71,7 @@ export async function claimLines(tx: Tx, caller: Caller, p: { breakId: string; n
 export async function claimRandom(tx: Tx, caller: Caller, p: { breakId: string; count: number; batchId: string; ipHash?: string }): Promise<{ got: number[] }> {
   assertOnboarded(caller);
   const b = await lockBreak(tx, p.breakId);
+  await lockUser(tx, caller.id); // lock order: break row -> user (advisory xact lock) -> lines
   assertClaimable(b);
   if (!b.allowRandomClaims) throw new InvalidInput("This break doesn't allow random lines");
   if (!Number.isInteger(p.count) || p.count < 1) throw new InvalidInput("Ask for at least one line");
@@ -82,6 +89,7 @@ export async function claimRandom(tx: Tx, caller: Caller, p: { breakId: string; 
 export async function claimAllOpen(tx: Tx, caller: Caller, p: { breakId: string; batchId: string; ipHash?: string }): Promise<{ got: number[] }> {
   assertOnboarded(caller);
   const b = await lockBreak(tx, p.breakId);
+  await lockUser(tx, caller.id); // lock order: break row -> user (advisory xact lock) -> lines
   assertClaimable(b);
   const open = (await tx.select({ number: lines.number }).from(lines).where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} is null and ${lines.reservedForMiniId} is null and ${lines.number} <= ${b.lineCount}`)).map((r) => r.number);
   if (open.length === 0) throw new LineTaken([]);
@@ -96,11 +104,19 @@ export async function markSent(tx: Tx, caller: Caller, p: { breakId: string; num
   assertOnboarded(caller);
   const b = await lockBreak(tx, p.breakId);
   if (b.status !== "open" && b.status !== "filled") throw new NotOpen(b.status);
-  if (p.numbers.length === 0) throw new InvalidInput("Pick at least one line");
+  const numbers = validateNumbers(p.numbers, b.lineCount);
   const rows = await tx.execute<{ number: number }>(sql`
-    update lines set sent_at = coalesce(sent_at, now()) where break_id = ${b.id} and owner_id = ${caller.id} and paid_at is null and number = any(${intArray(p.numbers)}) returning number`);
-  if (rows.length === 0) throw new NotAuthorized("Those lines aren't yours or are already paid");
-  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.sent", payload: { numbers: rows.map((r) => r.number) } });
+    update lines set sent_at = now()
+    where break_id = ${b.id} and owner_id = ${caller.id} and paid_at is null and sent_at is null and number = any(${intArray(numbers)})
+    returning number`);
+  if (rows.length === 0) {
+    // Nothing newly sent: fine if the caller already marked these sent (retry), otherwise they aren't the caller's to mark.
+    const [held] = await tx.select({ n: sql<number>`count(*)::int` }).from(lines)
+      .where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} = ${caller.id} and ${lines.paidAt} is null and ${inArray(lines.number, numbers)}`);
+    if (held.n === 0) throw new NotAuthorized("Those lines aren't yours or are already paid");
+    return;
+  }
+  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.sent", payload: { numbers: rows.map((r) => r.number).sort((x, y) => x - y) } });
 }
 
 export async function markPaid(tx: Tx, caller: Caller, p: { breakId: string; number: number; expectedOwnerId: string }): Promise<{ filled: boolean }> {
