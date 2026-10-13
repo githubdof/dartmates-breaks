@@ -16,7 +16,7 @@ const c = (id: string, role: Caller["role"] = "member"): Caller => ({ id, role, 
 describe("finalisePendingDraws", () => {
   it("finalises requests whose round has arrived and skips the rest", async () => {
     await withTx(async (tx) => {
-      // Isolate from committed leftovers (e.g. concurrency tests commit pending requests without secrets); rolled back with the tx.
+      // Isolate from any committed pending requests other suites may leave in the shared DB, so assertions only see this test's rows; rolled back with the tx.
       await tx.execute(sql`update draw_requests set status = 'done' where status = 'pending'`);
       const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
       const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 2 });
@@ -39,6 +39,30 @@ describe("finalisePendingDraws", () => {
       expect(row.s).toBe("drawn");
       const [req] = await tx.select().from(drawRequests).where(sql`${drawRequests.breakId} = ${b.id}`);
       expect(req.status).toBe("done");
+    });
+  });
+
+  it("isolates a failing break: it lands in failed and a healthy one is still finalised", async () => {
+    await withTx(async (tx) => {
+      // Isolate from any committed pending requests other suites may leave in the shared DB; rolled back with the tx.
+      await tx.execute(sql`update draw_requests set status = 'done' where status = 'pending'`);
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const mk = async () => {
+        const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 2 });
+        const { ciphertext, keyId } = encryptSecret(b.secret, b.id);
+        await tx.insert(breakSecrets).values({ breakId: b.id, ciphertext, keyId });
+        await claimLines(tx, c(a.id), { breakId: b.id, numbers: [1, 2], batchId: randomUUID() });
+        await markPaid(tx, c(host.id, "host"), { breakId: b.id, number: 1, expectedOwnerId: a.id });
+        await markPaid(tx, c(host.id, "host"), { breakId: b.id, number: 2, expectedOwnerId: a.id });
+        const { beaconRound } = await requestDraw(tx, c(host.id, "host"), { breakId: b.id });
+        return { b, beaconRound };
+      };
+      const bad = await mk(); const good = await mk();
+      await tx.delete(breakSecrets).where(sql`${breakSecrets.breakId} = ${bad.b.id}`);
+      const r = await finalisePendingDraws(tx, new FakeBeacon(), Math.max(bad.beaconRound, good.beaconRound));
+      expect(r.failed).toContainEqual({ breakId: bad.b.id, code: "INVALID_INPUT" });
+      expect(r.finalised).toContain(good.b.id);
+      expect(r.finalised).not.toContain(bad.b.id);
     });
   });
 });
