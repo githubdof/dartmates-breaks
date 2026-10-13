@@ -4,7 +4,7 @@ A group-buy tracker for a darts community. Members join a break (a shared box op
 
 ## Local setup
 
-Requirements: Node 20+, pnpm 9+, and Docker (needed by `pnpm supabase start`).
+Requirements: Node 22.12+ (see `.nvmrc`), pnpm 9+, and Docker (needed by `pnpm supabase start`).
 
 ```bash
 pnpm install
@@ -30,6 +30,8 @@ Environment variables:
 | `ADMIN_EMAILS` | Optional comma-separated emails promoted to admin on sign-in |
 | `BEACON` | `fake` swaps the public randomness beacon for a deterministic one. Local and e2e only; refused in production |
 | `E2E_SECRET` | Enables the `/test/login` helper route used by e2e. Never set in production |
+
+`.env.test` and `.env.local` point at the same local database, so `ENV_FILE=.env.local pnpm db:migrate` serves both.
 
 Then migrate and run:
 

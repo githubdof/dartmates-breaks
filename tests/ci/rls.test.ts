@@ -11,14 +11,27 @@ describe("security posture", () => {
     expect(await sql`select 1 from pg_policies where schemaname='public'`).toHaveLength(0);
   });
 
-  it("an anon-role session reads no rows from lines", async () => {
-    await sql`do $$ begin if not exists (select 1 from pg_roles where rolname='anon') then create role anon nologin; end if; end $$`;
-    await sql`grant usage on schema public to anon`;
-    await sql`grant select on all tables in schema public to anon`;
-    const rows = await sql.begin(async (tx) => {
-      await tx`set local role anon`;
-      return tx`select * from lines limit 1`;
-    });
-    expect(rows).toHaveLength(0);
+  it("an anon-role session reads no rows from lines even when a line exists", async () => {
+    const ROLLBACK = new Error("rollback");
+    let owner = -1;
+    let anon = -1;
+    await sql
+      .begin(async (tx) => {
+        await tx`do $$ begin if not exists (select 1 from pg_roles where rolname='anon') then create role anon nologin; end if; end $$`;
+        await tx`grant usage on schema public to anon`;
+        await tx`grant select on all tables in schema public to anon`;
+        const [u] = await tx`insert into users (id, email) values (gen_random_uuid(), 'rls-check@example.test') returning id`;
+        const [b] = await tx`insert into breaks (host_id, title, line_count, line_price_cents) values (${u.id}, 'rls check', 2, 100) returning id`;
+        await tx`insert into lines (break_id, number) values (${b.id}, 1)`;
+        owner = (await tx`select 1 from lines`).length; // superuser sees the row
+        await tx`set local role anon`;
+        anon = (await tx`select * from lines`).length;
+        throw ROLLBACK; // keep CI database clean
+      })
+      .catch((e) => {
+        if (e !== ROLLBACK) throw e;
+      });
+    expect(owner).toBeGreaterThan(0);
+    expect(anon).toBe(0);
   });
 });
