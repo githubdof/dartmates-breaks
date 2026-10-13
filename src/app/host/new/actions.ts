@@ -3,11 +3,12 @@ import { z } from "zod";
 import { redirect } from "next/navigation";
 import { action } from "@/lib/action";
 import { createDraft, openBreak } from "@/domain/breaks/commands";
+import { MAX_LINES } from "@/domain/breaks/rules";
 
 const schema = z.object({
   title: z.string().min(1).max(120),
   description: z.string().max(2000).default(""),
-  lineCount: z.coerce.number().int().min(2).max(1000),
+  lineCount: z.coerce.number().int().min(2).max(MAX_LINES),
   linePrice: z.coerce.number().positive(), // dollars
   paymentWindowHours: z.coerce.number().int().min(1).max(336).default(24),
   maxLinesPerUser: z.coerce.number().int().min(1).optional(),

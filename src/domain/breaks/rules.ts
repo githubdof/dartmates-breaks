@@ -1,9 +1,12 @@
 import { InvalidInput } from "@/domain/errors";
 
+/** Hard ceiling on lines per break. The UI is designed at this size; raise deliberately, not casually. */
+export const MAX_LINES = 50;
+
 export function validateDraftInput(i: { lineCount: number; linePriceCents: number; title: string; kind?: string }): void {
   if (!i.title.trim()) throw new InvalidInput("Title is required");
   if (!Number.isInteger(i.lineCount) || i.lineCount < 2) throw new InvalidInput("At least 2 lines");
-  if (i.lineCount > 1000) throw new InvalidInput("At most 1000 lines");
+  if (i.lineCount > MAX_LINES) throw new InvalidInput(`At most ${MAX_LINES} lines`);
   const free = i.kind === "free";
   if (!Number.isInteger(i.linePriceCents) || (free ? i.linePriceCents !== 0 : i.linePriceCents <= 0)) {
     throw new InvalidInput(free ? "Free draws have a price of 0" : "Price per line must be above 0");

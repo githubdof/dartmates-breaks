@@ -10,7 +10,7 @@ export function ComposerForm({ handles }: { handles: { venmo?: string; paypal?: 
       <label className="block text-sm">Title<input name="title" required className={field} placeholder="Target Phil Taylor Chronos" /></label>
       <label className="block text-sm">Items (one per line; several = winner picks one)<textarea name="items" required rows={3} className={field} placeholder={"Chronos 22g steel\nChronos 18g soft"} /></label>
       <div className="grid grid-cols-2 gap-3">
-        <label className="block text-sm">Lines<input name="lineCount" type="number" min={2} required defaultValue={12} className={field} /></label>
+        <label className="block text-sm">Lines<input name="lineCount" type="number" min={2} max={50} required defaultValue={12} className={field} /></label>
         <label className="block text-sm">$ per line<input name="linePrice" type="number" min={1} step="0.01" required defaultValue={20} className={field} /></label>
       </div>
       <div className="grid grid-cols-2 gap-3">
