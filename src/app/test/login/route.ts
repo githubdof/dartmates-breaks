@@ -10,9 +10,9 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams;
   if (q.get("secret") !== secret) return new NextResponse("Forbidden", { status: 403 });
   const email = q.get("email");
-  if (!email) return new NextResponse("email required", { status: 400 });
+  if (!email || !email.endsWith("@e2e.test")) return new NextResponse("email must end with @e2e.test", { status: 400 });
   const role = q.get("role") ?? "member";
-  if (!["member", "host", "admin"].includes(role)) return new NextResponse("bad role", { status: 400 });
+  if (!["member", "host"].includes(role)) return new NextResponse("bad role", { status: 400 });
   const admin = supabaseAdmin();
   const { data: link, error } = await admin.auth.admin.generateLink({ type: "magiclink", email });
   if (error) return new NextResponse(error.message, { status: 500 });
