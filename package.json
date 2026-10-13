@@ -9,7 +9,7 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:concurrency": "vitest run --config vitest.concurrency.config.ts",
+    "test:concurrency": "vitest run --config vitest.concurrency.config.mts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "supabase:start": "supabase start",
