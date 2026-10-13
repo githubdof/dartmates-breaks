@@ -225,6 +225,9 @@ CREATE UNIQUE INDEX "users_handle_lower_idx" ON "users" USING btree (lower("hand
 -- Freeze line_count / line_price_cents / seed_commitment once the break is open.
 create or replace function breaks_freeze_guard() returns trigger language plpgsql as $$
 begin
+  if old.status <> 'draft' and new.status = 'draft' then
+    raise exception 'a break cannot return to draft (open -> draft does not exist)' using errcode = 'check_violation';
+  end if;
   if old.status <> 'draft' then
     if new.line_count <> old.line_count or new.line_price_cents <> old.line_price_cents then
       raise exception 'line_count and line_price_cents are frozen after open' using errcode = 'check_violation';
@@ -251,6 +254,7 @@ begin
     raise exception 'voided draws are immutable' using errcode = 'check_violation';
   end if;
   if new.voided_at is null
+     or new.id is distinct from old.id
      or new.break_id is distinct from old.break_id
      or new.request_id is distinct from old.request_id
      or new.secret is distinct from old.secret
@@ -290,12 +294,14 @@ create trigger draws_commitment before insert on draws for each row execute func
 create or replace function draw_requests_update_guard() returns trigger language plpgsql as $$
 begin
   if not (old.status = 'pending' and new.status = 'done')
+     or new.id is distinct from old.id
      or new.break_id is distinct from old.break_id
      or new.attempt is distinct from old.attempt
      or new.requested_by is distinct from old.requested_by
      or new.requested_at is distinct from old.requested_at
      or new.beacon_round is distinct from old.beacon_round
-     or new.on_behalf_note is distinct from old.on_behalf_note then
+     or new.on_behalf_note is distinct from old.on_behalf_note
+     or new.created_at is distinct from old.created_at then
     raise exception 'draw_requests may only move pending -> done' using errcode = 'check_violation';
   end if;
   return new;
@@ -308,8 +314,14 @@ create trigger draw_requests_no_delete before delete on draw_requests for each r
 -- events: append-only except processed_at.
 create or replace function events_update_guard() returns trigger language plpgsql as $$
 begin
-  if new.type <> old.type or new.payload::text <> old.payload::text or new.actor_id is distinct from old.actor_id
-     or new.break_id is distinct from old.break_id or new.created_at <> old.created_at then
+  if new.id is distinct from old.id
+     or new.type is distinct from old.type
+     or new.payload::text is distinct from old.payload::text
+     or new.actor_id is distinct from old.actor_id
+     or new.break_id is distinct from old.break_id
+     or new.batch_id is distinct from old.batch_id
+     or new.ip_hash is distinct from old.ip_hash
+     or new.created_at is distinct from old.created_at then
     raise exception 'events are append-only' using errcode = 'check_violation';
   end if;
   return new;
@@ -323,7 +335,11 @@ create trigger events_no_delete before delete on events for each row execute fun
 create or replace function items_mutation_guard() returns trigger language plpgsql as $$
 declare b_status text; any_paid boolean; b_id uuid;
 begin
-  b_id := coalesce(new.break_id, old.break_id);
+  if tg_op = 'UPDATE' and new.break_id is distinct from old.break_id then
+    raise exception 'items and prizes cannot move between breaks' using errcode = 'check_violation';
+  end if;
+  -- INSERT checks the target break; UPDATE/DELETE check the break the row belongs to.
+  b_id := case when tg_op = 'INSERT' then new.break_id else old.break_id end;
   select status into b_status from breaks where id = b_id;
   if b_status in ('drawn','cancelled','drawing') then
     raise exception 'items and prizes are locked once the draw is requested' using errcode = 'check_violation';
