@@ -5,6 +5,7 @@ import { serializeEntries, uuidBytes, type Entry } from "./serialize";
 import { shuffle } from "./shuffle";
 import { computeRanking, ALGORITHM_VERSION } from "./draw";
 import vectors from "./vectors.json";
+import { verifyInputs, b64ToBytes, type PublicInputs } from "./verify";
 
 describe("commitment", () => {
   it("is domain-separated sha256 of the secret", () => {
@@ -64,4 +65,43 @@ describe("golden vectors", () => {
       expect(r.resultHash).toBe(v.resultHash);
     });
   }
+});
+
+describe("verifyInputs", () => {
+  const v = vectors[0];
+  const secret = hexToBytes(v.secret);
+  const base: PublicInputs = {
+    breakId: v.breakId,
+    version: ALGORITHM_VERSION,
+    secret: Buffer.from(secret).toString("base64"),
+    beaconRound: 1,
+    beaconRandomness: v.beacon,
+    entries: v.entries,
+    ranking: v.ranking,
+    resultHash: v.resultHash,
+    seedCommitment: commitment(secret),
+  };
+  it("accepts a consistent result", () => {
+    expect(verifyInputs(base)).toEqual({ ok: true, reasons: [] });
+  });
+  it("rejects a tampered ranking", () => {
+    const r = verifyInputs({ ...base, ranking: [...v.ranking].reverse() });
+    expect(r.ok).toBe(false);
+    expect(r.reasons).toEqual(["ranking does not match the recomputation"]);
+  });
+  it("rejects a secret that does not match the commitment", () => {
+    const r = verifyInputs({ ...base, seedCommitment: commitment(new Uint8Array(32)) });
+    expect(r.ok).toBe(false);
+    expect(r.reasons).toEqual(["secret does not match the commitment shown before opening"]);
+  });
+  it("rejects a wrong result hash", () => {
+    const r = verifyInputs({ ...base, resultHash: "00".repeat(32) });
+    expect(r.reasons).toEqual(["result hash differs"]);
+  });
+  it("rejects a missing commitment", () => {
+    expect(verifyInputs({ ...base, seedCommitment: null }).ok).toBe(false);
+  });
+  it("round-trips base64 with b64ToBytes", () => {
+    expect(bytesToHex(b64ToBytes(base.secret))).toBe(v.secret);
+  });
 });
