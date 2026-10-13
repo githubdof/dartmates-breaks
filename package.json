@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:concurrency": "vitest run --config vitest.concurrency.config.mts",
+    "test:ci": "vitest run --config vitest.ci.config.mts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "supabase:start": "supabase start",

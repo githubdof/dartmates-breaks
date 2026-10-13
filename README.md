@@ -1,0 +1,86 @@
+# Breaks
+
+A group-buy tracker for a darts community. Members join a break (a shared box opening), hosts run every draw, and the result is verifiable by anyone. The platform never handles money: payment happens between members and hosts, outside the app.
+
+## Local setup
+
+Requirements: Node 20+, pnpm 9+, and Docker (needed by `pnpm supabase start`).
+
+```bash
+pnpm install
+pnpm supabase start            # local Postgres, Auth and Mailpit
+cp .env.example .env.local     # and again as .env.test
+```
+
+Fill both env files with the keys printed by `supabase start`, then generate the draw key:
+
+```bash
+DRAW_KEY_V1=$(openssl rand -base64 32)   # paste the output into the env files
+```
+
+Environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Postgres connection string (direct `54322` locally) |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase project access |
+| `DRAW_KEY_V1` | 32 random bytes, base64; used for draw commitments |
+| `CRON_SECRET` | Shared secret protecting `/api/tick` |
+| `APP_URL` | Public base URL of the app |
+| `ADMIN_EMAILS` | Optional comma-separated emails promoted to admin on sign-in |
+| `BEACON` | `fake` swaps the public randomness beacon for a deterministic one. Local and e2e only; refused in production |
+| `E2E_SECRET` | Enables the `/test/login` helper route used by e2e. Never set in production |
+
+Then migrate and run:
+
+```bash
+ENV_FILE=.env.local pnpm db:migrate
+pnpm dev
+```
+
+Sign-in emails are caught by Mailpit at http://127.0.0.1:54324.
+
+## Scripts
+
+| Script | What it does |
+| --- | --- |
+| `pnpm dev` | Start the Next.js dev server |
+| `pnpm build` / `pnpm start` | Production build / serve it |
+| `pnpm lint` | Run ESLint |
+| `pnpm test` | Unit and domain tests (Vitest) |
+| `pnpm test:watch` | Vitest in watch mode |
+| `pnpm test:concurrency` | Concurrency suite against Postgres |
+| `pnpm test:e2e` | Playwright end-to-end journey |
+| `pnpm test:ci` | Security checks (RLS, anon role) intended for CI |
+| `pnpm db:generate` | Generate a migration from schema changes |
+| `pnpm db:migrate` | Apply migrations (reads `ENV_FILE`, default `.env.local`) |
+| `pnpm supabase:start` / `pnpm supabase:stop` | Start / stop the local Supabase stack |
+
+## Tests
+
+- Unit and domain: `pnpm test`. Needs the local database and `.env.test`.
+- Concurrency: `pnpm test:concurrency`.
+- End to end: `pnpm test:e2e`. Runs with `BEACON=fake` and an `E2E_SECRET` so tests can sign in through `/test/login`; neither may be set in production.
+- Security posture: `pnpm test:ci`. Asserts every public table has forced RLS with no policies, and that the `anon` role reads nothing. In CI it runs on a plain `postgres:16` service with a stub `auth` schema (`supabase/ci-auth-stub.sql`).
+
+## Deploy
+
+- Hosting: Vercel Pro (for per-minute cron) and Supabase Pro.
+- Set all variables from the table above in Vercel, except `BEACON` and `E2E_SECRET`. `CRON_SECRET` must match the secret the cron request sends to `/api/tick` (`vercel.json` schedules it every minute).
+- Configure custom SMTP in Supabase Auth, for example Resend, so sign-in emails are deliverable.
+- Migrations are forward-only. Run them from CI or locally with the direct Postgres connection string, not the pooler on port 6543 (`ENV_FILE=.env.production pnpm db:migrate`).
+
+## Verify a draw
+
+Anyone can recompute a draw from its published inputs:
+
+```bash
+node --import tsx scripts/verify-draw.ts https://<host>/b/<id>/result.json
+```
+
+It prints `OK` or `MISMATCH`.
+
+## Spec and plans
+
+- Design: [`docs/superpowers/specs/`](docs/superpowers/specs/)
+- Plans: [`docs/superpowers/plans/`](docs/superpowers/plans/)

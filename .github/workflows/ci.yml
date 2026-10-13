@@ -1,0 +1,39 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # Throwaway values for CI only; no real secrets here.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      SUPABASE_URL: http://localhost:54321
+      SUPABASE_ANON_KEY: ci
+      SUPABASE_SERVICE_ROLE_KEY: ci
+      DRAW_KEY_V1: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
+      CRON_SECRET: ci
+      APP_URL: http://localhost:3000
+      BEACON: fake
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Stub auth schema
+        run: psql "$DATABASE_URL" -f supabase/ci-auth-stub.sql
+      # Variables set in the job env take precedence over .env.test (dotenv does not override).
+      - name: Apply migrations
+        run: cp .env.example .env.test && ENV_FILE=.env.test pnpm db:migrate
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm test:concurrency
+      - run: pnpm test:ci
+      - run: pnpm build
+      - run: pnpm audit --audit-level=high || true
