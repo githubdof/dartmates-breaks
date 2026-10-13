@@ -29,8 +29,8 @@
 
 1. A buyer submits the same claim twice (double-tap / retry): the second call must return success for lines they already hold, not `LineTaken`. Test added to Task 8.
 2. A host marks a line paid after the buyer withdrew and someone else claimed it: `markPaid` with the stale `expectedOwner` must fail with `OwnerChanged`, never pay the new owner. Test added to Task 8.
-3. The draw finalise function crashes after inserting `draws` but before `awards`: the whole transaction rolls back and a retry produces the byte-identical draw. Test added to Task 10.
-4. Entries containing a bonus line above `line_count` and a handle with non-ASCII characters: serialization must ignore handles and the browser verifier must still match the server. Test added to Task 4.
+3. The draw finalise function crashes after inserting `draws` but before `awards`: the whole transaction rolls back and a retry produces the byte-identical draw. Test added to Task 9.
+4. Entries containing a bonus line above `line_count` and a handle with non-ASCII characters: serialization must ignore handles and the browser verifier must still match the server. Handles are ASCII by validation (Task 11a) and display names never enter the draw; the serialization test in Task 3 (an entry carrying an extra non-ASCII `handle` field serializes byte-identically) is the pin.
 5. `recomputeFill` when every numbered line is paid but one is `reserved_for_mini_id` and unowned (Plan 2 will create these): the break must **not** fill. Test added to Task 8 so the invariant exists before minis do.
 
 ---
@@ -39,7 +39,7 @@
 
 ```
 package.json, pnpm-lock.yaml, tsconfig.json, next.config.ts, tailwind.config.ts, postcss.config.js
-vitest.config.ts, vitest.concurrency.config.ts, playwright.config.ts
+vitest.config.ts, vitest.concurrency.config.ts, vitest.ci.config.ts, playwright.config.ts
 .env.example
 supabase/config.toml                     # local stack (studio/realtime/storage disabled)
 drizzle.config.ts
@@ -53,21 +53,22 @@ src/domain/breaks/{commands.ts,queries.ts,rules.ts,commands.test.ts}
 src/domain/lines/{commands.ts,queries.ts,rules.ts,commands.test.ts}
 src/domain/draws/{commands.ts,queries.ts,commands.test.ts}
 src/domain/events.ts                     # appendEvent(tx, …)
-src/crypto/{commit.ts,serialize.ts,shuffle.ts,draw.ts,vectors.json,draw.test.ts}
+src/crypto/{commit.ts,serialize.ts,shuffle.ts,draw.ts,verify.ts,vectors.json,draw.test.ts}
 src/crypto/secrets.ts                    # AES-256-GCM for break_secrets
 src/crypto/beacon.ts                     # BeaconSource interface, DrandBeacon, FakeBeacon
 src/auth/{supabase.ts,session.ts,authz.ts,authz.test.ts}
-src/app/(auth)/login/page.tsx, src/app/(auth)/login/actions.ts
-src/app/auth/callback/route.ts
-src/app/onboarding/{page.tsx,actions.ts}
-src/app/host/new/{page.tsx,actions.ts}
-src/app/b/[id]/{page.tsx,actions.ts,grid.tsx}
-src/app/b/[id]/result/{page.tsx,verify.tsx}
+src/app/(auth)/login/{page.tsx,form.tsx,actions.ts}
+src/app/auth/callback/{page.tsx,actions.ts}   # Continue page (no GET redemption)
+src/app/onboarding/{page.tsx,form.tsx,actions.ts}
+src/app/host/new/{page.tsx,form.tsx,actions.ts}
+src/app/b/[id]/{page.tsx,actions.ts,draw-actions.ts,grid.tsx,claim-panel.tsx,host-panel.tsx}
+src/app/b/[id]/result/{page.tsx,verify.tsx,reveal.tsx,share.tsx}
 src/app/api/tick/route.ts
 src/middleware.ts
-tests/helpers/{db.ts,fixtures.ts}
+tests/helpers/{db.ts,fixtures.ts,setup.ts}
 tests/concurrency/*.test.ts
 e2e/journey-1.spec.ts
+scripts/{fill-vectors.ts,verify-draw.ts}
 ```
 
 Deferred to later plans: conversations/messages (Plan 3), minis/free draws (Plan 2), feedback/stats/reports/admin (Plan 4). This plan's `breaks.open` does **not** create a thread; Plan 3 adds it.
@@ -80,17 +81,18 @@ Deferred to later plans: conversations/messages (Plan 3), minis/free draws (Plan
 - Create: `package.json`, `tsconfig.json`, `next.config.ts`, `tailwind.config.ts`, `postcss.config.js`, `vitest.config.ts`, `.env.example`, `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/globals.css`, `src/lib/env.ts`, `src/lib/env.test.ts`
 
 **Interfaces:**
-- Produces: `env` object from `src/lib/env.ts` with typed, validated server env: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DRAW_KEY_V1` (base64, 32 bytes), `CRON_SECRET`, `APP_URL`.
+- Produces: `env` object from `src/lib/env.ts` with typed, validated server env: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DRAW_KEY_V1` (base64, 32 bytes), `CRON_SECRET`, `APP_URL`, `ADMIN_EMAILS` (optional, comma-separated, default `""`).
 
 - [ ] **Step 1: Create the Next.js app with pnpm**
 
-Run from the repo root (it already contains `docs/` and `research/`):
+The repo root already contains `docs/` and `research/`, so scaffold in a temp dir and copy it over:
 ```bash
-pnpm dlx create-next-app@15 . --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-pnpm --no-turbopack
+pnpm dlx create-next-app@15 "$TMPDIR/scaffold" --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-pnpm --no-turbopack
+rsync -a --exclude node_modules "$TMPDIR/scaffold/" ./ && pnpm install
 ```
-Answer "yes" to creating in a non-empty directory. Then:
+Then (`@noble/hashes` is pinned to v1: v2 changed the subpath exports this plan imports):
 ```bash
-pnpm add drizzle-orm postgres zod @noble/hashes @supabase/supabase-js @supabase/ssr
+pnpm add drizzle-orm postgres zod @noble/hashes@1 @supabase/supabase-js @supabase/ssr
 pnpm add -D drizzle-kit vitest @vitest/coverage-v8 tsx @types/node playwright @playwright/test supabase
 ```
 
@@ -106,6 +108,8 @@ SUPABASE_SERVICE_ROLE_KEY=replace-with-local-service-role-key
 DRAW_KEY_V1=replace-me
 CRON_SECRET=replace-me
 APP_URL=http://localhost:3000
+# comma-separated emails promoted to role admin on sign-in (optional)
+ADMIN_EMAILS=
 ```
 
 - [ ] **Step 3: Write the failing env test**
@@ -159,6 +163,7 @@ const schema = z.object({
     .refine((s) => Buffer.from(s, "base64").length === 32, "DRAW_KEY_V1 must be 32 bytes base64"),
   CRON_SECRET: z.string().min(1),
   APP_URL: z.string().url(),
+  ADMIN_EMAILS: z.string().default(""),
 });
 
 export type Env = z.infer<typeof schema>;
@@ -202,7 +207,12 @@ export default defineConfig({
 import { config } from "dotenv";
 config({ path: ".env.test" });
 ```
-Add `pnpm add -D dotenv` and create `.env.test` by copying `.env.example` (git-ignored by the existing `.env.*` rule).
+Add `pnpm add -D dotenv`. `.env.test` (git-ignored by the existing `.env.*` rule) must be created from `.env.example` with the real local Supabase keys (printed by `pnpm supabase start` in Task 2 Step 1) and a real `DRAW_KEY_V1`; create `.env.local` the same way:
+```bash
+cp .env.example .env.test && sed -i '' "s|DRAW_KEY_V1=.*|DRAW_KEY_V1=$(openssl rand -base64 32)|" .env.test
+cp .env.example .env.local && sed -i '' "s|DRAW_KEY_V1=.*|DRAW_KEY_V1=$(openssl rand -base64 32)|" .env.local
+```
+(macOS `sed`; on Linux use `sed -i` without the `''`.) After Task 2 Step 1, paste the printed anon and service-role keys into both files.
 
 - [ ] **Step 7: Run the test to verify it passes**
 
@@ -256,7 +266,7 @@ git commit -m "build: scaffold next.js app with vitest, drizzle and env validati
 - Create: `supabase/config.toml` (generated), `drizzle.config.ts`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/rls.sql`, `src/db/migrations/0000_init.sql` (generated then appended), `src/db/schema.test.ts`
 
 **Interfaces:**
-- Produces: `db` (drizzle instance) and `Tx` type from `src/db/client.ts`; table objects `users, breaks, breakSecrets, breakItems, prizes, lines, drawRequests, draws, awards, events, idempotencyKeys` from `src/db/schema.ts`.
+- Produces: `db` (drizzle instance) and `Tx` type from `src/db/client.ts`; table objects `users, hostProfiles, breaks, breakSecrets, breakItems, prizes, lines, drawRequests, draws, awards, events, legalAcceptances, idempotencyKeys` from `src/db/schema.ts`; the `SYSTEM` users row (`00000000-0000-4000-8000-000000000000`) inserted by the migration.
 
 - [ ] **Step 1: Initialise local Supabase**
 
@@ -300,6 +310,7 @@ export const hostProfiles = pgTable("host_profiles", {
   paymentHandles: jsonb("payment_handles").$type<{ venmo?: string; paypal?: string }>().notNull().default({}),
   paymentHandlesChangedAt: timestamp("payment_handles_changed_at", { withTimezone: true }),
   bio: text("bio"),
+  verifiedFbSince: integer("verified_fb_since"), // nullable now; avoids a later migration
   createdAt: createdAt(),
 });
 
@@ -324,6 +335,7 @@ export const breaks = pgTable("breaks", {
   openedAt: timestamp("opened_at", { withTimezone: true }),
   filledAt: timestamp("filled_at", { withTimezone: true }),
   cancelReason: text("cancel_reason"),
+  relistedFromId: uuid("relisted_from_id"), // nullable now; relist is v1.1
   createdAt: createdAt(),
 }, (t) => [
   check("breaks_kind_chk", sql`${t.kind} in ('main','mini','free')`),
@@ -377,8 +389,11 @@ export const lines = pgTable("lines", {
   isBonus: boolean("is_bonus").notNull().default(false),
   refundConfirmedAt: timestamp("refund_confirmed_at", { withTimezone: true }),
   claimBatchId: uuid("claim_batch_id"),
+  paymentOutcome: text("payment_outcome"), // nullable now; written by later plans
+  createdAt: createdAt(),
 }, (t) => [
   primaryKey({ columns: [t.breakId, t.number] }),
+  check("lines_payment_outcome_chk", sql`${t.paymentOutcome} is null or ${t.paymentOutcome} in ('on_time','late','no_show','released')`),
   check("lines_paid_owned_chk", sql`${t.paidAt} is null or ${t.ownerId} is not null`),
   check("lines_owned_claimed_chk", sql`(${t.ownerId} is null) = (${t.claimedAt} is null)`),
   check("lines_reserved_unowned_chk", sql`${t.reservedForMiniId} is null or ${t.ownerId} is null`),
@@ -386,6 +401,7 @@ export const lines = pgTable("lines", {
   index("lines_open_idx").on(t.breakId).where(sql`${t.ownerId} is null`),
   index("lines_owner_idx").on(t.ownerId),
   index("lines_unpaid_idx").on(t.breakId, t.claimedAt).where(sql`${t.paidAt} is null`),
+  index("lines_reserved_idx").on(t.reservedForMiniId).where(sql`${t.reservedForMiniId} is not null`),
 ]);
 
 export const drawRequests = pgTable("draw_requests", {
@@ -397,6 +413,7 @@ export const drawRequests = pgTable("draw_requests", {
   beaconRound: integer("beacon_round").notNull(),
   onBehalfNote: text("on_behalf_note"),
   status: text("status").notNull().default("pending"),
+  createdAt: createdAt(),
 }, (t) => [
   uniqueIndex("draw_requests_attempt_uq").on(t.breakId, t.attempt),
   index("draw_requests_pending_idx").on(t.beaconRound).where(sql`${t.status} = 'pending'`),
@@ -459,6 +476,15 @@ export const events = pgTable("events", {
   index("events_unprocessed_idx").on(t.id).where(sql`${t.processedAt} is null`),
 ]);
 
+export const legalAcceptances = pgTable("legal_acceptances", {
+  id: id(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  docKind: text("doc_kind").notNull(), // e.g. 'terms'
+  version: text("version").notNull(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull().defaultNow(),
+  ipHash: text("ip_hash"),
+});
+
 export const idempotencyKeys = pgTable("idempotency_keys", {
   key: uuid("key").primaryKey(),
   callerId: uuid("caller_id").notNull(),
@@ -512,9 +538,9 @@ console.log("migrated");
 - [ ] **Step 4: Generate the migration, then append hand-written SQL**
 
 ```bash
-pnpm db:generate
+pnpm db:generate --name init
 ```
-Append to the end of the generated `src/db/migrations/0000_init.sql` (one pipeline — never a second migrations folder):
+This names the file `0000_init.sql`. Append to the end of the generated `src/db/migrations/0000_init.sql` (one pipeline — never a second migrations folder):
 
 ```sql
 --> statement-breakpoint
@@ -534,16 +560,32 @@ end $$;
 --> statement-breakpoint
 create trigger breaks_freeze before update on breaks for each row execute function breaks_freeze_guard();
 --> statement-breakpoint
--- draws: insert-only except the single void transition.
+-- Append-only tables refuse deletes outright (a rule would silently swallow them).
+create or replace function forbid_delete() returns trigger language plpgsql as $$
+begin
+  raise exception '% rows cannot be deleted', tg_table_name using errcode = 'check_violation';
+end $$;
+--> statement-breakpoint
+-- draws: insert-only except setting voided_at/voided_by/void_reason once.
 create or replace function draws_update_guard() returns trigger language plpgsql as $$
 begin
   if old.voided_at is not null then
     raise exception 'voided draws are immutable' using errcode = 'check_violation';
   end if;
   if new.voided_at is null
-     or new.secret <> old.secret or new.seed <> old.seed or new.ranking::text <> old.ranking::text
-     or new.entries_snapshot::text <> old.entries_snapshot::text or new.result_hash <> old.result_hash
-     or new.break_id <> old.break_id or new.request_id <> old.request_id then
+     or new.break_id is distinct from old.break_id
+     or new.request_id is distinct from old.request_id
+     or new.secret is distinct from old.secret
+     or new.beacon_round is distinct from old.beacon_round
+     or new.beacon_randomness is distinct from old.beacon_randomness
+     or new.beacon_signature is distinct from old.beacon_signature
+     or new.seed is distinct from old.seed
+     or new.algorithm_version is distinct from old.algorithm_version
+     or new.entries_snapshot::text is distinct from old.entries_snapshot::text
+     or new.ranking::text is distinct from old.ranking::text
+     or new.result_hash is distinct from old.result_hash
+     or new.run_by is distinct from old.run_by
+     or new.created_at is distinct from old.created_at then
     raise exception 'draws may only be voided' using errcode = 'check_violation';
   end if;
   return new;
@@ -551,14 +593,14 @@ end $$;
 --> statement-breakpoint
 create trigger draws_update before update on draws for each row execute function draws_update_guard();
 --> statement-breakpoint
-create rule draws_no_delete as on delete to draws do instead nothing;
+create trigger draws_no_delete before delete on draws for each row execute function forbid_delete();
 --> statement-breakpoint
--- draws: the revealed secret must match the commitment made at open.
+-- draws: the revealed secret must match the commitment made at open (built-in sha256(), no extension needed).
 create or replace function draws_commitment_guard() returns trigger language plpgsql as $$
 declare c text;
 begin
   select seed_commitment into c from breaks where id = new.break_id;
-  if c is null or c <> encode(digest('breaks-commit-v1'::bytea || decode(new.secret, 'base64'), 'sha256'), 'hex') then
+  if c is null or c <> encode(sha256('breaks-commit-v1'::bytea || decode(new.secret, 'base64')), 'hex') then
     raise exception 'secret does not match seed_commitment' using errcode = 'check_violation';
   end if;
   return new;
@@ -566,11 +608,16 @@ end $$;
 --> statement-breakpoint
 create trigger draws_commitment before insert on draws for each row execute function draws_commitment_guard();
 --> statement-breakpoint
--- draw_requests: pending -> done only.
+-- draw_requests: pending -> done only; every other column is frozen.
 create or replace function draw_requests_update_guard() returns trigger language plpgsql as $$
 begin
-  if not (old.status = 'pending' and new.status = 'done'
-          and new.break_id = old.break_id and new.attempt = old.attempt and new.beacon_round = old.beacon_round) then
+  if not (old.status = 'pending' and new.status = 'done')
+     or new.break_id is distinct from old.break_id
+     or new.attempt is distinct from old.attempt
+     or new.requested_by is distinct from old.requested_by
+     or new.requested_at is distinct from old.requested_at
+     or new.beacon_round is distinct from old.beacon_round
+     or new.on_behalf_note is distinct from old.on_behalf_note then
     raise exception 'draw_requests may only move pending -> done' using errcode = 'check_violation';
   end if;
   return new;
@@ -578,7 +625,7 @@ end $$;
 --> statement-breakpoint
 create trigger draw_requests_update before update on draw_requests for each row execute function draw_requests_update_guard();
 --> statement-breakpoint
-create rule draw_requests_no_delete as on delete to draw_requests do instead nothing;
+create trigger draw_requests_no_delete before delete on draw_requests for each row execute function forbid_delete();
 --> statement-breakpoint
 -- events: append-only except processed_at.
 create or replace function events_update_guard() returns trigger language plpgsql as $$
@@ -592,7 +639,7 @@ end $$;
 --> statement-breakpoint
 create trigger events_update before update on events for each row execute function events_update_guard();
 --> statement-breakpoint
-create rule events_no_delete as on delete to events do instead nothing;
+create trigger events_no_delete before delete on events for each row execute function forbid_delete();
 --> statement-breakpoint
 -- items/prizes: add-only after first paid line; never while drawn/cancelled.
 create or replace function items_mutation_guard() returns trigger language plpgsql as $$
@@ -620,13 +667,16 @@ create trigger prizes_guard before update or delete on prizes for each row execu
 --> statement-breakpoint
 create trigger prizes_insert_guard before insert on prizes for each row execute function items_mutation_guard();
 --> statement-breakpoint
-create extension if not exists pgcrypto;
+-- SYSTEM caller (cron finalise): draws.run_by and events.actor_id reference users, so the row must exist.
+insert into users (id, email, role, handle, display_name, age_confirmed_at)
+values ('00000000-0000-4000-8000-000000000000', 'system@breaks.local', 'admin', 'system', 'System', now())
+on conflict (id) do nothing;
 ```
 
 Then append the contents of `src/db/rls.sql`:
 ```sql
 --> statement-breakpoint
--- Deny-all RLS backstop: the app connects with the service role, which bypasses RLS.
+-- Deny-all RLS backstop. The app connects as the `postgres` role from DATABASE_URL, which has BYPASSRLS.
 -- The anon/authenticated roles get no policies, so a leaked anon key reads nothing.
 do $$ declare t text; begin
   for t in select tablename from pg_tables where schemaname = 'public' loop
@@ -635,7 +685,7 @@ do $$ declare t text; begin
   end loop;
 end $$;
 ```
-(`force row level security` applies to the table owner too; the service role bypasses RLS by role attribute, so the app still works. This makes the "no permissive policies" CI check meaningful.)
+(`force row level security` applies RLS to the table owner too. The app still works because the `postgres` role in `DATABASE_URL` has the BYPASSRLS attribute (asserted in the schema test below); forcing is still correct because the backstop targets `anon`/`authenticated`. This makes the "no permissive policies" CI check meaningful.)
 
 - [ ] **Step 5: Write the failing schema test**
 
@@ -646,12 +696,48 @@ import postgres from "postgres";
 
 const sql = postgres(process.env.DATABASE_URL!, { prepare: false, max: 1 });
 
+const ZERO_SECRET = Buffer.alloc(32).toString("base64"); // base64 of 32 zero bytes
+const OTHER_SECRET = Buffer.alloc(32, 1).toString("base64");
+
 describe("schema constraints", () => {
   let hostId: string;
   let breakId: string;
+  let drawnBreakId: string;
+  let requestId: string;
   beforeAll(async () => {
     hostId = (await sql`insert into users (id, email, role) values (gen_random_uuid(), 'h@example.com', 'host') returning id`)[0].id;
     breakId = (await sql`insert into breaks (host_id, title, line_count, line_price_cents, status) values (${hostId}, 't', 10, 2000, 'open') returning id`)[0].id;
+    drawnBreakId = (await sql`insert into breaks (host_id, title, line_count, line_price_cents, status, seed_commitment)
+      values (${hostId}, 'c', 2, 2000, 'drawing', encode(sha256('breaks-commit-v1'::bytea || decode(${ZERO_SECRET}, 'base64')), 'hex')) returning id`)[0].id;
+    requestId = (await sql`insert into draw_requests (break_id, attempt, requested_by, beacon_round) values (${drawnBreakId}, 1, ${hostId}, 1) returning id`)[0].id;
+  });
+
+  const insertDraw = (secret: string) => sql`insert into draws (break_id, request_id, secret, beacon_round, beacon_randomness, beacon_signature, seed, algorithm_version, entries_snapshot, ranking, result_hash, run_by)
+    values (${drawnBreakId}, ${requestId}, ${secret}, 1, 'aa', 'bb', 'cc', 1, '[]'::jsonb, '[1,2]'::jsonb, 'dd', ${hostId}) returning id`;
+
+  it("connects as a role with BYPASSRLS", async () => {
+    const [r] = await sql`select rolbypassrls from pg_roles where rolname = current_user`;
+    expect(r.rolbypassrls).toBe(true);
+  });
+
+  it("rejects a draw whose secret does not match the commitment", async () => {
+    await expect(insertDraw(OTHER_SECRET)).rejects.toThrow(/commitment/);
+  });
+
+  it("lets a draw be voided but not otherwise changed", async () => {
+    const [d] = await insertDraw(ZERO_SECRET);
+    await expect(sql`update draws set ranking = '[2,1]'::jsonb where id = ${d.id}`).rejects.toThrow(/voided/);
+    await expect(sql`update draws set voided_at = now(), void_reason = 'test' where id = ${d.id}`).resolves.toBeDefined();
+  });
+
+  it("lets a draw request only move pending -> done", async () => {
+    await expect(sql`update draw_requests set requested_by = gen_random_uuid() where id = ${requestId}`).rejects.toThrow(/pending -> done/);
+    await expect(sql`update draw_requests set status = 'done' where id = ${requestId}`).resolves.toBeDefined();
+  });
+
+  it("refuses to delete events", async () => {
+    const [e] = await sql`insert into events (type) values ('test.delete') returning id`;
+    await expect(sql`delete from events where id = ${e.id}`).rejects.toThrow(/cannot be deleted/);
   });
 
   it("rejects a paid line with no owner", async () => {
@@ -680,7 +766,7 @@ describe("schema constraints", () => {
 ENV_FILE=.env.test pnpm db:migrate
 pnpm vitest run src/db/schema.test.ts
 ```
-Expected: PASS (4 tests). If `relforcerowsecurity` fails for `__drizzle_migrations`, that table lives in schema `drizzle`, not `public`, so it is excluded — confirm the failing table name before changing anything.
+Expected: PASS (9 tests). These tests commit their rows (the draws and events rows cannot be deleted by design); the concurrency suite's `truncate` clears them, and truncate does not fire the delete triggers. If `relforcerowsecurity` fails for `__drizzle_migrations`, that table lives in schema `drizzle`, not `public`, so it is excluded — confirm the failing table name before changing anything.
 
 - [ ] **Step 7: Commit**
 
@@ -691,120 +777,10 @@ git commit -m "feat(db): core schema with integrity triggers and deny-all RLS"
 
 ---
 
-### Task 3: Test harness — transactional DB helper and fixture builders
+### Task 3: Shared crypto module — commitment, serialization, seeded shuffle, golden vectors
 
 **Files:**
-- Create: `tests/helpers/db.ts`, `tests/helpers/fixtures.ts`, `tests/helpers/fixtures.test.ts`
-
-**Interfaces:**
-- Produces: `withTx(fn: (tx: Tx) => Promise<void>)` which runs `fn` inside a transaction and always rolls back; `makeUser(tx, {role?, handle?})`, `makeBreak(tx, {hostId, lineCount?, linePriceCents?, status?})`, `openBreakWithLines(tx, {hostId, lineCount})` which inserts the break as `open` with pre-created lines and a commitment (bypassing the command, for tests that need an open break fast).
-
-- [ ] **Step 1: Write `tests/helpers/db.ts`**
-
-```ts
-import { db, type Tx } from "@/db/client";
-
-class Rollback extends Error {}
-
-/** Run fn in a transaction that is always rolled back, so tests leave no rows. */
-export async function withTx(fn: (tx: Tx) => Promise<void>): Promise<void> {
-  try {
-    await db.transaction(async (tx) => {
-      await fn(tx);
-      throw new Rollback();
-    });
-  } catch (e) {
-    if (!(e instanceof Rollback)) throw e;
-  }
-}
-```
-
-- [ ] **Step 2: Write `tests/helpers/fixtures.ts`**
-
-```ts
-import { randomUUID, randomBytes } from "node:crypto";
-import { sql } from "drizzle-orm";
-import type { Tx } from "@/db/client";
-import { users, breaks, breakItems, prizes, lines } from "@/db/schema";
-import { commitment } from "@/crypto/commit";
-
-let n = 0;
-const uniq = () => `${Date.now().toString(36)}${(n++).toString(36)}`;
-
-export async function makeUser(tx: Tx, opts: { role?: "member" | "host" | "admin"; handle?: string } = {}) {
-  const id = randomUUID();
-  const handle = opts.handle ?? `u${uniq()}`;
-  await tx.insert(users).values({
-    id, email: `${handle}@example.com`, handle, displayName: handle,
-    role: opts.role ?? "member", ageConfirmedAt: new Date(),
-  });
-  return { id, handle };
-}
-
-export async function makeBreak(tx: Tx, opts: { hostId: string; lineCount?: number; linePriceCents?: number; status?: string; kind?: string }) {
-  const [b] = await tx.insert(breaks).values({
-    hostId: opts.hostId, title: `Break ${uniq()}`, lineCount: opts.lineCount ?? 12,
-    linePriceCents: opts.linePriceCents ?? 2000, status: opts.status ?? "draft", kind: opts.kind ?? "main",
-  }).returning();
-  const [item] = await tx.insert(breakItems).values({ breakId: b.id, name: "Darts" }).returning();
-  await tx.insert(prizes).values({ breakId: b.id, rank: 1, itemId: item.id });
-  return b;
-}
-
-/** Shortcut for tests that need an open break with lines but don't test `breaks.open` itself. */
-export async function openBreakWithLines(tx: Tx, opts: { hostId: string; lineCount?: number; linePriceCents?: number }) {
-  const b = await makeBreak(tx, { ...opts, status: "draft" });
-  const secret = randomBytes(32);
-  await tx.update(breaks).set({ status: "open", openedAt: new Date(), seedCommitment: commitment(secret) }).where(sql`${breaks.id} = ${b.id}`);
-  await tx.execute(sql`insert into lines (break_id, number) select ${b.id}::uuid, generate_series(1, ${b.lineCount})`);
-  return { ...b, status: "open", secret };
-}
-
-export async function lineRows(tx: Tx, breakId: string) {
-  return tx.select().from(lines).where(sql`${lines.breakId} = ${breakId}`).orderBy(lines.number);
-}
-```
-(`commitment` comes from Task 4; write Task 4 before running this file's test, or stub it temporarily as `(b: Uint8Array) => "stub"` — the fixture test below only checks row shapes.)
-
-- [ ] **Step 3: Write the failing fixture test**
-
-`tests/helpers/fixtures.test.ts`:
-```ts
-import { describe, it, expect } from "vitest";
-import { withTx } from "./db";
-import { makeUser, openBreakWithLines, lineRows } from "./fixtures";
-
-describe("fixtures", () => {
-  it("creates an open break with N unowned lines and rolls back", async () => {
-    await withTx(async (tx) => {
-      const host = await makeUser(tx, { role: "host" });
-      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 5 });
-      const rows = await lineRows(tx, b.id);
-      expect(rows.map((r) => r.number)).toEqual([1, 2, 3, 4, 5]);
-      expect(rows.every((r) => r.ownerId === null)).toBe(true);
-    });
-  });
-});
-```
-
-- [ ] **Step 4: Run the test (after Task 4's `commit.ts` exists)**
-
-Run: `pnpm vitest run tests/helpers/fixtures.test.ts`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add tests/helpers
-git commit -m "test: transactional db helper and fixture builders"
-```
-
----
-
-### Task 4: Shared crypto module — commitment, serialization, seeded shuffle, golden vectors
-
-**Files:**
-- Create: `src/crypto/commit.ts`, `src/crypto/serialize.ts`, `src/crypto/shuffle.ts`, `src/crypto/draw.ts`, `src/crypto/vectors.json`, `src/crypto/draw.test.ts`
+- Create: `src/crypto/commit.ts`, `src/crypto/serialize.ts`, `src/crypto/shuffle.ts`, `src/crypto/draw.ts`, `src/crypto/vectors.json`, `src/crypto/draw.test.ts`, `scripts/fill-vectors.ts`
 
 **Interfaces:**
 - Produces:
@@ -815,7 +791,7 @@ git commit -m "test: transactional db helper and fixture builders"
   - `shuffle(seed: Uint8Array, n: number): number[]` — permutation of indices 0..n-1 via HMAC-SHA256 counter stream and Fisher–Yates with rejection sampling.
   - `computeRanking(p): { seed: Uint8Array; ranking: number[]; resultHash: string }` — ranking is **line numbers**, rank 1 first; `resultHash` = hex sha256 of the ranking serialised as `uint16be` sequence.
   - `ALGORITHM_VERSION = 1`.
-- Everything uses only `Uint8Array` and `@noble/hashes` so the same file runs in the browser (Task 15).
+- Everything uses only `Uint8Array` and `@noble/hashes` (v1, pinned in Task 1: imports `@noble/hashes/sha256`, `/hmac`, `/utils`) so the same file runs in the browser (Task 14).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -841,7 +817,9 @@ describe("serializeEntries", () => {
   it("encodes number as uint16be and uuid as 16 bytes, sorted by number, ignoring any handle", () => {
     const a = "00000000-0000-0000-0000-000000000001";
     const b = "ffffffff-ffff-ffff-ffff-ffffffffffff";
-    const out = serializeEntries([{ number: 13, ownerId: b }, { number: 2, ownerId: a }]);
+    // The extra handle property (non-ASCII) must not change the bytes.
+    const out = serializeEntries([{ number: 13, ownerId: b, handle: "Jörg" } as any, { number: 2, ownerId: a }]);
+    expect(out).toEqual(serializeEntries([{ number: 13, ownerId: b }, { number: 2, ownerId: a }]));
     expect(out.length).toBe(2 * 18);
     expect(Array.from(out.slice(0, 2))).toEqual([0, 2]);
     expect(Array.from(out.slice(2, 18))).toEqual(Array.from(uuidBytes(a)));
@@ -887,7 +865,7 @@ describe("golden vectors", () => {
 });
 ```
 
-Create `src/crypto/vectors.json` with **placeholder expected values** for now — they are filled in Step 5 by running the implementation once and pasting its output; after that they are frozen and any change to the algorithm must bump `ALGORITHM_VERSION`:
+Create `src/crypto/vectors.json` with **placeholder expected values** for now — they are filled in Step 5 by running `scripts/fill-vectors.ts` once; after that they are frozen and any change to the algorithm must bump `ALGORITHM_VERSION`:
 ```json
 [
   {
@@ -1058,22 +1036,155 @@ Expected: all pass except the two golden-vector cases (seed `FILL_ME`).
 
 - [ ] **Step 5: Fill the vectors from the implementation and freeze them**
 
+`scripts/fill-vectors.ts`:
+```ts
+import { readFileSync } from "node:fs";
+import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
+import { computeRanking, ALGORITHM_VERSION } from "../src/crypto/draw";
+
+const v = JSON.parse(readFileSync("src/crypto/vectors.json", "utf8"));
+for (const x of v) {
+  const r = computeRanking({ version: ALGORITHM_VERSION, secret: hexToBytes(x.secret), beacon: hexToBytes(x.beacon), breakId: x.breakId, entries: x.entries });
+  x.seed = bytesToHex(r.seed); x.ranking = r.ranking; x.resultHash = r.resultHash;
+}
+console.log(JSON.stringify(v, null, 2));
+```
 Run once:
 ```bash
-pnpm tsx -e '
-import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
-import { computeRanking, ALGORITHM_VERSION } from "./src/crypto/draw";
-import v from "./src/crypto/vectors.json";
-for (const x of v) { const r = computeRanking({ version: ALGORITHM_VERSION, secret: hexToBytes(x.secret), beacon: hexToBytes(x.beacon), breakId: x.breakId, entries: x.entries }); x.seed = bytesToHex(r.seed); x.ranking = r.ranking; x.resultHash = r.resultHash; }
-console.log(JSON.stringify(v, null, 2));'
+pnpm tsx scripts/fill-vectors.ts > src/crypto/vectors.json.new && mv src/crypto/vectors.json.new src/crypto/vectors.json
 ```
-Paste the output over `vectors.json`. Re-run: `pnpm vitest run src/crypto/draw.test.ts` → PASS. From now on the vectors are the contract; a failing vector means the algorithm changed and `ALGORITHM_VERSION` must be bumped with a new vector set.
+Re-run: `pnpm vitest run src/crypto/draw.test.ts` → PASS. From now on the vectors are the contract; a failing vector means the algorithm changed and `ALGORITHM_VERSION` must be bumped with a new vector set.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/crypto
+git add src/crypto scripts/fill-vectors.ts
 git commit -m "feat(crypto): commitment, entry serialization, rejection-sampled shuffle and golden vectors"
+```
+
+---
+
+### Task 4: Test harness — transactional DB helper and fixture builders
+
+**Files:**
+- Create: `tests/helpers/db.ts`, `tests/helpers/fixtures.ts`, `tests/helpers/fixtures.test.ts`
+
+**Interfaces:**
+- Produces: `withTx(fn: (tx: Tx) => Promise<void>)` which runs `fn` inside a transaction and always rolls back; `makeUser(tx, {role?, handle?})`, `makeBreak(tx, {hostId, lineCount?, linePriceCents?, status?})`, `openBreakWithLines(tx, {hostId, lineCount})` which inserts the break as `open` with pre-created lines and a commitment (bypassing the command, for tests that need an open break fast); `assertInvariants(tx)` which throws with the offending ids if a ledger invariant is broken.
+- Consumes: `commitment` from Task 3.
+
+- [ ] **Step 1: Write `tests/helpers/db.ts`**
+
+```ts
+import { db, type Tx } from "@/db/client";
+
+class Rollback extends Error {}
+
+/** Run fn in a transaction that is always rolled back, so tests leave no rows. */
+export async function withTx(fn: (tx: Tx) => Promise<void>): Promise<void> {
+  try {
+    await db.transaction(async (tx) => {
+      await fn(tx);
+      throw new Rollback();
+    });
+  } catch (e) {
+    if (!(e instanceof Rollback)) throw e;
+  }
+}
+```
+
+- [ ] **Step 2: Write `tests/helpers/fixtures.ts`**
+
+```ts
+import { randomUUID, randomBytes } from "node:crypto";
+import { sql } from "drizzle-orm";
+import type { Tx } from "@/db/client";
+import { users, breaks, breakItems, prizes, lines } from "@/db/schema";
+import { commitment } from "@/crypto/commit";
+
+// Random, not Date.now(): parallel vitest workers would collide on the same millisecond.
+const uniq = () => randomBytes(6).toString("hex");
+
+export async function makeUser(tx: Tx, opts: { role?: "member" | "host" | "admin"; handle?: string } = {}) {
+  const id = randomUUID();
+  const handle = opts.handle ?? `u${uniq()}`;
+  await tx.insert(users).values({
+    id, email: `${handle}@example.com`, handle, displayName: handle,
+    role: opts.role ?? "member", ageConfirmedAt: new Date(),
+  });
+  return { id, handle };
+}
+
+export async function makeBreak(tx: Tx, opts: { hostId: string; lineCount?: number; linePriceCents?: number; status?: string; kind?: string }) {
+  const [b] = await tx.insert(breaks).values({
+    hostId: opts.hostId, title: `Break ${uniq()}`, lineCount: opts.lineCount ?? 12,
+    linePriceCents: opts.linePriceCents ?? 2000, status: opts.status ?? "draft", kind: opts.kind ?? "main",
+  }).returning();
+  const [item] = await tx.insert(breakItems).values({ breakId: b.id, name: "Darts" }).returning();
+  await tx.insert(prizes).values({ breakId: b.id, rank: 1, itemId: item.id });
+  return b;
+}
+
+/** Shortcut for tests that need an open break with lines but don't test `breaks.open` itself. */
+export async function openBreakWithLines(tx: Tx, opts: { hostId: string; lineCount?: number; linePriceCents?: number }) {
+  const b = await makeBreak(tx, { ...opts, status: "draft" });
+  const secret = randomBytes(32);
+  await tx.update(breaks).set({ status: "open", openedAt: new Date(), seedCommitment: commitment(secret) }).where(sql`${breaks.id} = ${b.id}`);
+  await tx.execute(sql`insert into lines (break_id, number) select ${b.id}::uuid, generate_series(1, ${b.lineCount})`);
+  return { ...b, status: "open", secret };
+}
+
+export async function lineRows(tx: Tx, breakId: string) {
+  return tx.select().from(lines).where(sql`${lines.breakId} = ${breakId}`).orderBy(lines.number);
+}
+
+/** Ledger invariants that must hold after any interleaving. Called at the end of each concurrency test (Task 10). */
+export async function assertInvariants(tx: Tx): Promise<void> {
+  const ids = (rows: Record<string, unknown>[]) => rows.map((r) => Object.values(r).join(":")).join(", ");
+  const paidUnowned = await tx.execute<{ break_id: string; number: number }>(sql`
+    select break_id, number from lines where paid_at is not null and owner_id is null`);
+  if (paidUnowned.length) throw new Error(`paid lines without owner: ${ids(paidUnowned)}`);
+  const ownedUnclaimed = await tx.execute<{ break_id: string; number: number }>(sql`
+    select break_id, number from lines where owner_id is not null and claimed_at is null`);
+  if (ownedUnclaimed.length) throw new Error(`owned lines without claimed_at: ${ids(ownedUnclaimed)}`);
+  const unpaidInFull = await tx.execute<{ break_id: string; number: number }>(sql`
+    select l.break_id, l.number from lines l join breaks b on b.id = l.break_id
+    where b.status in ('filled','drawing','drawn') and l.number <= b.line_count and l.paid_at is null`);
+  if (unpaidInFull.length) throw new Error(`unpaid numbered lines in a filled/drawing/drawn break: ${ids(unpaidInFull)}`);
+}
+```
+
+- [ ] **Step 3: Write the failing fixture test**
+
+`tests/helpers/fixtures.test.ts`:
+```ts
+import { describe, it, expect } from "vitest";
+import { withTx } from "./db";
+import { makeUser, openBreakWithLines, lineRows } from "./fixtures";
+
+describe("fixtures", () => {
+  it("creates an open break with N unowned lines and rolls back", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 5 });
+      const rows = await lineRows(tx, b.id);
+      expect(rows.map((r) => r.number)).toEqual([1, 2, 3, 4, 5]);
+      expect(rows.every((r) => r.ownerId === null)).toBe(true);
+    });
+  });
+});
+```
+
+- [ ] **Step 4: Run the test**
+
+Run: `pnpm vitest run tests/helpers/fixtures.test.ts`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests/helpers
+git commit -m "test: transactional db helper and fixture builders"
 ```
 
 ---
@@ -1090,6 +1201,7 @@ git commit -m "feat(crypto): commitment, entry serialization, rejection-sampled 
   - `DrandBeacon` (quicknet: period 3s, genesis 1692803367, chain hash `52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971`, relays in order `https://api.drand.sh`, `https://api2.drand.sh`, `https://api3.drand.sh`, `https://drand.cloudflare.com`), returns `null` if all relays fail or the round is in the future.
   - `FakeBeacon` for tests: `roundAt` uses the same formula; `fetch(round)` returns `sha256("fake-beacon" ‖ uint32be(round))` as randomness and `"fake"` as signature.
   - `roundAfter(time: Date, delaySeconds: number): number` helper exported for the request command.
+  - `beaconFromEnv(): BeaconSource` — `FakeBeacon` when `BEACON=fake` (throws if `VERCEL_ENV=production`), else `DrandBeacon`; used by the draw actions (Task 13/14) and the tick (Task 15).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1199,8 +1311,19 @@ export interface BeaconSource {
 
 /** First round whose time is >= time + delaySeconds. Round r happens at genesis + (r-1)*period. */
 export function roundAfter(time: Date, delaySeconds: number): number {
-  const t = Math.floor(time.getTime() / 1000) + delaySeconds;
+  // ceil, not floor: a fractional second must never yield a round earlier than time + delay.
+  const t = Math.ceil(time.getTime() / 1000) + delaySeconds;
+  // drand round 1 is at genesis, hence the +1; the spec's formula omits the +1.
   return Math.ceil((t - QUICKNET.genesis) / QUICKNET.period) + 1;
+}
+
+/** Fake beacon only when BEACON=fake (tests, e2e); never in production. */
+export function beaconFromEnv(): BeaconSource {
+  if (process.env.BEACON === "fake") {
+    if (process.env.VERCEL_ENV === "production") throw new Error("fake beacon in production");
+    return new FakeBeacon();
+  }
+  return new DrandBeacon();
 }
 
 export class DrandBeacon implements BeaconSource {
@@ -1254,7 +1377,7 @@ git commit -m "feat(crypto): aes-gcm secret storage and drand/fake beacon source
 - Produces:
   - `class DomainError extends Error { code: string; status: number }` and subclasses `NotFound`, `NotAuthorized`, `NotOpen`, `NotOnboarded`, `LineTaken(numbers: number[])`, `OwnerChanged`, `CapExceeded(kind, limit)`, `InvalidInput(message)`, `NotFilled`, `BeaconUnavailable`, `AlreadyDrawn`.
   - `type Caller = { id: string; role: "member" | "host" | "admin"; onboarded: boolean; banned: boolean }`.
-  - `appendEvent(tx, e: { breakId?: string; actorId?: string; type: string; payload?: object; batchId?: string; ipHash?: string }): Promise<string>` (returns event id).
+  - `appendEvent(tx, e: { breakId?: string; actorId?: string; type: string; payload?: object; batchId?: string; ipHash?: string }, opts?: { ignoreDuplicateBatch?: boolean }): Promise<string | null>` (returns the event id, or `null` when `ignoreDuplicateBatch` skipped a duplicate `(breakId, batchId)`).
   - `assertHostOf(tx, caller, breakId): Promise<BreakRow>` — loads the break **with `FOR UPDATE`** (this is the lock-first rule) and throws `NotAuthorized` unless `caller.id === break.hostId` or caller is admin.
   - `lockBreak(tx, breakId): Promise<BreakRow>` — `SELECT … FOR UPDATE`, throws `NotFound`.
   - `assertOnboarded(caller)`.
@@ -1323,7 +1446,17 @@ describe("appendEvent", () => {
       const b = await makeBreak(tx, { hostId: host.id });
       const batchId = "33333333-3333-4333-8333-333333333333";
       await appendEvent(tx, { breakId: b.id, type: "x", batchId });
-      await expect(appendEvent(tx, { breakId: b.id, type: "x", batchId })).rejects.toThrow(/events_batch_uq/);
+      // drizzle wraps the driver error in DrizzleQueryError; the postgres error is on `.cause`
+      await expect(appendEvent(tx, { breakId: b.id, type: "x", batchId })).rejects.toMatchObject({ cause: { constraint_name: "events_batch_uq" } });
+    });
+  });
+  it("skips a duplicate batch id when ignoreDuplicateBatch is set", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const b = await makeBreak(tx, { hostId: host.id });
+      const batchId = "44444444-4444-4444-8444-444444444444";
+      expect(await appendEvent(tx, { breakId: b.id, type: "x", batchId }, { ignoreDuplicateBatch: true })).not.toBeNull();
+      expect(await appendEvent(tx, { breakId: b.id, type: "x", batchId }, { ignoreDuplicateBatch: true })).toBeNull();
     });
   });
 });
@@ -1368,11 +1501,14 @@ import { events } from "@/db/schema";
 
 export async function appendEvent(tx: Tx, e: {
   breakId?: string; actorId?: string; type: string; payload?: Record<string, unknown>; batchId?: string; ipHash?: string;
-}): Promise<string> {
-  const [row] = await tx.insert(events).values({
+}, opts: { ignoreDuplicateBatch?: boolean } = {}): Promise<string | null> {
+  const insert = tx.insert(events).values({
     breakId: e.breakId, actorId: e.actorId, type: e.type, payload: e.payload ?? {}, batchId: e.batchId, ipHash: e.ipHash,
-  }).returning({ id: events.id });
-  return row.id;
+  });
+  // events_batch_uq is a partial unique index, which Drizzle can't target by name; with no target,
+  // `on conflict do nothing` lets Postgres use any matching arbiter (here only events_batch_uq can conflict).
+  const rows = await (opts.ignoreDuplicateBatch ? insert.onConflictDoNothing() : insert).returning({ id: events.id });
+  return rows[0]?.id ?? null;
 }
 ```
 
@@ -1412,7 +1548,7 @@ export function assertAdmin(caller: Caller): void {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pnpm vitest run src/auth/authz.test.ts src/domain/events.test.ts`
-Expected: PASS (5 tests)
+Expected: PASS (6 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1431,7 +1567,7 @@ git commit -m "feat(domain): typed errors, caller, event append and break lock/a
 **Interfaces:**
 - Consumes: `lockBreak`, `assertHostOf`, `assertOnboarded`, `appendEvent`, `commitment`, `newSecret`, `encryptSecret`.
 - Produces:
-  - `createDraft(tx, caller, input: { title; description?; lineCount; linePriceCents; paymentWindowHours?; maxLinesPerUser?; allowRandomClaims?; paymentInstructions?; items: { name; variantSchema?; expectedShipAt? }[] }): Promise<{ breakId }>` — inserts the break (`kind: "main"`), its items, and rank-1 prizes for every item (a choice set if several). Requires `caller.role` host or admin.
+  - `createDraft(tx, caller, input: { title; description?; lineCount; linePriceCents; paymentWindowHours?; maxLinesPerUser?; allowRandomClaims?; paymentInstructions?; paymentHandles?: { venmo?; paypal? }; items: { name; variantSchema?; expectedShipAt? }[] }): Promise<{ breakId }>` — inserts the break (`kind: "main"`), its items, and rank-1 prizes for every item (a choice set if several). When `paymentHandles` is given, upserts `host_profiles` (setting `paymentHandlesChangedAt = now()` only when the handles changed) and, if `paymentInstructions` is blank, defaults it from the handles ("Venmo @x · PayPal paypal.me/y · leave the note blank"). Requires `caller.role` host or admin.
   - `openBreak(tx, caller, breakId): Promise<void>` — validation per spec §7, secret + commitment, pre-creates lines, status `open`, event `break.opened`.
   - `getBreakPage(tx, breakId): Promise<BreakPage | null>` — break, items, prizes, lines (with owner handle), host handle/display name/payment handles.
   - `validateDraftForOpen(b: BreakRow, prizeCount: number): void` in `rules.ts`.
@@ -1446,7 +1582,7 @@ import { withTx } from "../../../tests/helpers/db";
 import { makeUser, lineRows } from "../../../tests/helpers/fixtures";
 import { createDraft, openBreak } from "./commands";
 import { getBreakPage } from "./queries";
-import { breaks, breakSecrets, events } from "@/db/schema";
+import { breaks, breakSecrets, events, hostProfiles } from "@/db/schema";
 import { InvalidInput, NotAuthorized, NotOpen } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
 
@@ -1477,6 +1613,22 @@ describe("createDraft", () => {
       const host = await makeUser(tx, { role: "host" });
       await expect(createDraft(tx, asHost(host), { ...input, lineCount: 1 })).rejects.toBeInstanceOf(InvalidInput);
       await expect(createDraft(tx, asHost(host), { ...input, linePriceCents: 0 })).rejects.toBeInstanceOf(InvalidInput);
+    });
+  });
+  it("saves payment handles to the host profile and defaults the payment instructions from them", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, paymentHandles: { venmo: "@Jim-R", paypal: "JimR" } });
+      const page = (await getBreakPage(tx, breakId))!;
+      expect(page.host.paymentHandles).toEqual({ venmo: "@Jim-R", paypal: "JimR" });
+      expect(page.break.paymentInstructions).toBe("Venmo @Jim-R · PayPal paypal.me/JimR · leave the note blank");
+      const [p1] = await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${host.id}`);
+      expect(p1.paymentHandlesChangedAt).not.toBeNull();
+      // same handles again: changedAt is untouched; explicit instructions win
+      const { breakId: b2 } = await createDraft(tx, asHost(host), { ...input, paymentInstructions: "Cash at the club", paymentHandles: { venmo: "@Jim-R", paypal: "JimR" } });
+      const [p2] = await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${host.id}`);
+      expect(p2.paymentHandlesChangedAt).toEqual(p1.paymentHandlesChangedAt);
+      expect((await getBreakPage(tx, b2))!.break.paymentInstructions).toBe("Cash at the club");
     });
   });
 });
@@ -1556,9 +1708,9 @@ export const GLOBAL_UNPAID_CAP = 30;
 
 `src/domain/breaks/commands.ts`:
 ```ts
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { breaks, breakItems, prizes, breakSecrets, users } from "@/db/schema";
+import { breaks, breakItems, prizes, breakSecrets, users, hostProfiles } from "@/db/schema";
 import { assertHostOf, assertOnboarded } from "@/auth/authz";
 import { appendEvent } from "@/domain/events";
 import { InvalidInput, NotAuthorized, NotOpen } from "@/domain/errors";
@@ -1570,18 +1722,48 @@ import { validateDraftInput, validateDraftForOpen } from "./rules";
 export type CreateDraftInput = {
   title: string; description?: string; lineCount: number; linePriceCents: number;
   paymentWindowHours?: number; maxLinesPerUser?: number | null; allowRandomClaims?: boolean; paymentInstructions?: string;
+  paymentHandles?: { venmo?: string; paypal?: string };
   items: { name: string; variantSchema?: Record<string, string[]> | null; expectedShipAt?: Date | null }[];
 };
+
+type Handles = { venmo?: string; paypal?: string };
+const cleanHandles = (h: Handles): Handles => {
+  const out: Handles = {};
+  if (h.venmo?.trim()) out.venmo = `@${h.venmo.trim().replace(/^@/, "")}`;
+  if (h.paypal?.trim()) out.paypal = h.paypal.trim().replace(/^@/, "");
+  return out;
+};
+export function defaultPaymentInstructions(h: Handles): string {
+  const parts: string[] = [];
+  if (h.venmo) parts.push(`Venmo ${h.venmo}`);
+  if (h.paypal) parts.push(`PayPal paypal.me/${h.paypal}`);
+  return parts.length ? [...parts, "leave the note blank"].join(" · ") : "";
+}
+
+/** Upserts host_profiles.payment_handles; bumps payment_handles_changed_at only when the handles actually changed. */
+async function savePaymentHandles(tx: Tx, userId: string, h: Handles): Promise<void> {
+  const [cur] = await tx.select({ paymentHandles: hostProfiles.paymentHandles }).from(hostProfiles).where(eq(hostProfiles.userId, userId)).for("update");
+  const same = cur && JSON.stringify(cur.paymentHandles ?? {}) === JSON.stringify(h);
+  if (same) return;
+  await tx.insert(hostProfiles).values({ userId, paymentHandles: h, paymentHandlesChangedAt: new Date() })
+    .onConflictDoUpdate({ target: hostProfiles.userId, set: { paymentHandles: h, paymentHandlesChangedAt: new Date() } });
+}
 
 export async function createDraft(tx: Tx, caller: Caller, input: CreateDraftInput): Promise<{ breakId: string }> {
   assertOnboarded(caller);
   if (caller.role !== "host" && caller.role !== "admin") throw new NotAuthorized("Only hosts can list a break");
   validateDraftInput(input);
+  let paymentInstructions = input.paymentInstructions?.trim() ?? "";
+  if (input.paymentHandles) {
+    const handles = cleanHandles(input.paymentHandles);
+    await savePaymentHandles(tx, caller.id, handles);
+    if (!paymentInstructions) paymentInstructions = defaultPaymentInstructions(handles);
+  }
   const [b] = await tx.insert(breaks).values({
     hostId: caller.id, kind: "main", title: input.title.trim(), description: input.description ?? "",
     lineCount: input.lineCount, linePriceCents: input.linePriceCents,
     paymentWindowHours: input.paymentWindowHours ?? 24, maxLinesPerUser: input.maxLinesPerUser ?? null,
-    allowRandomClaims: input.allowRandomClaims ?? true, paymentInstructions: input.paymentInstructions ?? "",
+    allowRandomClaims: input.allowRandomClaims ?? true, paymentInstructions,
   }).returning({ id: breaks.id });
   for (const item of input.items) {
     const [it] = await tx.insert(breakItems).values({
@@ -1651,7 +1833,7 @@ export async function listOpenBreaks(tx: Tx, limit = 50) {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pnpm vitest run src/domain/breaks`
-Expected: PASS (7 tests)
+Expected: PASS (8 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1670,13 +1852,13 @@ git commit -m "feat(breaks): create draft, open with commitment and pre-created 
 **Interfaces:**
 - Consumes: `lockBreak`, `assertHostOf`, `assertOnboarded`, `appendEvent`, `GLOBAL_UNPAID_CAP`, `SELF_CLAIM_SHARE`.
 - Produces (all `(tx, caller, …)`; all lock the break row first):
-  - `claimLines(tx, caller, { breakId, numbers: number[], batchId: string; ipHash?: string }): Promise<{ got: number[]; taken: number[] }>` — partial success; `got` includes lines the caller already held (idempotent retry); throws `LineTaken` only if **nothing** was obtained.
+  - `claimLines(tx, caller, { breakId, numbers: number[], batchId: string; ipHash?: string }): Promise<{ got: number[]; taken: number[] }>` — partial success; `got` includes lines the caller already held (idempotent retry); caps are checked against the lines that are actually free; `assign` stamps `claim_batch_id`; the `line.claimed` event uses `ignoreDuplicateBatch`; throws `LineTaken` only if **nothing** was obtained. `claimLines`/`claimRandom`/`claimAllOpen` throw `InvalidInput("not a main break")` when `kind !== "main"` (free draws and minis: Plan 2).
   - `claimRandom(tx, caller, { breakId, count, batchId }): Promise<{ got: number[] }>` — `FOR UPDATE SKIP LOCKED`; throws `LineTaken([])` with message "Only N open" if fewer than `count` are free (no partial).
   - `claimAllOpen(tx, caller, { breakId, batchId }): Promise<{ got: number[] }>`.
   - `markSent(tx, caller, { breakId, numbers })`.
   - `markPaid(tx, caller, { breakId, number, expectedOwnerId }): Promise<{ filled: boolean }>` — conditional update; `OwnerChanged` if the owner differs; idempotent if already paid by that owner.
   - `unmarkPaid(tx, caller, { breakId, number })` — only in open|filled.
-  - `releaseLine(tx, caller, { breakId, number, reason: "overdue" | "host_dropped" | "withdrawn" })` — host for the first two, owner for `withdrawn`; unpaid lines only.
+  - `releaseLine(tx, caller, { breakId, number, reason: "overdue" | "host_dropped" | "withdrawn" })` — host for the first two, owner for `withdrawn`; unpaid lines only; `overdue` requires `isOverdue(line, break)` or throws `InvalidInput("That claim is not overdue yet")`.
   - `recomputeFill(tx, breakId, actorId?): Promise<boolean>` — must be called with the break row already locked; moves open→filled or filled→open, writes `break.filled` / `break.unfilled` events, sets `filledAt` only if null.
   - `isOverdue(line, breakRow, now): boolean` in `rules.ts`.
   - `myLines(tx, userId)` in `queries.ts` for `/me`.
@@ -1693,7 +1875,7 @@ import { makeUser, openBreakWithLines, lineRows } from "../../../tests/helpers/f
 import { claimLines, claimRandom, claimAllOpen, markSent, markPaid, unmarkPaid, releaseLine, recomputeFill } from "./commands";
 import { isOverdue } from "./rules";
 import { breaks, lines, events } from "@/db/schema";
-import { CapExceeded, LineTaken, NotAuthorized, NotOpen, OwnerChanged } from "@/domain/errors";
+import { CapExceeded, InvalidInput, LineTaken, NotAuthorized, NotOpen, OwnerChanged } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
 
 const c = (u: { id: string }, role: Caller["role"] = "member"): Caller => ({ id: u.id, role, onboarded: true, banned: false });
@@ -1730,13 +1912,36 @@ describe("claimLines", () => {
       await expect(claimLines(tx, c(bb), { breakId: b.id, numbers: [7], batchId: randomUUID() })).rejects.toBeInstanceOf(LineTaken);
     });
   });
-  it("treats a retry for lines the caller already holds as success (double-tap)", async () => {
+  it("treats a retry with the same batch id as success (double-tap) and logs one event", async () => {
     await withTx(async (tx) => {
       const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
       const b = await openBreakWithLines(tx, { hostId: host.id });
-      await claimLines(tx, c(a), { breakId: b.id, numbers: [3, 5], batchId: randomUUID() });
-      const r = await claimLines(tx, c(a), { breakId: b.id, numbers: [3, 5], batchId: randomUUID() });
+      const batchId = randomUUID();
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [3, 5], batchId });
+      const r = await claimLines(tx, c(a), { breakId: b.id, numbers: [3, 5], batchId });
       expect(r).toEqual({ got: [3, 5], taken: [] });
+      const evs = await tx.select().from(events).where(sql`${events.breakId} = ${b.id} and ${events.type} = 'line.claimed'`);
+      expect(evs).toHaveLength(1);
+    });
+  });
+  it("a same-batch retry after one line was released and re-claimed by someone else reports it taken", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx); const bb = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id });
+      const batchId = randomUUID();
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [3, 5], batchId });
+      await releaseLine(tx, c(a), { breakId: b.id, number: 5, reason: "withdrawn" });
+      await claimLines(tx, c(bb), { breakId: b.id, numbers: [5], batchId: randomUUID() });
+      const r = await claimLines(tx, c(a), { breakId: b.id, numbers: [3, 5], batchId });
+      expect(r).toEqual({ got: [3], taken: [5] });
+    });
+  });
+  it("rejects claims on a break that is not a main break (minis and free draws are Plan 2)", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id });
+      await tx.update(breaks).set({ kind: "mini" }).where(sql`${breaks.id} = ${b.id}`);
+      await expect(claimLines(tx, c(a), { breakId: b.id, numbers: [1], batchId: randomUUID() })).rejects.toBeInstanceOf(InvalidInput);
     });
   });
   it("rejects claims when the break is not open", async () => {
@@ -1866,6 +2071,17 @@ describe("releaseLine", () => {
       await expect(releaseLine(tx, c(bb), { breakId: b.id, number: 1, reason: "withdrawn" })).rejects.toBeInstanceOf(NotAuthorized);
     });
   });
+  it("releasing as overdue requires the claim to actually be overdue", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [1], batchId: randomUUID() });
+      await expect(releaseLine(tx, c(host, "host"), { breakId: b.id, number: 1, reason: "overdue" })).rejects.toThrow(/not overdue yet/);
+      await tx.execute(sql`update lines set claimed_at = now() - interval '25 hours' where break_id = ${b.id} and number = 1`);
+      await releaseLine(tx, c(host, "host"), { breakId: b.id, number: 1, reason: "overdue" });
+      expect((await lineRows(tx, b.id))[0].ownerId).toBeNull();
+    });
+  });
 });
 
 describe("isOverdue", () => {
@@ -1908,7 +2124,8 @@ export function assertCaps(p: { requested: number; heldByCaller: number; maxLine
   const after = p.heldByCaller + p.requested;
   if (p.maxLinesPerUser !== null && after > p.maxLinesPerUser) throw new CapExceeded("lines per person", p.maxLinesPerUser);
   if (p.isHost) {
-    const hostCap = Math.max(1, Math.floor(p.lineCount * SELF_CLAIM_SHARE));
+    // No max(1, …) here: that floor belongs to the bonus-line rule (Plan 2), not the self-claim cap.
+    const hostCap = Math.floor(p.lineCount * SELF_CLAIM_SHARE);
     if (after > hostCap) throw new CapExceeded("host-held lines", hostCap);
   }
   if (p.globalUnpaid + p.requested > GLOBAL_UNPAID_CAP) throw new CapExceeded("open unpaid claims", GLOBAL_UNPAID_CAP);
@@ -1919,16 +2136,25 @@ export function assertCaps(p: { requested: number; heldByCaller: number; maxLine
 
 `src/domain/lines/commands.ts`:
 ```ts
-import { sql } from "drizzle-orm";
+import { sql, inArray } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { breaks, lines } from "@/db/schema";
 import { lockBreak, assertHostOf, assertOnboarded } from "@/auth/authz";
 import { appendEvent } from "@/domain/events";
 import { InvalidInput, LineTaken, NotAuthorized, NotOpen, OwnerChanged } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
-import { assertCaps, validateNumbers } from "./rules";
+import { assertCaps, isOverdue, validateNumbers } from "./rules";
 
-type LineRow = typeof lines.$inferSelect;
+type BreakRow = typeof breaks.$inferSelect;
+
+/** postgres-js can't bind a JS array to `any(...)` inside a raw template with prepare:false; pass a Postgres array literal. */
+const intArray = (ns: number[]) => sql`${`{${ns.join(",")}}`}::int[]`;
+
+/** Claims are main-break only in Plan 1; minis and free draws arrive in Plan 2. */
+function assertClaimable(b: BreakRow): void {
+  if (b.status !== "open") throw new NotOpen(b.status);
+  if (b.kind !== "main") throw new InvalidInput("not a main break");
+}
 
 async function heldBy(tx: Tx, breakId: string, userId: string): Promise<number> {
   const [r] = await tx.select({ n: sql<number>`count(*)::int` }).from(lines).where(sql`${lines.breakId} = ${breakId} and ${lines.ownerId} = ${userId} and ${lines.isBonus} = false`);
@@ -1939,32 +2165,35 @@ async function globalUnpaid(tx: Tx, userId: string): Promise<number> {
   return r.n;
 }
 
-async function assign(tx: Tx, b: typeof breaks.$inferSelect, caller: Caller, numbers: number[]): Promise<number[]> {
+async function assign(tx: Tx, b: BreakRow, caller: Caller, numbers: number[], batchId: string): Promise<number[]> {
+  if (numbers.length === 0) return [];
   const rows = await tx.execute<{ number: number }>(sql`
-    update lines set owner_id = ${caller.id}, claimed_at = now(), price_cents = ${b.linePriceCents}
-    where break_id = ${b.id} and number = any(${numbers}::int[]) and owner_id is null and reserved_for_mini_id is null
+    update lines set owner_id = ${caller.id}, claimed_at = now(), price_cents = ${b.linePriceCents}, claim_batch_id = ${batchId}
+    where break_id = ${b.id} and number = any(${intArray(numbers)}) and owner_id is null and reserved_for_mini_id is null
     returning number`);
   return rows.map((r) => r.number).sort((x, y) => x - y);
 }
 
-async function finishClaim(tx: Tx, b: typeof breaks.$inferSelect, caller: Caller, got: number[], batchId: string, ipHash?: string) {
+async function finishClaim(tx: Tx, b: BreakRow, caller: Caller, got: number[], batchId: string, ipHash?: string) {
   if (got.length === 0) return;
-  if (b.kind === "free") await tx.update(lines).set({ paidAt: new Date() }).where(sql`${lines.breakId} = ${b.id} and ${lines.number} = any(${got}::int[])`);
-  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.claimed", payload: { numbers: got }, batchId, ipHash });
-  if (b.kind === "free") await recomputeFill(tx, b.id, caller.id);
+  // A same-batch retry that obtains more lines must not trip events_batch_uq. Free draws (auto-paid): Plan 2.
+  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.claimed", payload: { numbers: got }, batchId, ipHash }, { ignoreDuplicateBatch: true });
 }
 
 export async function claimLines(tx: Tx, caller: Caller, p: { breakId: string; numbers: number[]; batchId: string; ipHash?: string }): Promise<{ got: number[]; taken: number[] }> {
   assertOnboarded(caller);
   const b = await lockBreak(tx, p.breakId);
-  if (b.status !== "open") throw new NotOpen(b.status);
+  assertClaimable(b);
   const numbers = validateNumbers(p.numbers, b.lineCount);
-  const mine = (await tx.select({ number: lines.number }).from(lines).where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} = ${caller.id} and ${lines.number} = any(${numbers}::int[])`)).map((r) => r.number);
+  const mine = (await tx.select({ number: lines.number }).from(lines)
+    .where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} = ${caller.id} and ${inArray(lines.number, numbers)}`)).map((r) => r.number);
   const wanted = numbers.filter((n) => !mine.includes(n));
+  // Caps count only lines that are actually free right now (the break row lock keeps this stable).
+  const free = wanted.length === 0 ? [] : (await tx.select({ number: lines.number }).from(lines)
+    .where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} is null and ${lines.reservedForMiniId} is null and ${inArray(lines.number, wanted)}`)).map((r) => r.number);
   const isHost = caller.id === b.hostId;
-  if (isHost && b.kind !== "main") throw new NotAuthorized("Hosts can't take lines in their own mini or free draw");
-  assertCaps({ requested: wanted.length, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaid(tx, caller.id) });
-  const got = await assign(tx, b, caller, wanted);
+  assertCaps({ requested: free.length, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaid(tx, caller.id) });
+  const got = await assign(tx, b, caller, free, p.batchId);
   const taken = wanted.filter((n) => !got.includes(n));
   if (got.length === 0 && mine.length === 0) throw new LineTaken(taken);
   await finishClaim(tx, b, caller, got, p.batchId, p.ipHash);
@@ -1974,7 +2203,7 @@ export async function claimLines(tx: Tx, caller: Caller, p: { breakId: string; n
 export async function claimRandom(tx: Tx, caller: Caller, p: { breakId: string; count: number; batchId: string; ipHash?: string }): Promise<{ got: number[] }> {
   assertOnboarded(caller);
   const b = await lockBreak(tx, p.breakId);
-  if (b.status !== "open") throw new NotOpen(b.status);
+  assertClaimable(b);
   if (!b.allowRandomClaims) throw new InvalidInput("This break doesn't allow random lines");
   if (!Number.isInteger(p.count) || p.count < 1) throw new InvalidInput("Ask for at least one line");
   const isHost = caller.id === b.hostId;
@@ -1983,7 +2212,7 @@ export async function claimRandom(tx: Tx, caller: Caller, p: { breakId: string; 
     select number from lines where break_id = ${b.id} and owner_id is null and reserved_for_mini_id is null and number <= ${b.lineCount}
     order by random() limit ${p.count} for update skip locked`);
   if (picked.length < p.count) { const e = new LineTaken([]); e.message = `Only ${picked.length} open`; throw e; }
-  const got = await assign(tx, b, caller, picked.map((r) => r.number));
+  const got = await assign(tx, b, caller, picked.map((r) => r.number), p.batchId);
   await finishClaim(tx, b, caller, got, p.batchId, p.ipHash);
   return { got };
 }
@@ -1991,12 +2220,12 @@ export async function claimRandom(tx: Tx, caller: Caller, p: { breakId: string; 
 export async function claimAllOpen(tx: Tx, caller: Caller, p: { breakId: string; batchId: string; ipHash?: string }): Promise<{ got: number[] }> {
   assertOnboarded(caller);
   const b = await lockBreak(tx, p.breakId);
-  if (b.status !== "open") throw new NotOpen(b.status);
+  assertClaimable(b);
   const open = (await tx.select({ number: lines.number }).from(lines).where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} is null and ${lines.reservedForMiniId} is null and ${lines.number} <= ${b.lineCount}`)).map((r) => r.number);
   if (open.length === 0) throw new LineTaken([]);
   const isHost = caller.id === b.hostId;
   assertCaps({ requested: open.length, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaid(tx, caller.id) });
-  const got = await assign(tx, b, caller, open);
+  const got = await assign(tx, b, caller, open, p.batchId);
   await finishClaim(tx, b, caller, got, p.batchId, p.ipHash);
   return { got };
 }
@@ -2005,8 +2234,9 @@ export async function markSent(tx: Tx, caller: Caller, p: { breakId: string; num
   assertOnboarded(caller);
   const b = await lockBreak(tx, p.breakId);
   if (b.status !== "open" && b.status !== "filled") throw new NotOpen(b.status);
+  if (p.numbers.length === 0) throw new InvalidInput("Pick at least one line");
   const rows = await tx.execute<{ number: number }>(sql`
-    update lines set sent_at = coalesce(sent_at, now()) where break_id = ${b.id} and owner_id = ${caller.id} and paid_at is null and number = any(${p.numbers}::int[]) returning number`);
+    update lines set sent_at = coalesce(sent_at, now()) where break_id = ${b.id} and owner_id = ${caller.id} and paid_at is null and number = any(${intArray(p.numbers)}) returning number`);
   if (rows.length === 0) throw new NotAuthorized("Those lines aren't yours or are already paid");
   await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.sent", payload: { numbers: rows.map((r) => r.number) } });
 }
@@ -2040,6 +2270,7 @@ export async function releaseLine(tx: Tx, caller: Caller, p: { breakId: string; 
   if (cur.paidAt) throw new InvalidInput("A paid line can't be released; un-mark it first");
   const isHost = caller.id === b.hostId || caller.role === "admin";
   if (p.reason === "withdrawn" ? cur.ownerId !== caller.id : !isHost) throw new NotAuthorized("You can't release that line");
+  if (p.reason === "overdue" && !isOverdue(cur, b)) throw new InvalidInput("That claim is not overdue yet");
   await tx.update(lines).set({ ownerId: null, claimedAt: null, sentAt: null, priceCents: null, claimBatchId: null }).where(sql`${lines.breakId} = ${b.id} and ${lines.number} = ${p.number}`);
   await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.released", payload: { number: p.number, reason: p.reason } });
 }
@@ -2095,9 +2326,9 @@ export async function myLines(tx: Tx, userId: string) {
 
 /** Host view: unpaid lines grouped per buyer for one-tap Paid. */
 export async function unpaidByBuyer(tx: Tx, breakId: string) {
-  return tx.execute<{ owner_id: string; handle: string; numbers: number[]; sent: boolean; amount_cents: number; oldest_claim: Date }>(sql`
+  return tx.execute<{ owner_id: string; handle: string; numbers: number[]; sent: boolean; amount_cents: number; oldest_claim: string }>(sql`
     select l.owner_id, u.handle, array_agg(l.number order by l.number) as numbers, bool_and(l.sent_at is not null) as sent,
-           sum(l.price_cents)::int as amount_cents, min(l.claimed_at) as oldest_claim
+           sum(l.price_cents)::int as amount_cents, min(l.claimed_at)::text as oldest_claim
     from lines l join users u on u.id = l.owner_id
     where l.break_id = ${breakId} and l.paid_at is null and l.owner_id is not null
     group by l.owner_id, u.handle order by min(l.claimed_at)`);
@@ -2107,7 +2338,7 @@ export async function unpaidByBuyer(tx: Tx, breakId: string) {
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `pnpm vitest run src/domain/lines`
-Expected: PASS (15 tests)
+Expected: PASS (19 tests)
 
 - [ ] **Step 7: Commit**
 
@@ -2127,8 +2358,8 @@ git commit -m "feat(lines): claim, random, take-the-rest, sent, paid, release an
 - Consumes: `assertHostOf`, `lockBreak`, `appendEvent`, `decryptSecret`, `computeRanking`, `ALGORITHM_VERSION`, `roundAfter`, `BeaconSource`.
 - Produces:
   - `requestDraw(tx, caller, { breakId, onBehalfNote? }): Promise<{ requestId; beaconRound }>` — host (or admin with a note); break must be `filled`; inserts `draw_requests` with `attempt` = count + 1 and `beacon_round = roundAfter(now, 60)`; sets status `drawing`; event `draw.requested`. Idempotent: if already `drawing`, returns the pending request.
-  - `finaliseDraw(tx, caller, { breakId }, beacon: BeaconSource): Promise<{ drawId; ranking: number[] }>` — any participant, the host, admin, or `SYSTEM` (cron) may call; break must be `drawing`; throws `BeaconUnavailable` if `beacon.fetch(round)` is null; builds entries from owned lines; computes; inserts `draws`, marks request `done`, creates `awards` (per spec §9 prize assignment), deletes `break_secrets`, sets `drawn`; event `draw.drawn`. Idempotent: if already `drawn`, returns the existing draw.
-  - `getDrawResult(tx, breakId): Promise<DrawResult | null>` — the active (non-voided) draw with entries, ranking, awards (winner handle, rank, item name), request info, voided chain.
+  - `finaliseDraw(tx, caller, { breakId }, beacon: BeaconSource): Promise<{ drawId; ranking: number[] }>` — any participant, the host, admin, or `SYSTEM` (cron) may call; break must be `drawing`; reads the pending request and fetches the beacon **before** `lockBreak` (a slow relay never holds the row lock), then locks, re-checks status and re-reads the request (re-fetching only if it changed); throws `BeaconUnavailable` if `beacon.fetch(round)` is null; builds entries from owned lines; computes; inserts `draws`, marks request `done`, creates `awards` (per spec §9 prize assignment), deletes `break_secrets`, sets `drawn`; event `draw.drawn`. Idempotent: if already `drawn`, returns the existing draw.
+  - `getDrawResult(tx, breakId): Promise<DrawResult | null>` — the active (non-voided) draw with entries, ranking, awards (winner handle, rank, item name), request info, voided chain, break title, commitment and the host's handle (`hostHandle`).
   - `assignAwards(ranking, entries, prizes, onePrizePerPerson): { rank; winnerId; itemId | null }[]` pure helper (exported for tests).
 
 - [ ] **Step 1: Write the failing tests**
@@ -2246,15 +2477,19 @@ describe("finaliseDraw", () => {
       const { host, b } = await filledBreak(tx);
       await requestDraw(tx, c(host, "host"), { breakId: b.id });
       const beacon = new FakeBeacon();
-      let first: number[] | undefined;
+      let first: typeof draws.$inferSelect | undefined;
       await expect(tx.transaction(async (sp) => {
         const r = await finaliseDraw(sp, SYSTEM, { breakId: b.id }, beacon);
-        first = r.ranking;
+        [first] = await sp.select().from(draws).where(sql`${draws.id} = ${r.drawId}`);
         throw new Error("simulated crash after insert");
       })).rejects.toThrow(/simulated/);
       expect(await tx.select().from(draws).where(sql`${draws.breakId} = ${b.id}`)).toHaveLength(0);
       const again = await finaliseDraw(tx, SYSTEM, { breakId: b.id }, beacon);
-      expect(again.ranking).toEqual(first);
+      const [d] = await tx.select().from(draws).where(sql`${draws.id} = ${again.drawId}`);
+      expect(d.ranking).toEqual(first!.ranking);
+      expect(d.seed).toBe(first!.seed);
+      expect(d.resultHash).toBe(first!.resultHash);
+      expect(d.entriesSnapshot).toEqual(first!.entriesSnapshot);
     });
   });
   it("includes bonus lines in the entries and the result page data", async () => {
@@ -2346,8 +2581,16 @@ export function assignAwards(ranking: number[], entries: { number: number; owner
   return out;
 }
 
+const pendingRequest = async (tx: Tx, breakId: string) =>
+  (await tx.select().from(drawRequests).where(sql`${drawRequests.breakId} = ${breakId} and ${drawRequests.status} = 'pending'`))[0];
+
 export async function finaliseDraw(tx: Tx, caller: Caller, p: { breakId: string }, beacon: BeaconSource): Promise<{ drawId: string; ranking: number[] }> {
   assertOnboarded(caller);
+  // Read the pending request and fetch the beacon BEFORE taking the row lock,
+  // so relay timeouts (up to 4s per relay) never hold the breaks row lock.
+  const pre = await pendingRequest(tx, p.breakId);
+  const preBeacon = pre ? await beacon.fetch(pre.beaconRound) : null;
+
   const b = await lockBreak(tx, p.breakId);
   if (b.status === "drawn") {
     const [d] = await tx.select().from(draws).where(sql`${draws.breakId} = ${b.id} and ${draws.voidedAt} is null`);
@@ -2359,8 +2602,10 @@ export async function finaliseDraw(tx: Tx, caller: Caller, p: { breakId: string 
     const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(lines).where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} = ${caller.id}`);
     if (n === 0) throw new NotAuthorized("Only the host or a participant can finalise");
   }
-  const [req] = await tx.select().from(drawRequests).where(sql`${drawRequests.breakId} = ${b.id} and ${drawRequests.status} = 'pending'`);
-  const bv = await beacon.fetch(req.beaconRound);
+  // Re-read under the lock; if the pending request changed since the pre-read, fetch its beacon now.
+  const req = await pendingRequest(tx, b.id);
+  if (!req) throw new NotOpen(b.status);
+  const bv = pre && pre.id === req.id && pre.beaconRound === req.beaconRound ? preBeacon : await beacon.fetch(req.beaconRound);
   if (!bv) throw new BeaconUnavailable();
 
   const entryRows = await tx.select({ number: lines.number, ownerId: lines.ownerId, handle: users.handle, isBonus: lines.isBonus })
@@ -2381,7 +2626,8 @@ export async function finaliseDraw(tx: Tx, caller: Caller, p: { breakId: string 
   const prizeRows = await tx.select({ rank: prizes.rank, itemId: prizes.itemId }).from(prizes).where(eq(prizes.breakId, b.id));
   const now = new Date();
   for (const a of assignAwards(ranking, entries, prizeRows, b.onePrizePerPerson)) {
-    await tx.insert(awards).values({ drawId: d.id, breakId: b.id, rank: a.rank, winnerId: a.winnerId, itemId: a.itemId, pickedAt: now });
+    // A single-item prize is picked at draw time; a choice set (itemId null) waits for the winner's pick.
+    await tx.insert(awards).values({ drawId: d.id, breakId: b.id, rank: a.rank, winnerId: a.winnerId, itemId: a.itemId, pickedAt: a.itemId ? now : null });
   }
   await tx.delete(breakSecrets).where(eq(breakSecrets.breakId, b.id));
   await tx.update(breaks).set({ status: "drawn" }).where(eq(breaks.id, b.id));
@@ -2408,18 +2654,20 @@ export type DrawResult = {
   voided: { createdAt: Date; voidReason: string | null }[];
   breakTitle: string;
   seedCommitment: string | null;
+  hostHandle: string | null;
 };
 
 export async function getDrawResult(tx: Tx, breakId: string): Promise<DrawResult | null> {
   const [d] = await tx.select().from(draws).where(sql`${draws.breakId} = ${breakId} and ${draws.voidedAt} is null`);
   if (!d) return null;
   const [req] = await tx.select().from(drawRequests).where(eq(drawRequests.id, d.requestId));
-  const [b] = await tx.select({ title: breaks.title, seedCommitment: breaks.seedCommitment }).from(breaks).where(eq(breaks.id, breakId));
+  const [b] = await tx.select({ title: breaks.title, seedCommitment: breaks.seedCommitment, hostHandle: users.handle })
+    .from(breaks).innerJoin(users, eq(users.id, breaks.hostId)).where(eq(breaks.id, breakId));
   const aw = await tx.select({ rank: awards.rank, winnerHandle: users.handle, itemName: breakItems.name })
     .from(awards).innerJoin(users, eq(users.id, awards.winnerId)).leftJoin(breakItems, eq(breakItems.id, awards.itemId))
     .where(eq(awards.drawId, d.id)).orderBy(asc(awards.rank));
   const voided = await tx.select({ createdAt: draws.createdAt, voidReason: draws.voidReason }).from(draws).where(sql`${draws.breakId} = ${breakId} and ${draws.voidedAt} is not null`).orderBy(desc(draws.createdAt));
-  return { draw: d, request: req, entries: d.entriesSnapshot, ranking: d.ranking, awards: aw, voided, breakTitle: b.title, seedCommitment: b.seedCommitment };
+  return { draw: d, request: req, entries: d.entriesSnapshot, ranking: d.ranking, awards: aw, voided, breakTitle: b.title, seedCommitment: b.seedCommitment, hostHandle: b.hostHandle };
 }
 
 export async function pendingRequestsReady(tx: Tx, currentRound: number) {
@@ -2430,7 +2678,7 @@ export async function pendingRequestsReady(tx: Tx, currentRound: number) {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `pnpm vitest run src/domain/draws`
-Expected: PASS (10 tests). If the "freezes lines" test fails, check `unmarkPaid` throws `NotOpen` for `drawing` (it does: status is neither open nor filled).
+Expected: PASS (11 tests). If the "freezes lines" test fails, check `unmarkPaid` throws `NotOpen` for `drawing` (it does: status is neither open nor filled).
 
 - [ ] **Step 6: Commit**
 
@@ -2447,7 +2695,7 @@ git commit -m "feat(draws): host-requested beacon-mixed draw with immutable reco
 - Create: `vitest.concurrency.config.ts`, `tests/concurrency/setup.ts`, `tests/concurrency/claims.test.ts`, `tests/concurrency/draw.test.ts`
 
 **Interfaces:**
-- Consumes: all commands above via `db.transaction` (no rollback helper here).
+- Consumes: all commands above via `db.transaction` (no rollback helper here); `assertInvariants` from `tests/helpers/fixtures.ts` (Task 4).
 
 - [ ] **Step 1: Write the config and setup**
 
@@ -2467,7 +2715,11 @@ import { beforeEach } from "vitest";
 import { sql } from "drizzle-orm";
 import { db } from "@/db/client";
 beforeEach(async () => {
-  await db.execute(sql`truncate awards, draws, draw_requests, events, lines, prizes, break_items, break_secrets, breaks, host_profiles, users restart identity cascade`);
+  await db.execute(sql`truncate awards, draws, draw_requests, events, lines, prizes, break_items, break_secrets, breaks, host_profiles, legal_acceptances, users restart identity cascade`);
+  // The truncate removes the SYSTEM row the migration inserted (Task 2); finalise by SYSTEM needs it.
+  await db.execute(sql`insert into users (id, email, role, handle, display_name, age_confirmed_at)
+    values ('00000000-0000-4000-8000-000000000000', 'system@breaks.local', 'admin', 'system', 'System', now())
+    on conflict (id) do nothing`);
 });
 ```
 
@@ -2479,7 +2731,7 @@ import { describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { makeUser, openBreakWithLines } from "../helpers/fixtures";
+import { makeUser, openBreakWithLines, assertInvariants } from "../helpers/fixtures";
 import { claimLines, claimRandom } from "@/domain/lines/commands";
 import { lines } from "@/db/schema";
 import type { Caller } from "@/domain/types";
@@ -2499,6 +2751,7 @@ describe("concurrent claims", () => {
     expect(got.sort()).toEqual([1, 2, 3]);
     const rows = await db.select().from(lines).where(sql`${lines.breakId} = ${b.id} and ${lines.number} <= 3`);
     expect(rows.every((r) => r.ownerId !== null)).toBe(true);
+    await db.transaction((tx) => assertInvariants(tx));
     void host;
   });
 
@@ -2514,6 +2767,7 @@ describe("concurrent claims", () => {
     expect(new Set(got).size).toBe(got.length);
     expect(got.length).toBeLessThanOrEqual(10);
     expect(results.filter((r) => r.status === "fulfilled").length).toBe(5); // 10 lines / 2 each
+    await db.transaction((tx) => assertInvariants(tx));
   });
 });
 ```
@@ -2524,29 +2778,46 @@ import { describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { makeUser, openBreakWithLines } from "../helpers/fixtures";
+import { makeUser, openBreakWithLines, assertInvariants } from "../helpers/fixtures";
 import { claimLines, markPaid } from "@/domain/lines/commands";
 import { requestDraw, finaliseDraw } from "@/domain/draws/commands";
 import { FakeBeacon } from "@/crypto/beacon";
 import { encryptSecret } from "@/crypto/secrets";
-import { breakSecrets, draws } from "@/db/schema";
+import { breakSecrets, draws, drawRequests } from "@/db/schema";
 import { SYSTEM, type Caller } from "@/domain/types";
 
 const c = (id: string, role: Caller["role"] = "member"): Caller => ({ id, role, onboarded: true, banned: false });
 
+/** A committed, filled 2-line break with its secret stored. */
+async function filledBreak() {
+  return db.transaction(async (tx) => {
+    const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+    const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 2 });
+    const { ciphertext, keyId } = encryptSecret(b.secret, b.id);
+    await tx.insert(breakSecrets).values({ breakId: b.id, ciphertext, keyId });
+    await claimLines(tx, c(a.id), { breakId: b.id, numbers: [1, 2], batchId: randomUUID() });
+    await markPaid(tx, c(host.id, "host"), { breakId: b.id, number: 1, expectedOwnerId: a.id });
+    await markPaid(tx, c(host.id, "host"), { breakId: b.id, number: 2, expectedOwnerId: a.id });
+    return { host, b };
+  });
+}
+
 describe("concurrent draw", () => {
+  it("two concurrent requestDraw calls create one request", async () => {
+    const { host, b } = await filledBreak();
+    const results = await Promise.allSettled([
+      db.transaction((tx) => requestDraw(tx, c(host.id, "host"), { breakId: b.id })),
+      db.transaction((tx) => requestDraw(tx, c(host.id, "host"), { breakId: b.id })),
+    ]);
+    expect(results.every((r) => r.status === "fulfilled")).toBe(true);
+    const rows = await db.select().from(drawRequests).where(sql`${drawRequests.breakId} = ${b.id}`);
+    expect(rows).toHaveLength(1);
+    await db.transaction((tx) => assertInvariants(tx));
+  });
+
   it("two simultaneous finalise calls produce exactly one draw row", async () => {
-    const { host, b } = await db.transaction(async (tx) => {
-      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
-      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 2 });
-      const { ciphertext, keyId } = encryptSecret(b.secret, b.id);
-      await tx.insert(breakSecrets).values({ breakId: b.id, ciphertext, keyId });
-      await claimLines(tx, c(a.id), { breakId: b.id, numbers: [1, 2], batchId: randomUUID() });
-      await markPaid(tx, c(host.id, "host"), { breakId: b.id, number: 1, expectedOwnerId: a.id });
-      await markPaid(tx, c(host.id, "host"), { breakId: b.id, number: 2, expectedOwnerId: a.id });
-      await requestDraw(tx, c(host.id, "host"), { breakId: b.id });
-      return { host, b };
-    });
+    const { host, b } = await filledBreak();
+    await db.transaction((tx) => requestDraw(tx, c(host.id, "host"), { breakId: b.id }));
     const beacon = new FakeBeacon();
     const results = await Promise.allSettled([
       db.transaction((tx) => finaliseDraw(tx, SYSTEM, { breakId: b.id }, beacon)),
@@ -2555,7 +2826,7 @@ describe("concurrent draw", () => {
     expect(results.every((r) => r.status === "fulfilled")).toBe(true);
     const rows = await db.select().from(draws).where(sql`${draws.breakId} = ${b.id}`);
     expect(rows).toHaveLength(1);
-    void host;
+    await db.transaction((tx) => assertInvariants(tx));
   });
 });
 ```
@@ -2563,30 +2834,31 @@ describe("concurrent draw", () => {
 - [ ] **Step 3: Run the suite**
 
 Run: `pnpm test:concurrency`
-Expected: PASS (3 tests). The second finalise waits on the row lock, then sees `status = drawn` and returns the existing draw.
+Expected: PASS (4 tests). The second `requestDraw` waits on the row lock, then sees `status = drawing` and returns the pending request; the second finalise waits on the row lock, then sees `status = drawn` and returns the existing draw. Every test ends with `assertInvariants` (Task 4).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add vitest.concurrency.config.ts tests/concurrency
-git commit -m "test: concurrency suite for racing claims and double finalise"
+git commit -m "test: concurrency suite for racing claims, double request and double finalise"
 ```
 
 ---
 
-### Task 11: Auth — Supabase SSR client, session → Caller, magic link + OTP, onboarding gate
+### Task 11a: Auth — Supabase SSR client, session caller, action wrapper and onboarding command
 
 **Files:**
-- Create: `src/auth/supabase.ts`, `src/auth/session.ts`, `src/auth/session.test.ts`, `src/middleware.ts`, `src/app/(auth)/login/page.tsx`, `src/app/(auth)/login/actions.ts`, `src/app/auth/callback/route.ts`, `src/app/onboarding/page.tsx`, `src/app/onboarding/actions.ts`, `src/domain/users/commands.ts`, `src/domain/users/commands.test.ts`, `src/lib/action.ts`
+- Create: `src/auth/supabase.ts`, `src/auth/session.ts`, `src/auth/session.test.ts`, `src/middleware.ts`, `src/domain/users/commands.ts`, `src/domain/users/commands.test.ts`, `src/lib/action.ts`
+- Modify: `supabase/config.toml`
 
 **Interfaces:**
 - Produces:
   - `createServerSupabase()` (cookie-bound anon client for auth only) and `supabaseAdmin()` (service-role client, server only).
-  - `getCaller(): Promise<Caller | null>` — reads the Supabase session, upserts the `users` row on first sight (`handle = null`), returns `{ id, role, onboarded, banned }` where `onboarded = handle && displayName && ageConfirmedAt`.
-  - `requireCaller(): Promise<Caller>` — redirects to `/login?next=` if none.
-  - `completeOnboarding(tx, caller, { handle, displayName, ageConfirmed, acceptedTerms }): Promise<void>` with handle normalisation (NFKC, lowercase compare, `^[a-z0-9_]{3,20}$`, reserved list) → `InvalidInput("That handle is taken")` on `23505`.
-  - `action(fn)` wrapper in `src/lib/action.ts`: runs `fn(tx, caller, input)` in `db.transaction`, maps `DomainError` to `{ ok: false, code, message }`, rethrows others after Sentry capture (Task 17 wires Sentry; until then `console.error`).
-  - Middleware: refreshes the Supabase session cookie; redirects signed-in-but-not-onboarded users to `/onboarding` for every path except `/onboarding`, `/login`, `/auth/*`, `/b/*` (public), `/`.
+  - `getCaller(): Promise<Caller | null>` — reads the Supabase session, upserts the `users` row on first sight (`handle = null`), sets `role = 'admin'` on upsert when the email is listed in `ADMIN_EMAILS`, returns `{ id, role, onboarded, banned }` where `onboarded = handle && displayName && ageConfirmedAt`.
+  - `requireCaller(): Promise<Caller>` — redirects to `/login?next=` if none, `/onboarding?next=` if not onboarded.
+  - `completeOnboarding(tx, caller, { handle, displayName, ageConfirmed, acceptedTerms, ipHash? }): Promise<void>` with handle normalisation (NFKC, lowercase compare, `^[a-z0-9_]{3,20}$`, reserved list) → `InvalidInput("That handle is taken")` on `23505` (read from `e.cause`, where drizzle puts the driver error); inserts a `legal_acceptances` row (`docKind: "terms"`, `version: TERMS_VERSION = "2026-10-13"`).
+  - `action(fn)` wrapper in `src/lib/action.ts`: runs `fn(tx, caller)` in `db.transaction`, maps `DomainError` to `{ ok: false, code, message }`, logs anything else with `console.error` and returns a generic `INTERNAL` result.
+  - Middleware: refreshes the Supabase session cookie and sends signed-out visitors of non-public paths to `/login?next=`; public paths are `/`, `/login`, `/auth/*`, `/b/*`, `/breaks`, `/h/*`, `/legal/*`, `/api/*`, `/test/*`.
 
 - [ ] **Step 1: Configure Supabase Auth locally**
 
@@ -2600,8 +2872,8 @@ import { describe, it, expect } from "vitest";
 import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser } from "../../../tests/helpers/fixtures";
-import { completeOnboarding, normalizeHandle } from "./commands";
-import { users } from "@/db/schema";
+import { completeOnboarding, normalizeHandle, TERMS_VERSION } from "./commands";
+import { users, legalAcceptances } from "@/db/schema";
 import { InvalidInput } from "@/domain/errors";
 
 const caller = (id: string) => ({ id, role: "member" as const, onboarded: false, banned: false });
@@ -2616,13 +2888,16 @@ describe("normalizeHandle", () => {
 });
 
 describe("completeOnboarding", () => {
-  it("sets handle, display name, age confirmation", async () => {
+  it("sets handle, display name, age confirmation and records the terms acceptance", async () => {
     await withTx(async (tx) => {
       const u = await makeUser(tx);
       await tx.update(users).set({ handle: null, displayName: null, ageConfirmedAt: null }).where(sql`${users.id} = ${u.id}`);
-      await completeOnboarding(tx, caller(u.id), { handle: "Jim_R", displayName: "Jim Roberts", ageConfirmed: true, acceptedTerms: true });
+      await completeOnboarding(tx, caller(u.id), { handle: "Jim_R", displayName: "Jim Roberts", ageConfirmed: true, acceptedTerms: true, ipHash: "abc" });
       const [row] = await tx.select().from(users).where(sql`${users.id} = ${u.id}`);
       expect(row.handle).toBe("jim_r"); expect(row.displayName).toBe("Jim Roberts"); expect(row.ageConfirmedAt).not.toBeNull();
+      const acc = await tx.select().from(legalAcceptances).where(sql`${legalAcceptances.userId} = ${u.id}`);
+      expect(acc).toHaveLength(1);
+      expect(acc[0]).toMatchObject({ docKind: "terms", version: TERMS_VERSION, ipHash: "abc" });
     });
   });
   it("requires the 18+ and terms checkboxes", async () => {
@@ -2668,10 +2943,12 @@ Expected: FAIL with "Cannot find module"
 ```ts
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { users } from "@/db/schema";
+import { users, legalAcceptances } from "@/db/schema";
 import { InvalidInput } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
 import { appendEvent } from "@/domain/events";
+
+export const TERMS_VERSION = "2026-10-13";
 
 const RESERVED = new Set(["admin", "administrator", "host", "support", "breaks", "system", "mod", "moderator", "staff", "help", "me"]);
 
@@ -2682,7 +2959,7 @@ export function normalizeHandle(raw: string): string {
   return h;
 }
 
-export async function completeOnboarding(tx: Tx, caller: Caller, p: { handle: string; displayName: string; ageConfirmed: boolean; acceptedTerms: boolean }): Promise<void> {
+export async function completeOnboarding(tx: Tx, caller: Caller, p: { handle: string; displayName: string; ageConfirmed: boolean; acceptedTerms: boolean; ipHash?: string }): Promise<void> {
   if (!p.ageConfirmed) throw new InvalidInput("You must confirm you are 18 or older");
   if (!p.acceptedTerms) throw new InvalidInput("You must accept the terms");
   const handle = normalizeHandle(p.handle);
@@ -2690,10 +2967,13 @@ export async function completeOnboarding(tx: Tx, caller: Caller, p: { handle: st
   if (displayName.length < 1 || displayName.length > 40) throw new InvalidInput("Display name must be 1–40 characters");
   try {
     await tx.update(users).set({ handle, displayName, ageConfirmedAt: sql`coalesce(${users.ageConfirmedAt}, now())` }).where(sql`${users.id} = ${caller.id} and ${users.handle} is null`);
-  } catch (e: any) {
-    if (e?.code === "23505" || /users_handle_lower_idx/.test(String(e?.message))) throw new InvalidInput("That handle is taken");
+  } catch (e) {
+    // drizzle wraps the driver error (DrizzleQueryError); the postgres error is on `.cause`
+    const pg = (e as any)?.cause ?? e;
+    if (pg?.code === "23505") throw new InvalidInput("That handle is taken");
     throw e;
   }
+  await tx.insert(legalAcceptances).values({ userId: caller.id, docKind: "terms", version: TERMS_VERSION, ipHash: p.ipHash ?? null });
   await appendEvent(tx, { actorId: caller.id, type: "user.onboarded", payload: { handle } });
 }
 ```
@@ -2730,6 +3010,7 @@ import { sql } from "drizzle-orm";
 import { createServerSupabase } from "./supabase";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
+import { env } from "@/lib/env";
 import type { Caller } from "@/domain/types";
 
 type UserRow = Pick<typeof users.$inferSelect, "id" | "role" | "handle" | "displayName" | "ageConfirmedAt" | "bannedAt">;
@@ -2743,8 +3024,10 @@ export const getCaller = cache(async (): Promise<Caller | null> => {
   const { data } = await supabase.auth.getUser();
   if (!data.user) return null;
   const email = data.user.email ?? "";
-  const [row] = await db.insert(users).values({ id: data.user.id, email })
-    .onConflictDoUpdate({ target: users.id, set: { email, lastSeenAt: sql`now()` } })
+  const admins = env().ADMIN_EMAILS.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const promote = admins.includes(email.toLowerCase()) ? { role: "admin" } : {};
+  const [row] = await db.insert(users).values({ id: data.user.id, email, ...promote })
+    .onConflictDoUpdate({ target: users.id, set: { email, lastSeenAt: sql`now()`, ...promote } })
     .returning({ id: users.id, role: users.role, handle: users.handle, displayName: users.displayName, ageConfirmedAt: users.ageConfirmedAt, bannedAt: users.bannedAt });
   return toCaller(row);
 });
@@ -2762,7 +3045,7 @@ export async function requireCaller(next = "/"): Promise<Caller> {
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-const PUBLIC = [/^\/$/, /^\/login/, /^\/auth\//, /^\/b\//, /^\/breaks/, /^\/h\//, /^\/legal/, /^\/api\//, /^\/_next\//, /^\/favicon/];
+const PUBLIC = [/^\/$/, /^\/login/, /^\/auth\//, /^\/b\//, /^\/breaks/, /^\/h\//, /^\/legal/, /^\/api\//, /^\/test\//, /^\/_next\//, /^\/favicon/];
 
 export async function middleware(req: NextRequest) {
   let res = NextResponse.next({ request: req });
@@ -2808,7 +3091,34 @@ export async function action<T>(fn: (tx: Tx, caller: Caller) => Promise<T>): Pro
 }
 ```
 
-- [ ] **Step 6: Login page, actions and callback**
+- [ ] **Step 6: Run the tests to verify they pass**
+
+Run: `pnpm vitest run src/domain/users src/auth/session.test.ts`
+Expected: PASS (5 tests)
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/auth src/middleware.ts src/lib/action.ts src/domain/users supabase/config.toml
+git commit -m "feat(auth): session caller, action wrapper and onboarding command"
+```
+
+---
+
+### Task 11b: Auth pages — magic link with OTP fallback, Continue page, onboarding, terms
+
+**Files:**
+- Create: `src/app/(auth)/login/page.tsx`, `src/app/(auth)/login/form.tsx`, `src/app/(auth)/login/actions.ts`, `src/app/auth/callback/page.tsx`, `src/app/auth/callback/actions.ts`, `src/app/onboarding/page.tsx`, `src/app/onboarding/form.tsx`, `src/app/onboarding/actions.ts`, `src/app/legal/terms/page.tsx`
+
+**Interfaces:**
+- Consumes: `createServerSupabase`, `getCaller`, `action`, `completeOnboarding` (Task 11a).
+- Produces:
+  - `/login` — server `page.tsx` reads `searchParams: Promise<{ next?: string }>` and renders the client `form.tsx` (no client-side search-param hook); server actions `sendMagicLink`, `verifyOtp` (6-digit code fallback).
+  - `/auth/callback` — a **Continue page**, not a GET that redeems the link: link scanners that prefetch the URL can't burn the one-time code. Its server action `exchange(form)` calls `exchangeCodeForSession(code)` (or `verifyOtp({ token_hash, type })` for hashed-token links), then `getCaller()`, and redirects to `/onboarding?next=` if not onboarded, else to `next`.
+  - `/onboarding` — server `page.tsx` + client `form.tsx`; action `finishOnboarding`.
+  - `/legal/terms` placeholder.
+
+- [ ] **Step 1: Login page, form and actions**
 
 `src/app/(auth)/login/actions.ts`:
 ```ts
@@ -2839,13 +3149,22 @@ export async function verifyOtp(_: unknown, form: FormData) {
 
 `src/app/(auth)/login/page.tsx`:
 ```tsx
+import { LoginForm } from "./form";
+
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const { next } = await searchParams;
+  return <LoginForm next={next?.startsWith("/") ? next : "/"} />;
+}
+```
+
+`src/app/(auth)/login/form.tsx`:
+```tsx
 "use client";
 import { useActionState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { sendMagicLink, verifyOtp } from "./actions";
 
-export default function LoginPage() {
-  const next = useSearchParams().get("next") ?? "/";
+export function LoginForm({ next }: { next: string }) {
   const router = useRouter();
   const [sent, send, sending] = useActionState(sendMagicLink, null as any);
   const [verified, verify, verifying] = useActionState(verifyOtp, null as any);
@@ -2876,30 +3195,70 @@ export default function LoginPage() {
 }
 ```
 
-`src/app/auth/callback/route.ts` (PKCE exchange, then a confirmation page is unnecessary because `@supabase/ssr` PKCE links are only redeemable from the originating browser; scanners that prefetch get an error, and the OTP path covers them):
-```ts
-import { NextResponse, type NextRequest } from "next/server";
-import { createServerSupabase } from "@/auth/supabase";
+- [ ] **Step 2: Callback Continue page**
 
-export async function GET(req: NextRequest) {
-  const code = req.nextUrl.searchParams.get("code");
-  const next = req.nextUrl.searchParams.get("next") ?? "/";
-  if (code) {
-    const supabase = await createServerSupabase();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) return NextResponse.redirect(new URL(next.startsWith("/") ? next : "/", req.url));
-  }
-  return NextResponse.redirect(new URL("/login?error=link", req.url));
+The emailed link lands on a page with a button instead of a GET handler that redeems the code immediately: mail scanners that prefetch links would otherwise consume the one-time code before the person taps it.
+
+`src/app/auth/callback/actions.ts`:
+```ts
+"use server";
+import { redirect } from "next/navigation";
+import type { EmailOtpType } from "@supabase/supabase-js";
+import { createServerSupabase } from "@/auth/supabase";
+import { getCaller } from "@/auth/session";
+
+export async function exchange(form: FormData) {
+  const code = String(form.get("code") ?? "");
+  const tokenHash = String(form.get("token_hash") ?? "");
+  const type = (String(form.get("type") ?? "") || "email") as EmailOtpType;
+  const rawNext = String(form.get("next") ?? "/");
+  const next = rawNext.startsWith("/") ? rawNext : "/";
+  const supabase = await createServerSupabase();
+  const { error } = tokenHash
+    ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type }) // hashed-token link
+    : await supabase.auth.exchangeCodeForSession(code); // PKCE link
+  if (error) redirect("/login?error=link");
+  const caller = await getCaller();
+  if (!caller) redirect("/login?error=link");
+  redirect(caller.onboarded ? next : `/onboarding?next=${encodeURIComponent(next)}`);
 }
 ```
 
-- [ ] **Step 7: Onboarding page and action**
+`src/app/auth/callback/page.tsx`:
+```tsx
+import Link from "next/link";
+import { exchange } from "./actions";
+
+export default async function CallbackPage({ searchParams }: { searchParams: Promise<{ code?: string; token_hash?: string; type?: string; next?: string }> }) {
+  const { code, token_hash, type, next } = await searchParams;
+  const safeNext = next?.startsWith("/") ? next : "/";
+  if (!code && !token_hash) {
+    return <main className="mx-auto max-w-sm p-4 text-sm">This sign-in link is incomplete. <Link href="/login" className="underline">Request a new one</Link>.</main>;
+  }
+  return (
+    <main className="mx-auto max-w-sm p-4">
+      <h1 className="text-xl font-semibold">You're almost in</h1>
+      <form action={exchange} className="mt-4">
+        {code && <input type="hidden" name="code" value={code} />}
+        {token_hash && <input type="hidden" name="token_hash" value={token_hash} />}
+        {type && <input type="hidden" name="type" value={type} />}
+        <input type="hidden" name="next" value={safeNext} />
+        <button className="w-full rounded bg-black p-3 text-white">Continue to Breaks</button>
+      </form>
+    </main>
+  );
+}
+```
+
+- [ ] **Step 3: Onboarding page, form and action**
 
 `src/app/onboarding/actions.ts`:
 ```ts
 "use server";
 import { z } from "zod";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { createHash } from "node:crypto";
 import { action } from "@/lib/action";
 import { completeOnboarding } from "@/domain/users/commands";
 
@@ -2908,7 +3267,9 @@ const schema = z.object({ handle: z.string(), displayName: z.string(), ageConfir
 export async function finishOnboarding(_: unknown, form: FormData) {
   const p = schema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: "Please fill in every field" };
-  const r = await action((tx, caller) => completeOnboarding(tx, caller, { handle: p.data.handle, displayName: p.data.displayName, ageConfirmed: p.data.ageConfirmed === "on", acceptedTerms: p.data.acceptedTerms === "on" }));
+  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim();
+  const ipHash = ip ? createHash("sha256").update(ip).digest("hex").slice(0, 32) : undefined;
+  const r = await action((tx, caller) => completeOnboarding(tx, caller, { handle: p.data.handle, displayName: p.data.displayName, ageConfirmed: p.data.ageConfirmed === "on", acceptedTerms: p.data.acceptedTerms === "on", ipHash }));
   if (!r.ok) return { error: r.message };
   redirect(p.data.next);
 }
@@ -2916,13 +3277,21 @@ export async function finishOnboarding(_: unknown, form: FormData) {
 
 `src/app/onboarding/page.tsx`:
 ```tsx
+import { OnboardingForm } from "./form";
+
+export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const { next } = await searchParams;
+  return <OnboardingForm next={next?.startsWith("/") ? next : "/"} />;
+}
+```
+
+`src/app/onboarding/form.tsx`:
+```tsx
 "use client";
 import { useActionState } from "react";
-import { useSearchParams } from "next/navigation";
 import { finishOnboarding } from "./actions";
 
-export default function OnboardingPage() {
-  const next = useSearchParams().get("next") ?? "/";
+export function OnboardingForm({ next }: { next: string }) {
   const [state, submit, pending] = useActionState(finishOnboarding, null as any);
   return (
     <main className="mx-auto max-w-sm p-4">
@@ -2940,18 +3309,20 @@ export default function OnboardingPage() {
   );
 }
 ```
-Create `src/app/legal/terms/page.tsx` with a placeholder heading "Terms of service" and one paragraph stating: hosts are solely responsible for their breaks; payment happens outside the platform at your own risk; the platform records ledger and draw results permanently; 18+ only. The lawyer-reviewed text (spec §16) replaces this before public launch; the page must exist so the link resolves.
 
-- [ ] **Step 8: Run the tests and try the flow**
+- [ ] **Step 4: Legal terms page**
 
-Run: `pnpm vitest run src/domain/users src/auth/session.test.ts` → PASS (5 tests).
-Run `pnpm dev`, open `/login`, enter an email, open Inbucket at `http://127.0.0.1:54324`, use the code → lands on `/onboarding` → complete → lands on `/`.
+Create `src/app/legal/terms/page.tsx` with a placeholder heading "Terms of service" (version `2026-10-13`, matching `TERMS_VERSION`) and one paragraph stating: hosts are solely responsible for their breaks; payment happens outside the platform at your own risk; the platform records ledger and draw results permanently; 18+ only. The lawyer-reviewed text (spec §16) replaces this before public launch, with a new `TERMS_VERSION`; the page must exist so the link resolves.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 5: Try the flow**
+
+Run `pnpm dev`, open `/login`, enter an email, open Inbucket at `http://127.0.0.1:54324`, click the link → the Continue page shows "Continue to Breaks" → tap it → lands on `/onboarding` → complete → lands on `/`. Sign out (clear cookies) and repeat with the 6-digit code instead of the link → lands on `/onboarding` or `/` directly.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/auth src/middleware.ts src/lib/action.ts src/domain/users "src/app/(auth)" src/app/auth src/app/onboarding src/app/legal supabase/config.toml
-git commit -m "feat(auth): magic link with otp fallback, session caller and onboarding gate"
+git add "src/app/(auth)" src/app/auth src/app/onboarding src/app/legal
+git commit -m "feat(auth): magic link with otp fallback, continue page and onboarding"
 ```
 
 ---
@@ -2959,11 +3330,11 @@ git commit -m "feat(auth): magic link with otp fallback, session caller and onbo
 ### Task 12: Host composer — `/host/new` creates and opens a break
 
 **Files:**
-- Create: `src/app/host/new/page.tsx`, `src/app/host/new/actions.ts`, `src/app/host/page.tsx`
+- Create: `src/app/host/new/page.tsx`, `src/app/host/new/form.tsx`, `src/app/host/new/actions.ts`, `src/app/host/page.tsx`
 
 **Interfaces:**
-- Consumes: `createDraft`, `openBreak`, `action`, `requireCaller`.
-- Produces: server action `createAndOpen(form)` → redirects to `/b/{id}`; `/host` lists the host's breaks by status with links.
+- Consumes: `createDraft` (with `paymentHandles`), `openBreak`, `action`, `requireCaller`.
+- Produces: server action `createAndOpen(form)` → redirects to `/b/{id}`; the composer has Venmo/PayPal handle inputs prefilled from `host_profiles`; `/host` lists the host's breaks by status with links.
 
 - [ ] **Step 1: Write the action**
 
@@ -2984,6 +3355,8 @@ const schema = z.object({
   maxLinesPerUser: z.coerce.number().int().min(1).optional(),
   allowRandomClaims: z.literal("on").optional(),
   paymentInstructions: z.string().max(500).default(""),
+  venmo: z.string().max(60).default(""),
+  paypal: z.string().max(60).default(""),
   items: z.string().min(1), // one item name per line
   openNow: z.literal("on").optional(),
 });
@@ -2997,7 +3370,7 @@ export async function createAndOpen(_: unknown, form: FormData) {
     const { breakId } = await createDraft(tx, caller, {
       title: p.data.title, description: p.data.description, lineCount: p.data.lineCount, linePriceCents: Math.round(p.data.linePrice * 100),
       paymentWindowHours: p.data.paymentWindowHours, maxLinesPerUser: p.data.maxLinesPerUser ?? null, allowRandomClaims: p.data.allowRandomClaims === "on",
-      paymentInstructions: p.data.paymentInstructions, items,
+      paymentInstructions: p.data.paymentInstructions, paymentHandles: { venmo: p.data.venmo, paypal: p.data.paypal }, items,
     });
     if (p.data.openNow === "on") await openBreak(tx, caller, breakId);
     return breakId;
@@ -3011,16 +3384,20 @@ export async function createAndOpen(_: unknown, form: FormData) {
 
 `src/app/host/new/page.tsx`:
 ```tsx
+import { eq } from "drizzle-orm";
 import { requireCaller } from "@/auth/session";
+import { db } from "@/db/client";
+import { hostProfiles } from "@/db/schema";
 import { ComposerForm } from "./form";
 
 export default async function NewBreakPage() {
   const caller = await requireCaller("/host/new");
   if (caller.role !== "host" && caller.role !== "admin") return <main className="p-4">Only hosts can list a break.</main>;
+  const [profile] = await db.select({ paymentHandles: hostProfiles.paymentHandles }).from(hostProfiles).where(eq(hostProfiles.userId, caller.id));
   return (
     <main className="mx-auto max-w-md p-4">
       <h1 className="text-xl font-semibold">New break</h1>
-      <ComposerForm />
+      <ComposerForm handles={profile?.paymentHandles ?? {}} />
     </main>
   );
 }
@@ -3032,7 +3409,7 @@ export default async function NewBreakPage() {
 import { useActionState } from "react";
 import { createAndOpen } from "./actions";
 
-export function ComposerForm() {
+export function ComposerForm({ handles }: { handles: { venmo?: string; paypal?: string } }) {
   const [state, submit, pending] = useActionState(createAndOpen, null as any);
   const field = "mt-1 w-full rounded border p-3";
   return (
@@ -3043,7 +3420,11 @@ export function ComposerForm() {
         <label className="block text-sm">Lines<input name="lineCount" type="number" min={2} required defaultValue={12} className={field} /></label>
         <label className="block text-sm">$ per line<input name="linePrice" type="number" min={1} step="0.01" required defaultValue={20} className={field} /></label>
       </div>
-      <label className="block text-sm">Payment instructions<textarea name="paymentInstructions" rows={2} className={field} placeholder={"Venmo @Jim-Roberts-36\nNo notes on payments"} /></label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block text-sm">Venmo handle<input name="venmo" defaultValue={handles.venmo ?? ""} className={field} placeholder="@Jim-Roberts-36" /></label>
+        <label className="block text-sm">PayPal.me name<input name="paypal" defaultValue={handles.paypal ?? ""} className={field} placeholder="JamesRoberts603182" /></label>
+      </div>
+      <label className="block text-sm">Payment instructions (blank = built from your handles)<textarea name="paymentInstructions" rows={2} className={field} placeholder={"Venmo @Jim-Roberts-36\nNo notes on payments"} /></label>
       <label className="block text-sm">Hours to pay after claiming<input name="paymentWindowHours" type="number" min={1} defaultValue={24} className={field} /></label>
       <label className="block text-sm">Max lines per person (blank = no limit)<input name="maxLinesPerUser" type="number" min={1} className={field} /></label>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="allowRandomClaims" defaultChecked /> Allow "give me N random lines"</label>
@@ -3085,7 +3466,7 @@ export default async function HostHome() {
 
 - [ ] **Step 3: Verify manually**
 
-Promote your local user to host: `psql $DATABASE_URL -c "update users set role='host' where email='<you>'"` (the admin invite flow is Plan 4). Open `/host/new`, post a break with two items, land on `/b/{id}` (404 until Task 13 — confirm the row exists in `/host`).
+Promote your local user: `psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -c "update users set role='host' where email='<you>'"`, or set `ADMIN_EMAILS=<you>` in `.env.local` and sign in again (admins can list breaks too) — the admin invite flow is Plan 4. Open `/host/new`, post a break with two items, land on `/b/{id}` (404 until Task 13 — confirm the row exists in `/host`).
 
 - [ ] **Step 4: Commit**
 
@@ -3099,11 +3480,11 @@ git commit -m "feat(host): break composer and host break list"
 ### Task 13: Break page — public grid, claim / random / take-the-rest, Sent, host per-buyer Paid
 
 **Files:**
-- Create: `src/app/b/[id]/page.tsx`, `src/app/b/[id]/actions.ts`, `src/app/b/[id]/grid.tsx`, `src/app/b/[id]/claim-panel.tsx`, `src/app/b/[id]/host-panel.tsx`, `src/lib/money.ts`, `src/lib/money.test.ts`, `src/lib/pay-links.ts`, `src/lib/pay-links.test.ts`
+- Create: `src/app/b/[id]/page.tsx`, `src/app/b/[id]/actions.ts`, `src/app/b/[id]/draw-actions.ts`, `src/app/b/[id]/grid.tsx`, `src/app/b/[id]/claim-panel.tsx`, `src/app/b/[id]/host-panel.tsx`, `src/lib/money.ts`, `src/lib/money.test.ts`, `src/lib/pay-links.ts`, `src/lib/pay-links.test.ts`
 
 **Interfaces:**
-- Consumes: `getBreakPage`, `unpaidByBuyer`, `claimLines`, `claimRandom`, `claimAllOpen`, `markSent`, `markPaid`, `releaseLine`, `isOverdue`, `action`, `getCaller`.
-- Produces: server actions `claim(breakId, numbers, batchId)`, `claimRandomAction(breakId, count, batchId)`, `claimRest(breakId, batchId)`, `sent(breakId, numbers)`, `paidForBuyer(breakId, ownerId, numbers[])`, `release(breakId, number, reason)`; helpers `formatCents(n): string` ("$20.00") and `payLinks(handles, amountCents): { venmo?: string; paypal?: string }`.
+- Consumes: `getBreakPage`, `unpaidByBuyer`, `claimLines`, `claimRandom`, `claimAllOpen`, `markSent`, `markPaid`, `releaseLine`, `isOverdue`, `requestDraw`, `finaliseDraw`, `DrandBeacon`, `action`, `getCaller`.
+- Produces: server actions `claim(breakId, numbers, batchId)`, `claimRandomAction(breakId, count, batchId)`, `claimRest(breakId, batchId)`, `sent(breakId, numbers)`, `paidForBuyer(breakId, ownerId, numbers[])`, `release(breakId, number, reason)`, `requestDrawAction(breakId)`, `finaliseDrawAction(breakId)`; helpers `formatCents(n): string` ("$20.00") and `payLinks(handles, amountCents): { venmo?: string; paypal?: string }`.
 
 - [ ] **Step 1: Write the failing helper tests**
 
@@ -3212,7 +3593,32 @@ export async function release(breakId: string, number: number, reason: "overdue"
 ```
 (The `claim` action deliberately passes `ipHash: undefined` for the pick path and hashes for random/rest, matching spec §7 "IP hash on claim events" — change `claim` to hash too if you prefer; keep it consistent in Plan 4's admin alerts.)
 
-- [ ] **Step 4: Write the page**
+- [ ] **Step 4: Write the draw server actions (used by the host panel)**
+
+`src/app/b/[id]/draw-actions.ts`:
+```ts
+"use server";
+import { z } from "zod";
+import { revalidatePath } from "next/cache";
+import { action } from "@/lib/action";
+import { requestDraw, finaliseDraw } from "@/domain/draws/commands";
+import { DrandBeacon } from "@/crypto/beacon";
+
+export async function requestDrawAction(breakId: string) {
+  const id = z.string().uuid().parse(breakId);
+  const r = await action((tx, c) => requestDraw(tx, c, { breakId: id }));
+  if (r.ok) revalidatePath(`/b/${id}`);
+  return r;
+}
+export async function finaliseDrawAction(breakId: string) {
+  const id = z.string().uuid().parse(breakId);
+  const r = await action((tx, c) => finaliseDraw(tx, c, { breakId: id }, new DrandBeacon()));
+  if (r.ok) { revalidatePath(`/b/${id}`); revalidatePath(`/b/${id}/result`); }
+  return r;
+}
+```
+
+- [ ] **Step 5: Write the page**
 
 `src/app/b/[id]/page.tsx`:
 ```tsx
@@ -3255,7 +3661,7 @@ export default async function BreakPage({ params }: { params: Promise<{ id: stri
       {caller && page.break.status === "open" && (
         <ClaimPanel breakId={id} openNumbers={numbered.filter((l) => !l.ownerId && !l.reservedForMiniId).map((l) => l.number)} allowRandom={page.break.allowRandomClaims}
           mine={mine.map((l) => ({ number: l.number, sentAt: l.sentAt, paidAt: l.paidAt }))} priceCents={page.break.linePriceCents}
-          paymentHandles={page.host.paymentHandles} paymentInstructions={page.break.paymentInstructions} />
+          paymentHandles={page.host.paymentHandles} paymentInstructions={page.break.paymentInstructions} seedCommitment={page.break.seedCommitment} />
       )}
       {!caller && page.break.status === "open" && <Link href={`/login?next=/b/${id}`} className="mt-4 block rounded bg-black p-3 text-center text-white">Sign in to claim lines</Link>}
       {isHost && <HostPanel breakId={id} status={page.break.status} unpaid={unpaid.map((u) => ({ ownerId: u.owner_id, handle: u.handle, numbers: u.numbers, sent: u.sent, amountCents: u.amount_cents }))} />}
@@ -3305,7 +3711,7 @@ import { formatCents } from "@/lib/money";
 import { payLinks } from "@/lib/pay-links";
 
 type Mine = { number: number; sentAt: Date | null; paidAt: Date | null };
-export function ClaimPanel(p: { breakId: string; openNumbers: number[]; allowRandom: boolean; mine: Mine[]; priceCents: number; paymentHandles: { venmo?: string; paypal?: string }; paymentInstructions: string }) {
+export function ClaimPanel(p: { breakId: string; openNumbers: number[]; allowRandom: boolean; mine: Mine[]; priceCents: number; paymentHandles: { venmo?: string; paypal?: string }; paymentInstructions: string; seedCommitment: string | null }) {
   const [picked, setPicked] = useState<number[]>([]);
   const [count, setCount] = useState(1);
   const [msg, setMsg] = useState<string | null>(null);
@@ -3317,7 +3723,12 @@ export function ClaimPanel(p: { breakId: string; openNumbers: number[]; allowRan
   const links = payLinks(p.paymentHandles, owed);
   const run = (fn: () => Promise<{ ok: boolean; message?: string; data?: any }>) => start(async () => {
     const r = await fn();
-    if (r.ok) { const d = r.data; setMsg(d?.taken?.length ? `Got ${d.got.join(", ")}; ${d.taken.join(", ")} already taken` : "Done"); setPicked([]); setBatchId(crypto.randomUUID()); }
+    if (r.ok) {
+      const d = r.data;
+      const base = d?.taken?.length ? `Got ${d.got.join(", ")}; ${d.taken.join(", ")} already taken` : "Done";
+      const lock = d?.got && p.seedCommitment ? ` · Draw locked before opening: ${p.seedCommitment.slice(0, 16)}…` : "";
+      setMsg(base + lock); setPicked([]); setBatchId(crypto.randomUUID());
+    }
     else setMsg(r.message ?? "Failed");
   });
   const toggle = (n: number) => setPicked((s) => (s.includes(n) ? s.filter((x) => x !== n) : [...s, n]));
@@ -3386,13 +3797,12 @@ export function HostPanel({ breakId, status, unpaid }: { breakId: string; status
   );
 }
 ```
-(`draw-actions.ts` is written in Task 14; create it with the two exports before building, or stub them as `async () => ({ ok: false, message: "not yet" })` to type-check this task.)
 
-- [ ] **Step 5: Verify manually**
+- [ ] **Step 6: Verify manually**
 
 `pnpm dev`: as a host open a break; in a second browser (another email) sign in, claim lines by tapping, use Random and Take the rest, tap "I've sent payment"; as host tap Paid per buyer and watch the header count reach "12 paid" and the "Run draw" button appear. Check events in the DB: `select type, payload from events order by created_at`.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/app/b src/lib/money.ts src/lib/money.test.ts src/lib/pay-links.ts src/lib/pay-links.test.ts
@@ -3404,36 +3814,22 @@ git commit -m "feat(break-page): public grid, claims, sent and host paid flow"
 ### Task 14: Run draw, result page and in-browser verifier
 
 **Files:**
-- Create: `src/app/b/[id]/draw-actions.ts`, `src/app/b/[id]/result/page.tsx`, `src/app/b/[id]/result/verify.tsx`, `src/app/b/[id]/result/reveal.tsx`, `scripts/verify-draw.ts`
+- Create: `src/crypto/verify.ts`, `src/app/b/[id]/result/page.tsx`, `src/app/b/[id]/result/verify.tsx`, `src/app/b/[id]/result/reveal.tsx`, `src/app/b/[id]/result/share.tsx`, `src/app/b/[id]/result.json/route.ts`, `src/app/legal/draw/page.tsx`, `scripts/verify-draw.ts`
+- Modify: `src/app/b/[id]/draw-actions.ts` (Task 13)
 
 **Interfaces:**
-- Consumes: `requestDraw`, `finaliseDraw`, `getDrawResult`, `computeRanking`, `commitment`, `DrandBeacon`, `QUICKNET`.
-- Produces: server actions `requestDrawAction(breakId)`, `finaliseDrawAction(breakId)`; page `/b/{id}/result`; `scripts/verify-draw.ts <result-json-url>` which prints `OK` or `MISMATCH`.
+- Consumes: `requestDraw`, `finaliseDraw`, `getDrawResult`, `computeRanking`, `commitment`, `beaconFromEnv`, `QUICKNET`.
+- Produces: `PublicInputs`, `b64ToBytes`, `verifyInputs` in `src/crypto/verify.ts` (plain TS, no JSX — shared by the page, the unit test and the script); page `/b/{id}/result`; `scripts/verify-draw.ts <result-json-url>` which prints `OK` or `MISMATCH`.
 
-- [ ] **Step 1: Server actions**
+- [ ] **Step 1: Choose the beacon from the environment**
 
-`src/app/b/[id]/draw-actions.ts`:
+Edit `src/app/b/[id]/draw-actions.ts` (Task 13) to use `beaconFromEnv()` (Task 5) instead of `new DrandBeacon()`, so local e2e runs with `BEACON=fake` and production always uses drand:
 ```ts
-"use server";
-import { z } from "zod";
-import { revalidatePath } from "next/cache";
-import { action } from "@/lib/action";
-import { requestDraw, finaliseDraw } from "@/domain/draws/commands";
-import { DrandBeacon } from "@/crypto/beacon";
-
-export async function requestDrawAction(breakId: string) {
-  const id = z.string().uuid().parse(breakId);
-  const r = await action((tx, c) => requestDraw(tx, c, { breakId: id }));
-  if (r.ok) revalidatePath(`/b/${id}`);
-  return r;
-}
-export async function finaliseDrawAction(breakId: string) {
-  const id = z.string().uuid().parse(breakId);
-  const r = await action((tx, c) => finaliseDraw(tx, c, { breakId: id }, new DrandBeacon()));
-  if (r.ok) { revalidatePath(`/b/${id}`); revalidatePath(`/b/${id}/result`); }
-  return r;
-}
+import { beaconFromEnv } from "@/crypto/beacon";
+// …
+  const r = await action((tx, c) => finaliseDraw(tx, c, { breakId: id }, beaconFromEnv()));
 ```
+`src/jobs/tick.ts` (Task 15) is written with `beaconFromEnv()` from the start.
 
 - [ ] **Step 2: Result page (server-rendered data, client reveal + verifier)**
 
@@ -3445,21 +3841,27 @@ import { db } from "@/db/client";
 import { getDrawResult } from "@/domain/draws/queries";
 import { Reveal } from "./reveal";
 import { Verify } from "./verify";
+import { Share } from "./share";
 import { QUICKNET } from "@/crypto/beacon";
+import type { PublicInputs } from "@/crypto/verify";
+import { env } from "@/lib/env";
 
 export default async function ResultPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const res = await db.transaction((tx) => getDrawResult(tx, id));
   if (!res) notFound();
   const handleOf = new Map(res.entries.map((e) => [e.number, e.handleAtDraw]));
-  const publicInputs = { breakId: id, version: res.draw.algorithmVersion, secret: res.draw.secret, beaconRound: res.draw.beaconRound, beaconRandomness: res.draw.beaconRandomness,
+  const publicInputs: PublicInputs = { breakId: id, version: res.draw.algorithmVersion, secret: res.draw.secret, beaconRound: res.draw.beaconRound, beaconRandomness: res.draw.beaconRandomness,
     entries: res.entries.map((e) => ({ number: e.number, ownerId: e.ownerId })), ranking: res.ranking, resultHash: res.draw.resultHash, seedCommitment: res.seedCommitment };
+  const winnerLine = res.ranking[0];
+  const shareText = `${res.breakTitle} — closed and drawn. Winner: @${handleOf.get(winnerLine)} (line ${winnerLine}). Check the draw: ${env().APP_URL}/b/${id}/result`;
   return (
     <main className="mx-auto max-w-md p-4">
       <h1 className="text-xl font-semibold">{res.breakTitle} — result</h1>
       <Reveal ranking={res.ranking} handleOf={Object.fromEntries(handleOf)} awards={res.awards} />
-      <p className="mt-2 text-xs text-neutral-600">Drawn {res.draw.createdAt.toLocaleString()} · requested by the host{res.request.onBehalfNote ? ` (run by admin: ${res.request.onBehalfNote})` : ""}</p>
+      <p className="mt-2 text-xs text-neutral-600">Drawn {res.draw.createdAt.toLocaleString()} · Requested by @{res.hostHandle}{res.request.onBehalfNote ? ` (run by admin: ${res.request.onBehalfNote})` : ""}</p>
       <Verify inputs={publicInputs} />
+      <Share text={shareText} />
       <details className="mt-4 text-xs">
         <summary className="cursor-pointer">Entries</summary>
         <ol className="mt-2 list-decimal pl-5">{res.entries.map((e) => <li key={e.number}>Line {e.number}: {e.handleAtDraw}{e.isBonus ? " (bonus)" : ""}</li>)}</ol>
@@ -3517,17 +3919,15 @@ export function Reveal({ ranking, handleOf, awards }: { ranking: number[]; handl
 }
 ```
 
-`src/app/b/[id]/result/verify.tsx`:
-```tsx
-"use client";
-import { useState } from "react";
-import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
-import { computeRanking } from "@/crypto/draw";
-import { commitment } from "@/crypto/commit";
+`src/crypto/verify.ts` (plain TS, no JSX — imported by the page component, the unit test and the CLI script):
+```ts
+import { hexToBytes } from "@noble/hashes/utils";
+import { computeRanking } from "./draw";
+import { commitment } from "./commit";
 
 export type PublicInputs = { breakId: string; version: number; secret: string; beaconRound: number; beaconRandomness: string; entries: { number: number; ownerId: string }[]; ranking: number[]; resultHash: string; seedCommitment: string | null };
 
-function b64ToBytes(s: string) { return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); }
+export function b64ToBytes(s: string): Uint8Array { return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); }
 
 export function verifyInputs(i: PublicInputs): { ok: boolean; reasons: string[] } {
   const reasons: string[] = [];
@@ -3536,18 +3936,42 @@ export function verifyInputs(i: PublicInputs): { ok: boolean; reasons: string[] 
   const r = computeRanking({ version: i.version, secret, beacon: hexToBytes(i.beaconRandomness), breakId: i.breakId, entries: i.entries });
   if (JSON.stringify(r.ranking) !== JSON.stringify(i.ranking)) reasons.push("ranking does not match the recomputation");
   if (r.resultHash !== i.resultHash) reasons.push("result hash differs");
-  void bytesToHex;
   return { ok: reasons.length === 0, reasons };
 }
+```
+
+`src/app/b/[id]/result/verify.tsx`:
+```tsx
+"use client";
+import { useEffect, useState } from "react";
+import { verifyInputs, type PublicInputs } from "@/crypto/verify";
 
 export function Verify({ inputs }: { inputs: PublicInputs }) {
   const [state, setState] = useState<null | { ok: boolean; reasons: string[] }>(null);
+  useEffect(() => { setState(verifyInputs(inputs)); }, [inputs]); // check automatically on load
   return (
     <div className="mt-3 rounded border p-3 text-sm">
-      <div>🔒 Locked before opening · {state ? (state.ok ? "Checked ✓" : "Check failed") : "not checked yet"}</div>
+      <div>🔒 Locked before opening · {state ? (state.ok ? "Checked ✓" : "Check failed") : "checking…"}</div>
       <button onClick={() => setState(verifyInputs(inputs))} className="mt-2 rounded border px-3 py-1">Check it yourself</button>
       {state && !state.ok && <ul className="mt-2 list-disc pl-5 text-red-700">{state.reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
       <p className="mt-2 text-xs text-neutral-600">This recomputes the draw in your browser from the published inputs. The beacon value can be confirmed on a public drand relay (link under technical details).</p>
+    </div>
+  );
+}
+```
+
+`src/app/b/[id]/result/share.tsx`:
+```tsx
+"use client";
+import { useState } from "react";
+
+export function Share({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-3 rounded border p-3 text-sm">
+      <div className="font-medium">Share</div>
+      <textarea readOnly value={text} rows={3} className="mt-2 w-full rounded border p-2 text-xs" />
+      <button onClick={async () => { await navigator.clipboard.writeText(text); setCopied(true); }} className="mt-2 rounded border px-3 py-1">{copied ? "Copied" : "Copy"}</button>
     </div>
   );
 }
@@ -3557,7 +3981,7 @@ export function Verify({ inputs }: { inputs: PublicInputs }) {
 
 Add to `src/crypto/draw.test.ts`:
 ```ts
-import { verifyInputs } from "@/app/b/[id]/result/verify";
+import { verifyInputs } from "./verify";
 import { commitment as commitOf } from "./commit";
 describe("verifyInputs", () => {
   it("accepts a consistent result and rejects a tampered ranking", () => {
@@ -3573,7 +3997,7 @@ describe("verifyInputs", () => {
 
 `scripts/verify-draw.ts`:
 ```ts
-import { verifyInputs } from "../src/app/b/[id]/result/verify";
+import { verifyInputs } from "../src/crypto/verify";
 const url = process.argv[2];
 if (!url) { console.error("usage: pnpm tsx scripts/verify-draw.ts https://<host>/b/<id>/result.json"); process.exit(2); }
 const inputs = await (await fetch(url)).json();
@@ -3586,12 +4010,12 @@ Also create `src/app/legal/draw/page.tsx` with a plain-language explanation (fiv
 - [ ] **Step 4: Run tests and the full flow**
 
 Run: `pnpm vitest run src/crypto` → PASS.
-Manual: fill a break, tap "Run draw", wait ~60s, tap "Finish draw" → result page animates, "Check it yourself" turns green; `pnpm tsx scripts/verify-draw.ts http://localhost:3000/b/<id>/result.json` prints OK. (Local dev hits real drand relays; if offline, the button shows "Waiting for the public beacon".)
+Manual: fill a break, tap "Run draw", wait ~60s, tap "Finish draw" → result page animates, the check runs on load and shows "Checked ✓" (the "Check it yourself" button re-runs it), the line "Requested by @<host>" and a Share block with a Copy button appear; `pnpm tsx scripts/verify-draw.ts http://localhost:3000/b/<id>/result.json` prints OK. (Local dev hits real drand relays; if offline, the button shows "Waiting for the public beacon".)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/app/b src/app/legal/draw scripts src/crypto/draw.test.ts
+git add src/app/b src/app/legal/draw scripts src/crypto/verify.ts src/crypto/draw.test.ts
 git commit -m "feat(draw): run draw from the break page, result reveal and in-browser verifier"
 ```
 
@@ -3603,7 +4027,7 @@ git commit -m "feat(draw): run draw from the break page, result reveal and in-br
 - Create: `src/app/api/tick/route.ts`, `src/jobs/tick.ts`, `src/jobs/finalise-draws.ts`, `src/jobs/finalise-draws.test.ts`, `vercel.json`
 
 **Interfaces:**
-- Consumes: `pendingRequestsReady`, `finaliseDraw`, `DrandBeacon`, `SYSTEM`.
+- Consumes: `pendingRequestsReady`, `finaliseDraw`, `beaconFromEnv`, `SYSTEM`.
 - Produces: `runTick(deps: { beacon: BeaconSource; now?: Date }): Promise<{ finalised: string[]; skipped: string[] }>`; `GET /api/tick` guarded by `Authorization: Bearer <CRON_SECRET>`; each job wrapped in `pg_try_advisory_xact_lock(hashtext('job:<name>'))` so overlapping ticks skip instead of double-running.
 
 - [ ] **Step 1: Write the failing test**
@@ -3638,11 +4062,13 @@ describe("finalisePendingDraws", () => {
       const { beaconRound } = await requestDraw(tx, c(host.id, "host"), { breakId: b.id });
       const beacon = new FakeBeacon();
       // Too early: the round is 60s in the future.
+      // `contains`, not equality: other committed rows in the test DB may also be pending.
       const early = await finalisePendingDraws(tx, beacon, beaconRound - 1);
-      expect(early).toEqual({ finalised: [], skipped: [b.id] });
+      expect(early.skipped).toContain(b.id);
+      expect(early.finalised).not.toContain(b.id);
       // Round arrived.
       const late = await finalisePendingDraws(tx, beacon, beaconRound);
-      expect(late).toEqual({ finalised: [b.id], skipped: [] });
+      expect(late.finalised).toContain(b.id);
       const [row] = await tx.select({ s: breaks.status }).from(breaks).where(sql`${breaks.id} = ${b.id}`);
       expect(row.s).toBe("drawn");
       const [req] = await tx.select().from(drawRequests).where(sql`${drawRequests.breakId} = ${b.id}`);
@@ -3685,27 +4111,29 @@ export async function finalisePendingDraws(tx: Tx, beacon: BeaconSource, current
   return { finalised, skipped };
 }
 ```
-Note: `SYSTEM` is a synthetic caller; `finaliseDraw` calls `assertOnboarded(SYSTEM)` (passes) and treats `role: "admin"` as a party. The `users` FK on `draws.run_by` means a `users` row with `SYSTEM.id` must exist: add it in the migration appended SQL — `insert into users (id, email, role, handle, display_name, age_confirmed_at) values ('00000000-0000-4000-8000-000000000000', 'system@breaks.local', 'admin', 'system', 'System', now()) on conflict do nothing;` — and add `'system'` to the reserved handle list (already there).
+`SYSTEM` is a synthetic caller; `finaliseDraw` calls `assertOnboarded(SYSTEM)` (passes) and treats `role: "admin"` as a party. Its `users` row comes from the Task 2 migration.
 
 `src/jobs/tick.ts`:
 ```ts
 import { sql } from "drizzle-orm";
-import { db } from "@/db/client";
+import { db, type Tx } from "@/db/client";
 import { finalisePendingDraws } from "./finalise-draws";
-import { DrandBeacon, type BeaconSource } from "@/crypto/beacon";
+import { beaconFromEnv, type BeaconSource } from "@/crypto/beacon";
 
-async function withJobLock<T>(name: string, fn: () => Promise<T>): Promise<T | "locked"> {
+/** Runs fn inside the transaction that holds the job's advisory xact lock, so the lock covers the work. */
+async function withJobLock<T>(name: string, fn: (tx: Tx) => Promise<T>): Promise<T | "locked"> {
   return db.transaction(async (tx) => {
     const [{ got }] = await tx.execute<{ got: boolean }>(sql`select pg_try_advisory_xact_lock(hashtext(${"job:" + name})) as got`);
     if (!got) return "locked" as const;
-    return fn();
+    return fn(tx);
   });
 }
 
 export async function runTick(deps: { beacon?: BeaconSource; now?: Date } = {}) {
-  const beacon = deps.beacon ?? new DrandBeacon();
+  const beacon = deps.beacon ?? beaconFromEnv();
   const now = deps.now ?? new Date();
-  const draws = await withJobLock("finalise-draws", () => db.transaction((tx) => finalisePendingDraws(tx, beacon, beacon.roundAt(now))));
+  const round = beacon.roundAt(now);
+  const draws = await withJobLock("finalise-draws", (tx) => finalisePendingDraws(tx, beacon, round));
   return { draws };
 }
 ```
@@ -3745,7 +4173,7 @@ Run: `pnpm vitest run src/jobs` → PASS. Then `curl -H "Authorization: Bearer $
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/jobs src/app/api/tick vercel.json src/db/migrations
+git add src/jobs src/app/api/tick vercel.json
 git commit -m "feat(jobs): minute tick that finalises draws once the beacon round exists"
 ```
 
@@ -3799,7 +4227,7 @@ export default defineConfig({
   webServer: { command: "pnpm build && pnpm start", url: "http://localhost:3000", reuseExistingServer: true, env: { E2E_SECRET: "e2e", BEACON: "fake" }, timeout: 180_000 },
 });
 ```
-In `src/app/b/[id]/draw-actions.ts` and `src/jobs/tick.ts`, choose the beacon with `process.env.BEACON === "fake" ? new FakeBeacon() : new DrandBeacon()` so the e2e run doesn't depend on the network or the 60-second wait (the FakeBeacon returns a value for any round). Guard: throw at startup if `BEACON === "fake"` and `VERCEL_ENV === "production"`.
+`BEACON=fake` makes `beaconFromEnv()` (Task 5, already used by `draw-actions.ts` and `src/jobs/tick.ts`) return the `FakeBeacon`, so the e2e run doesn't depend on the network or the 60-second wait (the FakeBeacon returns a value for any round); it throws if `VERCEL_ENV === "production"`. `/test/*` is already public in the middleware (Task 11a). `/test/login` sets the session server-side and redirects to `/`, bypassing the Continue page (Task 11b) by design.
 
 `e2e/helpers.ts`:
 ```ts
@@ -3849,20 +4277,22 @@ test("host opens, buyers claim and pay, host draws, result verifies", async ({ b
   await bob.click("button:has-text('Take the rest')");
   await expect(bob.getByText("You owe $5.00")).toBeVisible();
 
-  await host.reload();
+  await host.reload(); // pick up claims made in the other contexts
   await expect(host.getByText("· sent")).toBeVisible();
   const paidButtons = host.locator("button:has-text('Paid')");
+  await expect(paidButtons).toHaveCount(2); // one per buyer
   await paidButtons.first().click();
-  await host.reload();
+  await expect(host.locator("button:has-text('Paid')")).toHaveCount(1);
   await host.locator("button:has-text('Paid')").first().click();
-  await host.reload();
+  await expect(host.locator("button:has-text('Paid')")).toHaveCount(0);
   await expect(host.getByText("3 paid")).toBeVisible();
   await host.click("text=Run draw");
-  await host.reload();
+  await expect(host.getByText("Finish draw")).toBeVisible();
   await host.click("text=Finish draw");
-  await host.reload();
+  await expect(host.getByText("See the result")).toBeVisible();
   await host.click("text=See the result");
   await expect(host.getByText("Winner")).toBeVisible({ timeout: 15_000 });
+  await expect(host.getByText("Checked ✓")).toBeVisible(); // runs on load
   await host.click("text=Check it yourself");
   await expect(host.getByText("Checked ✓")).toBeVisible();
 });
@@ -3881,7 +4311,7 @@ Expected: 1 passed. If the "Claim 2" selector is ambiguous, scope it to the clai
 - [ ] **Step 5: Commit**
 
 ```bash
-git add playwright.config.ts e2e src/app/test src/app/b/[id]/draw-actions.ts src/jobs/tick.ts
+git add playwright.config.ts e2e src/app/test
 git commit -m "test(e2e): host-to-result journey with env-gated test login and fake beacon"
 ```
 
@@ -3890,7 +4320,8 @@ git commit -m "test(e2e): host-to-result journey with env-gated test login and f
 ### Task 17: CI, deploy configuration and README
 
 **Files:**
-- Create: `.github/workflows/ci.yml`, `tests/ci/rls.test.ts`, `README.md`, `supabase/ci-auth-stub.sql`
+- Create: `.github/workflows/ci.yml`, `tests/ci/rls.test.ts`, `vitest.ci.config.ts`, `README.md`, `supabase/ci-auth-stub.sql`
+- Modify: `vitest.config.ts` (exclude `tests/ci/**`)
 
 **Interfaces:**
 - Produces: a CI pipeline that runs unit + domain tests on a `postgres:16` service with migrations applied, the concurrency suite, the RLS/anon checks, lint and build; a README with local setup, env, scripts and deploy notes.
@@ -3927,6 +4358,17 @@ describe("security posture", () => {
 });
 ```
 
+`vitest.ci.config.ts` (the main `vitest.config.ts` excludes `tests/ci/**`, so these run only here):
+```ts
+import { defineConfig } from "vitest/config";
+import path from "node:path";
+export default defineConfig({
+  test: { include: ["tests/ci/**/*.test.ts"], environment: "node", setupFiles: ["tests/helpers/setup.ts"] },
+  resolve: { alias: { "@": path.resolve(__dirname, "src") } },
+});
+```
+Add `"tests/ci/**"` to the `exclude` list in `vitest.config.ts`.
+
 - [ ] **Step 3: Workflow**
 
 `.github/workflows/ci.yml`:
@@ -3962,11 +4404,11 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm test:concurrency
-      - run: pnpm vitest run tests/ci
+      - run: pnpm vitest run --config vitest.ci.config.ts
       - run: pnpm build
       - run: pnpm audit --audit-level=high || true
 ```
-(`psql` is available on `ubuntu-latest`. Add `tests/ci/**` to the main vitest `exclude` so it only runs in the explicit step.)
+(`psql` is available on `ubuntu-latest`.)
 
 - [ ] **Step 4: README**
 
@@ -3975,8 +4417,8 @@ jobs:
 - [ ] **Step 5: Run CI locally once, then commit**
 
 ```bash
-pnpm lint && pnpm test && pnpm test:concurrency && pnpm vitest run tests/ci && pnpm build
-git add .github tests/ci README.md supabase/ci-auth-stub.sql vitest.config.ts
+pnpm lint && pnpm test && pnpm test:concurrency && pnpm vitest run --config vitest.ci.config.ts && pnpm build
+git add .github tests/ci README.md supabase/ci-auth-stub.sql vitest.config.ts vitest.ci.config.ts
 git commit -m "ci: postgres service pipeline with rls checks, concurrency suite and build"
 ```
 
@@ -3984,7 +4426,16 @@ git commit -m "ci: postgres service pipeline with rls checks, concurrency suite 
 
 ## Self-review notes (completed by the plan author)
 
-- **Spec coverage (Plan 1 scope):** §4.0 tracer bullet — Tasks 1–16. §5 architecture — Tasks 2, 6, 11, 15. §6 tables used here — Task 2 (remaining tables arrive with Plans 2–4). §7 open/claim/sent/paid/un-mark/release/fill — Tasks 7–8 (bonus lines and cancel are Plan 2; relist is v1.1). §9 commitment/request/finalise/result/verifier — Tasks 4, 5, 9, 14, 15. §12 sign-in/onboarding — Task 11. §13 `/b/{id}`, `/b/{id}/result`, `/host`, `/host/new` — Tasks 12–14. §14 idempotent double-tap paths — Tasks 8, 9. §15 tests — Tasks 3, 4, 10, 16, 17. Not in this plan by design: `idempotency_keys` wrapper (the natural idempotency of claim/paid/request/finalise covers the tracer bullet; Plan 3 adds the key table when messages arrive), `/me` page (query exists in Task 8; page in Plan 3), `/h/{handle}` (Plan 4).
-- **Review Focus coverage:** (1) Task 8 "retry … double-tap"; (2) Task 8 "stale owner → OwnerChanged"; (3) Task 9 "crash mid-finalise"; (4) Task 4 bonus number > 255 and handle-free serialization, Task 9 bonus entries; (5) Task 8 "does not fill while reserved".
-- **Type consistency:** `Caller` from `src/domain/types.ts` everywhere; `BeaconSource.fetch` returns `{ randomness: Uint8Array; signature: string } | null`; `computeRanking` returns line numbers; `getDrawResult().entries` matches `EntrySnapshot`; `unpaidByBuyer` returns snake_case columns mapped in the page.
-- **Known seams for executors:** `tests/helpers/fixtures.ts` imports `commitment` (Task 4) — build Task 4 before running Task 3's test, as noted. `host-panel.tsx` imports `draw-actions.ts` (Task 14) — stub noted in Task 13. The `SYSTEM` user row is inserted by migration SQL (Task 15 note).
+- **Spec coverage (Plan 1 scope):** §4.0 tracer bullet — Tasks 1–16. §5 architecture — Tasks 2, 6, 11a, 15. §6 tables used here — Task 2 (remaining tables arrive with Plans 2–4; nullable columns later plans need — `lines.payment_outcome`, `breaks.relisted_from_id`, `host_profiles.verified_fb_since` — and `legal_acceptances` are created now to avoid extra migrations). §7 open/claim/sent/paid/un-mark/release/fill — Tasks 7–8 (relist is v1.1). §9 commitment/request/finalise/result/verifier — Tasks 3, 5, 9, 14, 15. §12 sign-in/onboarding — Tasks 11a (session, onboarding command, terms acceptance) and 11b (magic link + OTP, Continue page, onboarding page). §13 `/b/{id}`, `/b/{id}/result`, `/host`, `/host/new` — Tasks 12–14. §14 idempotent double-tap paths — Tasks 8, 9, 10. §15 tests — Tasks 2, 3, 4, 10, 16, 17. `/me` page: query exists in Task 8; page in Plan 3. `/h/{handle}`: Plan 4.
+- **Review Focus coverage:** (1) Task 8 same-batch retry returns `{ got: [3,5], taken: [] }` with one `line.claimed` event, plus the release-and-reclaim retry; (2) Task 8 "stale owner → OwnerChanged"; (3) Task 9 "crash mid-finalise" compares seed, result hash, entries snapshot and ranking; (4) Task 3 bonus number > 255 and a serialization test where an entry carrying an extra non-ASCII `handle` serializes byte-identically — handles are ASCII by validation (Task 11a) and display names never enter the draw, so that test is the pin; Task 9 bonus entries; (5) Task 8 "does not fill while reserved".
+- **Type consistency:** `Caller` from `src/domain/types.ts` everywhere; `BeaconSource.fetch` returns `{ randomness: Uint8Array; signature: string } | null`; `beaconFromEnv()` is the only place that picks Fake vs Drand; `computeRanking` returns line numbers; `getDrawResult().entries` matches `EntrySnapshot`; `PublicInputs`/`verifyInputs` live in `src/crypto/verify.ts`; `appendEvent` returns `string | null`; `unpaidByBuyer` returns snake_case columns (with `oldest_claim` as text) mapped in the page.
+- **Ordering and seams for executors:** the crypto module is Task 3 so the fixtures in Task 4 can import `commitment` directly — no stub. `draw-actions.ts` is written in Task 13 alongside the host panel that imports it; Task 14 only switches it to `beaconFromEnv()`. The `SYSTEM` user row is inserted by the Task 2 migration (before the RLS block) and re-inserted by the concurrency suite's setup after its truncate. Task 11 is split into 11a (server-side auth and onboarding command, unit-tested) and 11b (pages), each with its own commit.
+- **Deferred from spec in this plan:**
+  - Notifications and emails: console logger only — Sent / un-mark notify nobody yet.
+  - Bonus lines (granting them; the draw already accepts bonus entries).
+  - Cancel.
+  - Free draws and minis (claims on a non-`main` break are refused).
+  - "New host" trust line on the break page.
+  - Admin void UI (the schema and trigger allow the single void transition).
+  - Schema-drift CI check.
+  - `idempotency_keys` table usage (the table is created in Task 2; nothing reads or writes it until Plan 3).
