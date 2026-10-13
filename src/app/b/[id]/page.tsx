@@ -5,7 +5,8 @@ import { getBreakPage } from "@/domain/breaks/queries";
 import { unpaidByBuyer } from "@/domain/lines/queries";
 import { getCaller } from "@/auth/session";
 import { formatCents } from "@/lib/money";
-import { Grid } from "./grid";
+import { isOverdue } from "@/domain/lines/rules";
+import { Grid, type GridLine } from "./grid";
 import { ClaimPanel } from "./claim-panel";
 import { HostPanel } from "./host-panel";
 
@@ -20,6 +21,15 @@ export default async function BreakPage({ params }: { params: Promise<{ id: stri
   const openNumbers = numbered.filter((l) => !l.ownerId && !l.reservedForMiniId).map((l) => l.number);
   const paid = numbered.filter((l) => l.paidAt).length;
   const mine = caller ? page.lines.filter((l) => l.ownerId === caller.id) : [];
+  const showHandles = isHost || participant;
+  const gridLines: GridLine[] = page.lines.map((l) => ({
+    number: l.number,
+    isBonus: l.isBonus,
+    mine: !!caller && l.ownerId === caller.id,
+    label: showHandles && l.ownerId ? l.ownerHandle ?? "?" : null,
+    state: l.reservedForMiniId ? "reserved" : !l.ownerId ? "open" : l.paidAt ? "paid"
+      : isOverdue(l, { paymentWindowHours: page.break.paymentWindowHours }) ? "overdue" : l.sentAt ? "sent" : "claimed",
+  }));
   const unpaid = isHost ? await db.transaction((tx) => unpaidByBuyer(tx, id)) : [];
 
   return (
@@ -34,7 +44,7 @@ export default async function BreakPage({ params }: { params: Promise<{ id: stri
       {page.break.status === "drawn" && <Link href={`/b/${id}/result`} className="mt-3 block rounded bg-green-700 p-3 text-center text-white">See the result</Link>}
       {page.break.status === "drawing" && <p className="mt-3 rounded bg-amber-100 p-3 text-sm">Draw requested — waiting for the public beacon.</p>}
 
-      <Grid lines={page.lines} lineCount={page.break.lineCount} viewerId={caller?.id ?? null} showHandles={isHost || participant} paymentWindowHours={page.break.paymentWindowHours} />
+      <Grid lines={gridLines} lineCount={page.break.lineCount} />
 
       {caller && page.break.status === "open" && (
         <ClaimPanel breakId={id} openNumbers={openNumbers} allowRandom={page.break.allowRandomClaims}

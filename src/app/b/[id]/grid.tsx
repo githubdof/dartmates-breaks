@@ -1,23 +1,29 @@
 "use client";
-import { isOverdue } from "@/domain/lines/rules";
 
-type L = { number: number; ownerId: string | null; ownerHandle: string | null; claimedAt: Date | null; sentAt: Date | null; paidAt: Date | null; reservedForMiniId: string | null; isBonus: boolean };
+export type GridLine = {
+  number: number;
+  state: "open" | "claimed" | "sent" | "paid" | "overdue" | "reserved";
+  label: string | null;
+  mine: boolean;
+  isBonus: boolean;
+};
 
-export function Grid({ lines, lineCount, viewerId, showHandles, paymentWindowHours }: { lines: L[]; lineCount: number; viewerId: string | null; showHandles: boolean; paymentWindowHours: number }) {
-  const cls = (l: L) => {
-    if (l.reservedForMiniId) return "bg-purple-100 text-purple-800";
-    if (!l.ownerId) return "bg-white border";
-    if (l.paidAt) return "bg-green-200";
-    if (isOverdue(l, { paymentWindowHours })) return "bg-red-200";
-    if (l.sentAt) return "bg-blue-100";
-    return "bg-amber-100";
-  };
-  const label = (l: L) => (!l.ownerId ? "open" : showHandles ? l.ownerHandle ?? "?" : "taken");
+const CLS: Record<GridLine["state"], string> = {
+  reserved: "bg-purple-100 text-purple-800",
+  open: "bg-white border",
+  paid: "bg-green-200",
+  overdue: "bg-red-200",
+  sent: "bg-blue-100",
+  claimed: "bg-amber-100",
+};
+
+export function Grid({ lines, lineCount }: { lines: GridLine[]; lineCount: number }) {
+  const label = (l: GridLine) => (l.state === "open" ? "open" : l.state === "reserved" ? "reserved" : l.label ?? "taken");
   const cols = lineCount > 30 ? "grid-cols-6" : "grid-cols-4";
   return (
     <div className={`mt-4 grid ${cols} gap-2`}>
       {lines.map((l) => (
-        <div key={l.number} className={`rounded p-2 text-center text-xs ${cls(l)} ${viewerId && l.ownerId === viewerId ? "ring-2 ring-black" : ""}`}>
+        <div key={l.number} className={`rounded p-2 text-center text-xs ${CLS[l.state]} ${l.mine ? "ring-2 ring-black" : ""}`}>
           <div className="text-base font-semibold">{l.number}{l.isBonus ? "★" : ""}</div>
           <div className="truncate">{label(l)}</div>
         </div>

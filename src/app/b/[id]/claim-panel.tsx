@@ -43,7 +43,7 @@ export function ClaimPanel(p: { breakId: string; openNumbers: number[]; allowRan
       <div className="flex gap-2">
         <button disabled={pending || picked.length === 0} onClick={() => runClaim(() => claim(p.breakId, picked, batchId))} className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-40">Claim {picked.length || ""}</button>
         {p.allowRandom && <>
-          <input type="number" min={1} value={count} onChange={(e) => setCount(Math.max(1, Math.floor(+e.target.value || 1)))} className="w-16 rounded border p-1 text-sm" />
+          <input type="number" min={1} max={50} value={count} onChange={(e) => setCount(Math.min(50, Math.max(1, Math.floor(+e.target.value || 1))))} className="w-16 rounded border p-1 text-sm" />
           <button disabled={pending || p.openNumbers.length === 0} onClick={() => runClaim(() => claimRandomAction(p.breakId, count, batchId))} className="rounded border px-3 py-2 text-sm">Random</button>
         </>}
         <button disabled={pending || p.openNumbers.length === 0} onClick={() => runClaim(() => claimRest(p.breakId, batchId))} className="rounded border px-3 py-2 text-sm">Take the rest</button>
