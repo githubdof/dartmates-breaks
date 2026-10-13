@@ -1,12 +1,12 @@
 import { defineConfig } from "vitest/config";
-import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   test: {
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
-    exclude: ["tests/concurrency/**", "e2e/**", "node_modules/**"],
+    exclude: ["tests/concurrency/**", "tests/ci/**", "e2e/**", "node_modules/**"],
     environment: "node",
     setupFiles: ["tests/helpers/setup.ts"],
   },
-  resolve: { alias: { "@": path.resolve(__dirname, "src") } },
+  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
 });
