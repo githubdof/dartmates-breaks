@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { toCaller, shouldPromote } from "./session";
+import type { users } from "@/db/schema";
+
+type UserRow = Pick<typeof users.$inferSelect, "id" | "role" | "handle" | "displayName" | "ageConfirmedAt" | "bannedAt">;
 
 describe("shouldPromote", () => {
   const confirmed = "2026-10-13T00:00:00Z";
@@ -18,9 +21,9 @@ describe("shouldPromote", () => {
 
 describe("toCaller", () => {
   it("is onboarded only with handle, display name and age confirmation", () => {
-    const base = { id: "u", role: "member", handle: "h", displayName: "d", ageConfirmedAt: new Date(), bannedAt: null };
-    expect(toCaller(base as any).onboarded).toBe(true);
-    expect(toCaller({ ...base, handle: null } as any).onboarded).toBe(false);
-    expect(toCaller({ ...base, bannedAt: new Date() } as any).banned).toBe(true);
+    const base: UserRow = { id: "u", role: "member", handle: "h", displayName: "d", ageConfirmedAt: new Date(), bannedAt: null };
+    expect(toCaller(base).onboarded).toBe(true);
+    expect(toCaller({ ...base, handle: null }).onboarded).toBe(false);
+    expect(toCaller({ ...base, bannedAt: new Date() }).banned).toBe(true);
   });
 });

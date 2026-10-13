@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
 import { commitment } from "./commit";
-import { serializeEntries, uuidBytes } from "./serialize";
+import { serializeEntries, uuidBytes, type Entry } from "./serialize";
 import { shuffle } from "./shuffle";
 import { computeRanking, ALGORITHM_VERSION } from "./draw";
 import vectors from "./vectors.json";
@@ -19,7 +19,8 @@ describe("serializeEntries", () => {
     const a = "00000000-0000-0000-0000-000000000001";
     const b = "ffffffff-ffff-ffff-ffff-ffffffffffff";
     // The extra handle property (non-ASCII) must not change the bytes.
-    const out = serializeEntries([{ number: 13, ownerId: b, handle: "Jörg" } as any, { number: 2, ownerId: a }]);
+    const withHandle: Entry & { handle: string } = { number: 13, ownerId: b, handle: "Jörg" };
+    const out = serializeEntries([withHandle, { number: 2, ownerId: a }]);
     expect(out).toEqual(serializeEntries([{ number: 13, ownerId: b }, { number: 2, ownerId: a }]));
     expect(out.length).toBe(2 * 18);
     expect(Array.from(out.slice(0, 2))).toEqual([0, 2]);

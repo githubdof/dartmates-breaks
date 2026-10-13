@@ -27,8 +27,9 @@ export async function completeOnboarding(tx: Tx, caller: Caller, p: { handle: st
     updated = await tx.update(users).set({ handle, displayName, ageConfirmedAt: sql`coalesce(${users.ageConfirmedAt}, now())` }).where(sql`${users.id} = ${caller.id} and ${users.handle} is null`).returning({ id: users.id });
   } catch (e) {
     // drizzle wraps the driver error (DrizzleQueryError); the postgres error is on `.cause`
-    const pg = (e as any)?.cause ?? e;
-    if (pg?.code === "23505") throw new InvalidInput("That handle is taken");
+    const pg = (e instanceof Error && "cause" in e ? (e as { cause?: unknown }).cause : undefined) ?? e;
+    const code = typeof pg === "object" && pg !== null && "code" in pg ? (pg as { code?: string }).code : undefined;
+    if (code === "23505") throw new InvalidInput("That handle is taken");
     throw e;
   }
   if (updated.length === 0) throw new InvalidInput("Your account is already set up");
