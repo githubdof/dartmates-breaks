@@ -139,6 +139,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
               rows={ledgerRows}
               counts={{ paid: grid.counts.paid, taken: grid.counts.taken + grid.counts.sent, total: b.lineCount }}
               bonus={{ used: grid.cells.filter((c) => c.bonus).length, max: bonusAllowance(b.lineCount) }}
+              hostName={page.host.displayName ?? (page.host.handle ? `@${page.host.handle}` : "The host")}
             />
           )}
         </div>

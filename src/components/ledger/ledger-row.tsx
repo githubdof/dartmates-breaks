@@ -8,6 +8,8 @@ import { bonusText, markPaidLabel, releaseConfirm, rowCells, rowStateWord, type 
 
 type Props = {
   row: LedgerRowView;
+  /** Paid, Undo, per-line marking, Release and bonus lines only while the break is open or filled. */
+  actionable: boolean;
   recentlyPaid: boolean;
   pending: boolean;
   expanded: boolean;
@@ -65,12 +67,12 @@ export function LedgerRow(p: Props) {
             ? <span className="font-condensed text-[20px] leading-6 font-semibold tabular sm:text-right">{formatMoney(r.owedCents)}</span>
             : <span aria-hidden className="hidden sm:block" />}
           <div className="sm:justify-self-end">
-            {p.recentlyPaid ? (
+            {p.recentlyPaid && p.actionable ? (
               <span className="flex items-center gap-1">
                 <span className="text-small font-semibold text-green">Paid</span>
                 <Button variant="text" onClick={p.onUndo} disabled={p.pending} data-testid="ledger-undo">Undo</Button>
               </span>
-            ) : r.unpaid.length > 0 ? (
+            ) : r.unpaid.length > 0 ? (p.actionable &&
               <Button onClick={p.onPaid} disabled={p.pending} aria-label={markPaidLabel(r)} data-testid="ledger-paid">Paid</Button>
             ) : (
               <span className="inline-flex min-h-11 items-center text-small font-semibold text-green">Paid</span>
@@ -81,9 +83,15 @@ export function LedgerRow(p: Props) {
 
       {p.expanded && (
         <div className="space-y-3 border-t border-wire-2 px-4 py-3">
-          <p className="text-small text-ink-2">Tap a line to mark it paid. Tap a paid line to un-mark it.</p>
-          <MiniCells cells={cells} onPress={pressLine} labelFor={(c) => (c.bonus ? cellLabel(c) : `${cellLabel(c)}. ${c.state === "paid" ? "Un-mark paid" : "Mark paid"}`)} />
-          {confirm?.kind === "unmark" && (
+          {p.actionable ? (
+            <>
+              <p className="text-small text-ink-2">Tap a line to mark it paid. Tap a paid line to un-mark it.</p>
+              <MiniCells cells={cells} onPress={pressLine} labelFor={(c) => (c.bonus ? cellLabel(c) : `${cellLabel(c)}. ${c.state === "paid" ? "Un-mark paid" : "Mark paid"}`)} />
+            </>
+          ) : (
+            <MiniCells cells={cells} label={`Lines held by ${name}`} />
+          )}
+          {p.actionable && confirm?.kind === "unmark" && (
             <div className="space-y-2 rounded-card border border-wire p-3">
               <p className="text-small">Un-mark line {confirm.n} as paid? It is logged, and the line stays with {name}.</p>
               <div className="flex flex-wrap gap-2">
@@ -92,7 +100,7 @@ export function LedgerRow(p: Props) {
               </div>
             </div>
           )}
-          {release && (confirm?.kind === "release" ? (
+          {p.actionable && release && (confirm?.kind === "release" ? (
             <div className="space-y-2 rounded-card border border-wire p-3">
               <p className="text-small">{release.text}</p>
               {release.warning && <p className="text-small text-red">{release.warning}</p>}
@@ -104,10 +112,12 @@ export function LedgerRow(p: Props) {
           ) : (
             <Button variant="text" onClick={() => setConfirm({ kind: "release" })} data-testid="ledger-release">Release</Button>
           ))}
-          <div className="flex flex-wrap items-center gap-3">
-            <Button variant="text" onClick={p.onBonus} disabled={p.pending || p.bonusUsed >= p.bonusMax} data-testid="ledger-bonus">Add a bonus line</Button>
-            <span className="text-small text-ink-2">{bonusText(p.bonusUsed, p.bonusMax)}</span>
-          </div>
+          {p.actionable && (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="text" onClick={p.onBonus} disabled={p.pending || p.bonusUsed >= p.bonusMax} data-testid="ledger-bonus">Add a bonus line</Button>
+              <span className="text-small text-ink-2">{bonusText(p.bonusUsed, p.bonusMax)}</span>
+            </div>
+          )}
         </div>
       )}
     </li>

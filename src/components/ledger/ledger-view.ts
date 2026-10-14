@@ -40,6 +40,26 @@ export function applyOrder(rows: readonly LedgerRowView[], order: readonly strin
     .map((x) => x.r);
 }
 
+/** What the ledger lists, frozen when it opens and when the host changes the filter. */
+export type LedgerView = { filter: LedgerFilter; order: string[]; visible: string[] };
+
+export function freezeView(rows: readonly LedgerRowView[], filter: LedgerFilter): LedgerView {
+  return { filter, order: freezeOrder(rows), visible: rows.filter((r) => matchesFilter(r, filter)).map((r) => r.ownerId) };
+}
+
+/**
+ * Rows listed in the frozen order with their current data. A row frozen in stays listed even after it stops
+ * matching the filter, a row frozen out stays out, and only buyers who appear later are filtered live (and go to
+ * the end). Search text always filters live, because the host is typing it.
+ */
+export function applyView(view: LedgerView, rows: readonly LedgerRowView[], search: string): LedgerRowView[] {
+  const known = new Set(view.order);
+  const shown = new Set(view.visible);
+  return applyOrder(rows, view.order)
+    .filter((r) => (known.has(r.ownerId) ? shown.has(r.ownerId) : matchesFilter(r, view.filter)))
+    .filter((r) => matchesQuery(r, search));
+}
+
 export function chipCounts(rows: readonly LedgerRowView[]): Record<LedgerFilter, number> {
   return {
     all: rows.length,
@@ -88,3 +108,6 @@ export function rowCells(r: LedgerRowView): CellData[] {
     bonus: r.bonus.includes(n),
   }));
 }
+
+/** The running-draw wait in the ledger's bottom action (design §5.4). */
+export const drawingText = (hostName: string) => `${hostName} started the draw. The result is in about a minute.`;

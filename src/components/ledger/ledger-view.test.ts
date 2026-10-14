@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  applyOrder, bonusText, chipCounts, freezeOrder, markPaidLabel, matchesFilter, matchesQuery, paidToast, releaseConfirm, releaseReason, rowCells, rowStateWord, type LedgerRowView,
+  applyOrder, applyView, bonusText, drawingText, freezeView, chipCounts, freezeOrder, markPaidLabel, matchesFilter, matchesQuery, paidToast, releaseConfirm, releaseReason, rowCells, rowStateWord, type LedgerRowView,
 } from "./ledger-view";
 
 const row = (o: Partial<LedgerRowView> & { ownerId: string }): LedgerRowView => ({
@@ -44,6 +44,25 @@ describe("fixed order", () => {
     const fresh = [{ ...dave, status: "paid" as const }, erin, bob, alice];
     expect(applyOrder(fresh, order).map((r) => r.ownerId)).toEqual(["a", "d", "e", "b"]);
   });
+  it("keeps a row listed after it stops matching the filter, with its current data", () => {
+    const view = freezeView([alice, dave, erin, bob], "unpaid");
+    const daveNowPaid = { ...dave, unpaid: [], paid: [4], owedCents: 0, status: "paid" as const };
+    const shown = applyView(view, [alice, daveNowPaid, erin, bob], "");
+    expect(shown.map((r) => r.ownerId)).toEqual(["a", "d", "e"]);
+    expect(shown[1].status).toBe("paid");
+  });
+  it("does not list a row that starts matching after the freeze, unless it is a newcomer", () => {
+    const view = freezeView([alice, dave, bob], "sent");
+    const daveNowSent = { ...dave, sent: [4], status: "sent" as const };
+    const fay = row({ ownerId: "f", handle: "fay", numbers: [20], unpaid: [20], sent: [20], owedCents: 500, status: "sent" });
+    const gil = row({ ownerId: "g", handle: "gil", numbers: [21], unpaid: [21], owedCents: 500, status: "unpaid" });
+    expect(applyView(view, [fay, alice, daveNowSent, gil, bob], "").map((r) => r.ownerId)).toEqual(["a", "f"]);
+  });
+  it("filters by search text live", () => {
+    const view = freezeView([alice, dave, erin, bob], "all");
+    expect(applyView(view, [alice, dave, erin, bob], "dave").map((r) => r.ownerId)).toEqual(["d"]);
+    expect(applyView(view, [alice, dave, erin, bob], "$10").map((r) => r.ownerId)).toEqual(["a"]);
+  });
 });
 
 describe("row copy", () => {
@@ -65,6 +84,9 @@ describe("row copy", () => {
   it("uses the overdue reason only when every unpaid line is overdue", () => {
     expect(releaseReason(erin)).toBe("host_dropped");
     expect(releaseReason(row({ ownerId: "z", unpaid: [3], overdue: [3] }))).toBe("overdue");
+  });
+  it("says who started the draw (design §5.4)", () => {
+    expect(drawingText("Dave")).toBe("Dave started the draw. The result is in about a minute.");
   });
   it("shows the bonus allowance and the row state word", () => {
     expect(bonusText(2, 5)).toBe("3 of 5 bonus lines left");

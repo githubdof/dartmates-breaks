@@ -11,7 +11,7 @@ import { addBonus, paidForBuyer, releaseBuyer, unpaidForBuyer } from "@/app/b/[i
 import { finaliseDrawAction, requestDrawAction } from "@/app/b/[id]/draw-actions";
 import { openBreakAction } from "@/app/b/[id]/host-actions";
 import { LEDGER_COLS, LedgerRow } from "./ledger-row";
-import { applyOrder, chipCounts, freezeOrder, matchesFilter, matchesQuery, paidToast, releaseReason, type LedgerFilter, type LedgerRowView } from "./ledger-view";
+import { applyView, chipCounts, drawingText, freezeView, paidToast, releaseReason, type LedgerFilter, type LedgerRowView } from "./ledger-view";
 
 export type LedgerSheetProps = {
   open: boolean;
@@ -21,6 +21,8 @@ export type LedgerSheetProps = {
   rows: LedgerRowView[];
   counts: { paid: number; taken: number; total: number };
   bonus: { used: number; max: number };
+  /** Who started the draw, for the running-draw wait (design §5.4). */
+  hostName: string;
 };
 
 const UNDO_MS = 8000;
@@ -28,8 +30,8 @@ const UNDO_MS = 8000;
 export function LedgerSheet(p: LedgerSheetProps) {
   const [filter, setFilter] = useState<LedgerFilter>("all");
   const [query, setQuery] = useState("");
-  // The server sends rows in the ledger order (compareLedger); freezeOrder records it.
-  const [order, setOrder] = useState<string[]>(() => freezeOrder(p.rows));
+  // The server sends rows in the ledger order (compareLedger); freezeView records it with the rows that match.
+  const [view, setView] = useState(() => freezeView(p.rows, "all"));
   const [wasOpen, setWasOpen] = useState(p.open);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [recent, setRecent] = useState<Record<string, { numbers: number[]; until: number }>>({});
@@ -37,19 +39,27 @@ export function LedgerSheet(p: LedgerSheetProps) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  // Order is fixed when the ledger opens and when the host changes the filter; rows never move under the thumb.
-  // Adjusted during render (not in an effect) so the reopened sheet never paints the stale order first.
+  // Order and listed rows are fixed when the ledger opens and when the host changes the filter, so rows never
+  // move or vanish under the thumb while auto-refresh updates them. Adjusted during render (not in an effect)
+  // so the reopened sheet never paints the stale view first.
   if (p.open !== wasOpen) {
     setWasOpen(p.open);
     if (p.open) {
-      setOrder(freezeOrder(p.rows));
+      setView(freezeView(p.rows, filter));
       setError(null);
     }
   }
   const changeFilter = (f: LedgerFilter) => {
     setFilter(f);
-    setOrder(freezeOrder(p.rows));
+    setView(freezeView(p.rows, f));
   };
+
+  // Marking and Undo only make sense while lines can still change hands; once the draw starts, Undo goes.
+  const actionable = p.status === "open" || p.status === "filled";
+  if (!actionable && (Object.keys(recent).length > 0 || toast)) {
+    setRecent({});
+    setToast(null);
+  }
 
   // Undo lasts 8 s per row; the snackbar goes with the row it speaks about.
   useEffect(() => {
@@ -96,7 +106,7 @@ export function LedgerSheet(p: LedgerSheetProps) {
     run(() => releaseBuyer(p.breakId, row.ownerId, numbers, releaseReason(row)));
   };
 
-  const visible = applyOrder(p.rows, order).filter((r) => recent[r.ownerId] || (matchesFilter(r, filter) && matchesQuery(r, query)));
+  const visible = applyView(view, p.rows, query);
   const chips = chipCounts(p.rows);
 
   return (
@@ -126,6 +136,7 @@ export function LedgerSheet(p: LedgerSheetProps) {
             <LedgerRow
               key={r.ownerId}
               row={r}
+              actionable={actionable}
               recentlyPaid={!!recent[r.ownerId]}
               pending={pending}
               expanded={expanded === r.ownerId}
@@ -156,7 +167,7 @@ export function LedgerSheet(p: LedgerSheetProps) {
           {p.status === "filled" && <Button full onClick={() => run(() => requestDrawAction(p.breakId))} disabled={pending} data-testid="run-draw">Run draw</Button>}
           {p.status === "drawing" && (
             <>
-              <p className="text-small">Running draw. The result is in about a minute.</p>
+              <p className="text-small">{drawingText(p.hostName)}</p>
               <Button variant="secondary" full onClick={() => run(() => finaliseDrawAction(p.breakId))} disabled={pending} data-testid="finish-draw">Check for the result</Button>
             </>
           )}
