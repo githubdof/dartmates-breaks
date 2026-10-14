@@ -34,7 +34,7 @@ export async function listFeed(tx: Tx, p: { sort: FeedSort; hostHandle?: string 
     p.sort === "filling" ? [desc(paidLastDay), desc(breaks.openedAt), desc(breaks.id)]
     : p.sort === "almost" ? [asc(open), desc(breaks.openedAt), desc(breaks.id)]
     : [desc(breaks.openedAt), desc(breaks.id)];
-  const where: SQL[] = [eq(breaks.status, "open"), eq(breaks.kind, "main")];
+  const where: SQL[] = [eq(breaks.status, "open"), eq(breaks.kind, "main"), isNull(users.bannedAt)]; // a banned host's breaks leave the feed
   if (p.hostHandle) where.push(sql`lower(${users.handle}) = lower(${p.hostHandle})`);
   const rows = await tx.select({
     id: breaks.id, title: breaks.title, lineCount: breaks.lineCount, linePriceCents: breaks.linePriceCents, openedAt: breaks.openedAt,
@@ -75,17 +75,17 @@ export async function feedThumbs(tx: Tx, breakIds: readonly string[]): Promise<M
 /** Hosts with at least one open main break, for the feed's host filter. */
 export async function feedHosts(tx: Tx): Promise<{ handle: string }[]> {
   const rows = await tx.selectDistinct({ handle: users.handle }).from(breaks).innerJoin(users, eq(users.id, breaks.hostId))
-    .where(and(eq(breaks.status, "open"), eq(breaks.kind, "main"), isNotNull(users.handle))).orderBy(asc(users.handle));
+    .where(and(eq(breaks.status, "open"), eq(breaks.kind, "main"), isNotNull(users.handle), isNull(users.bannedAt))).orderBy(asc(users.handle));
   return rows.flatMap((r) => (r.handle ? [{ handle: r.handle }] : []));
 }
 
 export type LatestRan = { breakId: string; title: string; lineCount: number; topLine: number; ranAt: Date };
 
-/** The landing hero (design §5.2): the most recent main break that ran, read from its active (not voided) draw. */
+/** The landing hero (design §5.2): the most recent main break that ran, read from its active (not voided) draw; never a banned host's. */
 export async function latestRanBreak(tx: Tx): Promise<LatestRan | null> {
   const [r] = await tx.select({ breakId: breaks.id, title: breaks.title, lineCount: breaks.lineCount, ranking: draws.ranking, ranAt: draws.createdAt })
-    .from(draws).innerJoin(breaks, eq(breaks.id, draws.breakId))
-    .where(and(isNull(draws.voidedAt), eq(breaks.status, "drawn"), eq(breaks.kind, "main")))
+    .from(draws).innerJoin(breaks, eq(breaks.id, draws.breakId)).innerJoin(users, eq(users.id, breaks.hostId))
+    .where(and(isNull(draws.voidedAt), eq(breaks.status, "drawn"), eq(breaks.kind, "main"), isNull(users.bannedAt)))
     .orderBy(desc(draws.createdAt), desc(draws.id)).limit(1);
   if (!r || r.ranking.length === 0) return null;
   return { breakId: r.breakId, title: r.title, lineCount: r.lineCount, topLine: r.ranking[0], ranAt: r.ranAt };

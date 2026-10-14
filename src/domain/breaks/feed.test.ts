@@ -4,7 +4,7 @@ import { sql, eq } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../tests/helpers/fixtures";
 import { claimLines, markPaid, markSent, addBonusLine } from "@/domain/lines/commands";
-import { draws } from "@/db/schema";
+import { draws, users } from "@/db/schema";
 import type { Caller } from "@/domain/types";
 import type { Tx } from "@/db/client";
 import { listFeed, feedThumbs, feedHosts, latestRanBreak, isFeedSort, type FeedSort } from "./feed";
@@ -78,6 +78,30 @@ describe("listFeed", () => {
       expect((await listFeed(tx, { sort: "newest", hostHandle: ann.handle, now })).map((r) => r.id)).toEqual([a.id]);
       expect(await listFeed(tx, { sort: "newest", hostHandle: "nobody_here_x", now })).toEqual([]);
       expect((await listFeed(tx, { sort: "newest", now, limit: 200 })).map((r) => r.id)).toEqual(expect.arrayContaining([j.id, a.id]));
+    });
+  });
+});
+
+describe("banned hosts", () => {
+  it("their open breaks leave the feed and the host filter", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      const now = new Date();
+      expect((await listFeed(tx, { sort: "newest", hostHandle: host.handle, now })).map((r) => r.id)).toEqual([b.id]);
+      await tx.update(users).set({ bannedAt: now }).where(eq(users.id, host.id));
+      expect(await listFeed(tx, { sort: "newest", hostHandle: host.handle, now })).toEqual([]);
+      expect((await listFeed(tx, { sort: "newest", now, limit: 200 })).map((r) => r.id)).not.toContain(b.id);
+      expect((await feedHosts(tx)).map((h) => h.handle)).not.toContain(host.handle);
+    });
+  });
+  it("their ran break is never the landing hero", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      const d = await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id], lineCount: 4 });
+      expect((await latestRanBreak(tx))?.breakId).toBe(d.id);
+      await tx.update(users).set({ bannedAt: new Date() }).where(eq(users.id, host.id));
+      expect((await latestRanBreak(tx))?.breakId).not.toBe(d.id);
     });
   });
 });
