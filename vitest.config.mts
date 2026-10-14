@@ -2,6 +2,8 @@ import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 
 export default defineConfig({
+  // tsconfig keeps "jsx": "preserve" for Next; vitest transforms .tsx itself (Vite 8 uses oxc) with the automatic runtime.
+  oxc: { jsx: { runtime: "automatic" } },
   test: {
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
     exclude: ["tests/concurrency/**", "tests/ci/**", "e2e/**", "node_modules/**"],

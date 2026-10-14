@@ -58,6 +58,10 @@
     body:has([data-tab-bar]) {
       padding-bottom: calc(var(--tab-h) + max(12px, env(safe-area-inset-bottom)));
     }
+    /* Bottom-edge toasts clear the tab bar while it shows. */
+    :root:has([data-tab-bar]) {
+      --tab-offset: var(--tab-h);
+    }
   }
   /* One bar at a time: the claim bar steps aside while the keyboard is up, except for the bar's own
      inputs (the Pick for me stepper), which must not hide the bar they live in. */

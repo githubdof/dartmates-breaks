@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { NETWORK_NOTE } from "@/lib/network-note";
 import { Sheet } from "@/components/sheet";
 import { FillBar } from "@/components/fill-bar";
 import { FilterChips } from "@/components/filter-chips";
 import { Toast } from "@/components/toast";
+import { useMeasuredVar } from "@/components/use-measured-var";
 import { Button, ButtonLink } from "@/components/button";
 import type { ActionResult } from "@/lib/action";
 import type { BreakStatus } from "@/components/status-word";
@@ -43,6 +44,9 @@ export function LedgerSheet(p: LedgerSheetProps) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
+  // The snackbar sits above the bottom action as it really is (it grows with an error or the draft note).
+  const actionRef = useRef<HTMLDivElement>(null);
+  useMeasuredVar(actionRef, "--sheet-action-h");
 
   // Order and listed rows are fixed when the ledger opens and when the host changes the filter, so rows never
   // move or vanish under the thumb while auto-refresh updates them. Adjusted during render (not in an effect)
@@ -141,11 +145,12 @@ export function LedgerSheet(p: LedgerSheetProps) {
           { value: "unpaid", label: "Unpaid", count: chips.unpaid },
           { value: "overdue", label: "Overdue", count: chips.overdue },
         ]} />
-        <ul className="-mx-4 border-t border-wire">
-          {/* Column names: screen readers always, sighted users only where the rows become a table (above 640). */}
-          <li className={`sr-only gap-3 text-micro font-medium text-ink-2 sm:not-sr-only sm:px-4 sm:py-2 ${LEDGER_COLS}`}>
-            <span>Buyer</span><span>Lines</span><span>State</span><span className="sm:text-right">Owed</span><span className="sm:text-right">Action</span>
-          </li>
+        {/* Column names over the table above 640 only. Visual: each row already names its parts, and a header inside
+            the list would be counted as one more buyer by a screen reader. */}
+        <div aria-hidden className={`-mx-4 hidden gap-3 px-4 py-2 text-micro font-medium text-ink-2 ${LEDGER_COLS}`}>
+          <span>Buyer</span><span>Lines</span><span>State</span><span className="sm:text-right">Owed</span><span className="sm:text-right">Action</span>
+        </div>
+        <ul aria-label="Buyers" className="-mx-4 border-t border-wire">
           {visible.map((r) => (
             <LedgerRow
               key={r.ownerId}
@@ -170,7 +175,7 @@ export function LedgerSheet(p: LedgerSheetProps) {
           )}
         </ul>
         {/* The bottom action stays in reach: a host with 30 buyers should not scroll to the end to draw. */}
-        <div className="sticky bottom-0 -mx-4 space-y-2 border-t border-wire bg-paper px-4 pt-3 pb-safe">
+        <div ref={actionRef} className="sticky bottom-0 -mx-4 space-y-2 border-t border-wire bg-paper px-4 pt-3 pb-safe">
           {error && <p role="alert" className="text-small text-red" data-testid="ledger-error">{error}</p>}
           {p.status === "draft" && (
             <>

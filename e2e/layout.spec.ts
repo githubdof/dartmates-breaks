@@ -1,4 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { loginAs } from "./helpers";
 
 // The design's layout and accessibility claims, checked in a real browser (no jsdom). One 50-line open break
@@ -146,4 +147,35 @@ test("Enter in the composer never opens a break", async ({ browser }) => {
   await host.waitForURL(/\/b\//);
   await expect(host.getByTestId("composer-open")).toHaveCount(0);
   await expect(host.getByText("Draft", { exact: true }).first()).toBeVisible();
+});
+
+async function axeViolations(page: Page, where: string): Promise<string[]> {
+  const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  return r.violations.map((v) => `${where} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
+}
+
+test("axe finds no WCAG 2.1 A or AA violation on the main pages, the pay sheet and the ledger (D§7)", async ({ browser }) => {
+  const found: string[] = [];
+  const anon = await anonymous(browser, 390, 664);
+  for (const path of ["/", "/breaks", url, `/h/lh${run}`, "/legal/draw"]) {
+    await anon.goto(path);
+    found.push(...(await axeViolations(anon, `anonymous ${path}`)));
+  }
+  const buyer = await signedIn(browser, `${buyerHandle}@e2e.test`);
+  for (const path of ["/me", "/account"]) {
+    await buyer.goto(path);
+    found.push(...(await axeViolations(buyer, `buyer ${path}`)));
+  }
+  await buyer.goto(url);
+  await buyer.getByTestId("owed").click();
+  await expect(buyer.getByTestId("pay-sheet")).toBeVisible();
+  found.push(...(await axeViolations(buyer, "buyer pay sheet")));
+  const host = await signedIn(browser, hostEmail, "host");
+  await host.goto("/host");
+  found.push(...(await axeViolations(host, "host /host")));
+  await host.goto(url);
+  await host.getByTestId("host-tools").click();
+  await expect(host.getByTestId("ledger")).toBeVisible();
+  found.push(...(await axeViolations(host, "host ledger")));
+  expect(found).toEqual([]);
 });

@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { paidForBuyer, unpaidForBuyer } from "@/app/b/[id]/actions";
 import { Sheet } from "@/components/sheet";
 import { Toast } from "@/components/toast";
+import { useMeasuredVar } from "@/components/use-measured-var";
 import type { ActionResult } from "@/lib/action";
 import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
 import { LedgerRow } from "./ledger-row";
@@ -21,6 +22,9 @@ const noop = () => {};
  */
 export function WaitingStrip({ text, rows }: { text: string | null; rows: WaitingView[] }) {
   const router = useRouter();
+  // The bottom bar exists only while there is an error; its always-mounted wrapper is measured (0 when the bar is absent).
+  const actionRef = useRef<HTMLDivElement>(null);
+  useMeasuredVar(actionRef, "--sheet-action-h");
   const [open, setOpen] = useState(false);
   const [frozen, setFrozen] = useState<WaitingView[]>(rows);
   // Rows marked paid in this sheet: the row as it was (Undo puts it back) and until when Undo shows.
@@ -120,11 +124,13 @@ export function WaitingStrip({ text, rows }: { text: string | null; rows: Waitin
           ))}
         </ul>
         {/* As in the per-break ledger, failures show in a sticky bottom action, where the host can see them from any row. */}
-        {error && (
-          <div className="sticky bottom-0 -mx-4 space-y-2 border-t border-wire bg-paper px-4 pt-3 pb-safe">
-            <p role="alert" className="text-small text-red" data-testid="ledger-error">{error}</p>
-          </div>
-        )}
+        <div ref={actionRef} className="sticky bottom-0 -mx-4">
+          {error && (
+            <div className="space-y-2 border-t border-wire bg-paper px-4 pt-3 pb-safe">
+              <p role="alert" className="text-small text-red" data-testid="ledger-error">{error}</p>
+            </div>
+          )}
+        </div>
         <Toast message={toast?.text ?? null} offset={error ? "sheet-action" : "none"} />
       </Sheet>
     </>
