@@ -150,6 +150,58 @@ describe("claimRandom / claimAllOpen", () => {
       expect((await claimAllOpen(tx, c(bb), { breakId: b.id, batchId: randomUUID() })).got).toEqual([3, 4, 5]);
     });
   });
+  it("says every line is taken when a random claim finds none open", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 3 });
+      await claimAllOpen(tx, c(a), { breakId: b.id, batchId: randomUUID() });
+      await expect(claimRandom(tx, c(await makeUser(tx)), { breakId: b.id, count: 1, batchId: randomUUID() })).rejects.toThrow(/^Every line is taken\.$/);
+    });
+  });
+});
+
+describe("batch retries (same batch id after a lost response)", () => {
+  const claimedEvents = async (tx: Tx, breakId: string) =>
+    tx.select().from(events).where(sql`${events.breakId} = ${breakId} and ${events.type} = 'line.claimed'`);
+  const owned = async (tx: Tx, breakId: string, userId: string) =>
+    (await lineRows(tx, breakId)).filter((l) => l.ownerId === userId).map((l) => l.number);
+
+  it("claimRandom returns the same lines and logs one event", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 10 });
+      const batchId = randomUUID();
+      const first = await claimRandom(tx, c(a), { breakId: b.id, count: 2, batchId });
+      const again = await claimRandom(tx, c(a), { breakId: b.id, count: 2, batchId });
+      expect(again.got).toEqual([...first.got].sort((x, y) => x - y));
+      expect(await owned(tx, b.id, a.id)).toEqual(again.got);
+      expect(await claimedEvents(tx, b.id)).toHaveLength(1);
+    });
+  });
+  it("claimNext returns the same lines and logs one event, even after the claim took every line", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 3, claimMode: "straight" });
+      const batchId = randomUUID();
+      expect(await claimNext(tx, c(a), { breakId: b.id, count: 3, batchId })).toEqual({ got: [1, 2, 3] });
+      // No line is open now; the retry still answers with the batch's lines instead of "Every line is taken."
+      expect(await claimNext(tx, c(a), { breakId: b.id, count: 3, batchId })).toEqual({ got: [1, 2, 3] });
+      expect(await claimedEvents(tx, b.id)).toHaveLength(1);
+    });
+  });
+  it("claimAllOpen returns the same lines and logs one event, with no caps check on the retry", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx); const bb = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 5 });
+      await claimLines(tx, c(bb), { breakId: b.id, numbers: [1], batchId: randomUUID() });
+      const batchId = randomUUID();
+      expect(await claimAllOpen(tx, c(a), { breakId: b.id, batchId })).toEqual({ got: [2, 3, 4, 5] });
+      await tx.update(breaks).set({ maxLinesPerUser: 1 }).where(sql`${breaks.id} = ${b.id}`);
+      expect(await claimAllOpen(tx, c(a), { breakId: b.id, batchId })).toEqual({ got: [2, 3, 4, 5] });
+      expect(await owned(tx, b.id, a.id)).toEqual([2, 3, 4, 5]);
+      expect((await claimedEvents(tx, b.id)).filter((e) => e.batchId === batchId)).toHaveLength(1);
+    });
+  });
 });
 
 describe("markSent / markPaid / recomputeFill", () => {
@@ -353,6 +405,48 @@ describe("addBonusLine", () => {
       await claimLines(tx, c(a), { breakId: b.id, numbers: [1], batchId: randomUUID() });
       await expect(addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: stranger.id })).rejects.toThrow(/holds a line/);
       await expect(addBonusLine(tx, c(a), { breakId: b.id, ownerId: a.id })).rejects.toBeInstanceOf(NotAuthorized);
+    });
+  });
+  it("never goes to the host, even when the host holds a line", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 20 });
+      await claimLines(tx, c(host, "host"), { breakId: b.id, numbers: [1], batchId: randomUUID() });
+      const p = addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: host.id });
+      await expect(p).rejects.toBeInstanceOf(InvalidInput);
+      await expect(p).rejects.toThrow("Bonus lines go to buyers, not the host");
+      expect((await lineRows(tx, b.id)).filter((l) => l.isBonus)).toHaveLength(0);
+    });
+  });
+  it("allows one bonus line below 10 lines", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 6 });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [2], batchId: randomUUID() });
+      expect(await addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: a.id })).toEqual({ number: 7 });
+      await expect(addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: a.id })).rejects.toBeInstanceOf(CapExceeded);
+    });
+  });
+  it("numbers the second bonus line N+2", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx); const bb = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 20 });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [3], batchId: randomUUID() });
+      await claimLines(tx, c(bb), { breakId: b.id, numbers: [4], batchId: randomUUID() });
+      expect(await addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: a.id })).toEqual({ number: 21 });
+      expect(await addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: bb.id })).toEqual({ number: 22 });
+    });
+  });
+  it("refuses minis and breaks that are neither open nor closed", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 20 });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [3], batchId: randomUUID() });
+      await tx.update(breaks).set({ kind: "mini" }).where(sql`${breaks.id} = ${b.id}`);
+      await expect(addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: a.id })).rejects.toThrow(/main breaks only/);
+      await tx.update(breaks).set({ kind: "main", status: "cancelled" }).where(sql`${breaks.id} = ${b.id}`);
+      await expect(addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: a.id })).rejects.toBeInstanceOf(NotOpen);
+      expect((await lineRows(tx, b.id)).filter((l) => l.isBonus)).toHaveLength(0);
     });
   });
 });

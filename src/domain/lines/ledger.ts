@@ -10,6 +10,9 @@ export function buyerStatus(b: { unpaid: readonly number[]; sent: readonly numbe
   return "unpaid";
 }
 
-export function compareLedger(a: { status: BuyerStatus; firstClaimAt: Date }, b: { status: BuyerStatus; firstClaimAt: Date }): number {
-  return LEDGER_ORDER[a.status] - LEDGER_ORDER[b.status] || a.firstClaimAt.getTime() - b.firstClaimAt.getTime();
+type LedgerKey = { status: BuyerStatus; firstClaimAt: Date; ownerId: string };
+
+/** Total order: status, then first claim, then owner id so equal claim times never reorder between refreshes. */
+export function compareLedger(a: LedgerKey, b: LedgerKey): number {
+  return LEDGER_ORDER[a.status] - LEDGER_ORDER[b.status] || a.firstClaimAt.getTime() - b.firstClaimAt.getTime() || a.ownerId.localeCompare(b.ownerId);
 }

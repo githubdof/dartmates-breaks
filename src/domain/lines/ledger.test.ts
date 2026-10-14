@@ -15,13 +15,20 @@ describe("compareLedger", () => {
   it("orders Sent, Unpaid, Overdue, Paid, then by first claim", () => {
     const t = (h: number) => new Date(Date.UTC(2026, 9, 13, h));
     const rows = [
-      { id: "paid", status: "paid" as const, firstClaimAt: t(1) },
-      { id: "late", status: "overdue" as const, firstClaimAt: t(2) },
-      { id: "unpaid-b", status: "unpaid" as const, firstClaimAt: t(5) },
-      { id: "unpaid-a", status: "unpaid" as const, firstClaimAt: t(4) },
-      { id: "sent", status: "sent" as const, firstClaimAt: t(9) },
+      { id: "paid", status: "paid" as const, firstClaimAt: t(1), ownerId: "u1" },
+      { id: "late", status: "overdue" as const, firstClaimAt: t(2), ownerId: "u2" },
+      { id: "unpaid-b", status: "unpaid" as const, firstClaimAt: t(5), ownerId: "u3" },
+      { id: "unpaid-a", status: "unpaid" as const, firstClaimAt: t(4), ownerId: "u4" },
+      { id: "sent", status: "sent" as const, firstClaimAt: t(9), ownerId: "u5" },
     ];
     expect([...rows].sort(compareLedger).map((r) => r.id)).toEqual(["sent", "unpaid-a", "unpaid-b", "late", "paid"]);
+  });
+  it("breaks a tie on equal status and first claim by owner id, whatever the input order", () => {
+    const at = new Date(Date.UTC(2026, 9, 13, 3));
+    const x = { status: "unpaid" as const, firstClaimAt: at, ownerId: "b-owner" };
+    const y = { status: "unpaid" as const, firstClaimAt: at, ownerId: "a-owner" };
+    expect([x, y].sort(compareLedger)).toEqual([y, x]);
+    expect([y, x].sort(compareLedger)).toEqual([y, x]);
   });
 });
 

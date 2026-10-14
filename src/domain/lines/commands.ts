@@ -7,16 +7,17 @@ import { CapExceeded, InvalidInput, LineTaken, NotAuthorized, NotOpen, OwnerChan
 import type { Caller } from "@/domain/types";
 import { bonusAllowance } from "@/domain/breaks/rules";
 import { assertCaps, isOverdue, validateNumbers } from "./rules";
+import { globalUnpaidCount } from "./queries";
 
 type BreakRow = typeof breaks.$inferSelect;
 
 /** postgres-js can't bind a JS array to `any(...)` inside a raw template with prepare:false; pass a Postgres array literal. */
 const intArray = (ns: number[]) => sql`${`{${ns.join(",")}}`}::int[]`;
 
-/** "Only 1 line is open." / "Only 3 lines are open." — no partial random or straight-fill claims. */
+/** "Every line is taken." / "Only 1 line is open." / "Only 3 lines are open." — no partial random or straight-fill claims. */
 function onlyOpen(n: number): LineTaken {
   const e = new LineTaken([]);
-  e.message = `Only ${n} ${n === 1 ? "line is" : "lines are"} open.`;
+  e.message = n === 0 ? "Every line is taken." : `Only ${n} ${n === 1 ? "line is" : "lines are"} open.`;
   return e;
 }
 
@@ -34,9 +35,17 @@ async function heldBy(tx: Tx, breakId: string, userId: string): Promise<number> 
 async function lockUser(tx: Tx, userId: string): Promise<void> {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"user:" + userId}))`);
 }
-async function globalUnpaid(tx: Tx, userId: string): Promise<number> {
-  const [r] = await tx.select({ n: sql<number>`count(*)::int` }).from(lines).where(sql`${lines.ownerId} = ${userId} and ${lines.paidAt} is null`);
-  return r.n;
+
+/**
+ * A retry of a random, next or take-the-rest claim (same batch id, e.g. after a lost response) returns the lines that
+ * batch already got, with no caps check and no new event. Runs before assertClaimable so a retry after the claim that
+ * closed the break still succeeds. Null when this batch claimed nothing yet.
+ */
+async function priorBatch(tx: Tx, breakId: string, callerId: string, batchId: string): Promise<{ got: number[] } | null> {
+  const got = (await tx.select({ number: lines.number }).from(lines)
+    .where(sql`${lines.breakId} = ${breakId} and ${lines.ownerId} = ${callerId} and ${lines.claimBatchId} = ${batchId}`)
+    .orderBy(lines.number)).map((r) => r.number);
+  return got.length > 0 ? { got } : null;
 }
 
 async function assign(tx: Tx, b: BreakRow, caller: Caller, numbers: number[], batchId: string): Promise<number[]> {
@@ -69,7 +78,7 @@ export async function claimLines(tx: Tx, caller: Caller, p: { breakId: string; n
     .where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} is null and ${lines.reservedForMiniId} is null and ${inArray(lines.number, wanted)}`)).map((r) => r.number);
   const isHost = caller.id === b.hostId;
   // A retry where the caller already holds everything requested claims nothing new, so no cap applies.
-  if (free.length > 0) assertCaps({ requested: free.length, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaid(tx, caller.id) });
+  if (free.length > 0) assertCaps({ requested: free.length, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaidCount(tx, caller.id) });
   const got = await assign(tx, b, caller, free, p.batchId);
   const taken = wanted.filter((n) => !got.includes(n));
   if (got.length === 0 && mine.length === 0) throw new LineTaken(taken);
@@ -81,11 +90,13 @@ export async function claimRandom(tx: Tx, caller: Caller, p: { breakId: string; 
   assertOnboarded(caller);
   const b = await lockBreak(tx, p.breakId);
   await lockUser(tx, caller.id); // lock order: break row -> user (advisory xact lock) -> lines
+  const prior = await priorBatch(tx, b.id, caller.id, p.batchId);
+  if (prior) return prior;
   assertClaimable(b);
   if (b.claimMode !== "pick_or_random") throw new InvalidInput("This break doesn't allow random lines");
   if (!Number.isInteger(p.count) || p.count < 1) throw new InvalidInput("Ask for at least one line");
   const isHost = caller.id === b.hostId;
-  assertCaps({ requested: p.count, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaid(tx, caller.id) });
+  assertCaps({ requested: p.count, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaidCount(tx, caller.id) });
   const picked = await tx.execute<{ number: number }>(sql`
     select number from lines where break_id = ${b.id} and owner_id is null and reserved_for_mini_id is null and number <= ${b.lineCount}
     order by random() limit ${p.count} for update skip locked`);
@@ -100,11 +111,13 @@ export async function claimNext(tx: Tx, caller: Caller, p: { breakId: string; co
   assertOnboarded(caller);
   const b = await lockBreak(tx, p.breakId);
   await lockUser(tx, caller.id); // lock order: break row -> user (advisory xact lock) -> lines
+  const prior = await priorBatch(tx, b.id, caller.id, p.batchId);
+  if (prior) return prior;
   assertClaimable(b);
   if (b.claimMode !== "straight") throw new InvalidInput("This break lets you pick your lines");
   if (!Number.isInteger(p.count) || p.count < 1) throw new InvalidInput("Ask for at least one line");
   const isHost = caller.id === b.hostId;
-  assertCaps({ requested: p.count, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaid(tx, caller.id) });
+  assertCaps({ requested: p.count, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaidCount(tx, caller.id) });
   const next = (await tx.select({ number: lines.number }).from(lines)
     .where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} is null and ${lines.reservedForMiniId} is null and ${lines.number} <= ${b.lineCount}`)
     .orderBy(lines.number).limit(p.count)).map((r) => r.number);
@@ -118,11 +131,13 @@ export async function claimAllOpen(tx: Tx, caller: Caller, p: { breakId: string;
   assertOnboarded(caller);
   const b = await lockBreak(tx, p.breakId);
   await lockUser(tx, caller.id); // lock order: break row -> user (advisory xact lock) -> lines
+  const prior = await priorBatch(tx, b.id, caller.id, p.batchId);
+  if (prior) return prior;
   assertClaimable(b);
   const open = (await tx.select({ number: lines.number }).from(lines).where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} is null and ${lines.reservedForMiniId} is null and ${lines.number} <= ${b.lineCount}`)).map((r) => r.number);
   if (open.length === 0) throw new LineTaken([]);
   const isHost = caller.id === b.hostId;
-  assertCaps({ requested: open.length, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaid(tx, caller.id) });
+  assertCaps({ requested: open.length, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaidCount(tx, caller.id) });
   const got = await assign(tx, b, caller, open, p.batchId);
   await finishClaim(tx, b, caller, got, p.batchId, p.ipHash);
   return { got };
@@ -228,6 +243,8 @@ export async function releaseForBuyer(tx: Tx, caller: Caller, p: { breakId: stri
 export async function addBonusLine(tx: Tx, caller: Caller, p: { breakId: string; ownerId: string }): Promise<{ number: number }> {
   assertOnboarded(caller);
   const b = await assertHostOf(tx, caller, p.breakId); // locks the break row first
+  // Bonus lines are free and skip the self-claim cap: the host never grants one to themselves.
+  if (p.ownerId === b.hostId) throw new InvalidInput("Bonus lines go to buyers, not the host");
   if (b.status !== "open" && b.status !== "filled") throw new NotOpen(b.status);
   if (b.kind !== "main") throw new InvalidInput("Bonus lines are for main breaks only");
   const [held] = await tx.select({ n: sql<number>`count(*)::int` }).from(lines)
