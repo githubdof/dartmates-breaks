@@ -193,6 +193,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     setStruck([]);
     setOutcome(null);
     setSelected(r.next);
+    // A changed request is a new batch: the kept id only ever retries the same request after a thrown action.
+    setBatchId(crypto.randomUUID());
     say(selectionAnnouncement(r.next.length, p.priceCents));
   };
 
@@ -350,7 +352,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         bar={bar}
         pending={pending}
         count={stepCount}
-        onCount={setCount}
+        onCount={(n) => { setCount(n); setBatchId(crypto.randomUUID()); }}
         onClaim={onClaim}
         signInHref={loginHref(p.breakId, selected)}
         onStep={onStep}
