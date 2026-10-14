@@ -4,8 +4,9 @@ import { getCaller } from "@/auth/session";
 import { DomainError } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
 import type { Tx } from "@/db/client";
+import { toFailure, type ActionResult } from "./action-result";
 
-export type ActionResult<T> = { ok: true; data: T } | { ok: false; code: string; message: string };
+export type { ActionResult, ActionFailure, FailureDetails, CapKind } from "./action-result";
 
 export async function action<T>(fn: (tx: Tx, caller: Caller) => Promise<T>): Promise<ActionResult<T>> {
   const caller = await getCaller();
@@ -17,7 +18,7 @@ export async function action<T>(fn: (tx: Tx, caller: Caller) => Promise<T>): Pro
     // Let NEXT_REDIRECT / NEXT_NOT_FOUND propagate. Note a redirect thrown inside `fn` rolls the
     // transaction back; callers should redirect after `action` returns instead.
     unstable_rethrow(e);
-    if (e instanceof DomainError) return { ok: false, code: e.code, message: e.message };
+    if (e instanceof DomainError) return toFailure(e);
     console.error(e);
     return { ok: false, code: "INTERNAL", message: "Something went wrong. Please try again." };
   }

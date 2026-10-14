@@ -63,7 +63,7 @@ describe("requestDraw", () => {
       const { host, b, a } = await filledBreak(tx);
       await requestDraw(tx, c(host, "host"), { breakId: b.id });
       const { unmarkPaid } = await import("@/domain/lines/commands");
-      await expect(unmarkPaid(tx, c(host, "host"), { breakId: b.id, number: 1 })).rejects.toThrow(/drawing/);
+      await expect(unmarkPaid(tx, c(host, "host"), { breakId: b.id, number: 1 })).rejects.toThrow(/The draw is running/);
       void a;
     });
   });
