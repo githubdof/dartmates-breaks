@@ -40,6 +40,19 @@ describe("lastBreakDefaults", () => {
   });
 });
 
+describe("lastBreakDefaults instructions", () => {
+  it("drops instructions generated from handles and keeps typed ones", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const b = await makeBreak(tx, { hostId: host.id });
+      await tx.execute(sql`update breaks set payment_instructions = 'Venmo @Jim. PayPal paypal.me/Jim. Leave the note blank.' where id = ${b.id}`);
+      expect((await lastBreakDefaults(tx, host.id))?.paymentInstructions).toBe("");
+      await tx.execute(sql`update breaks set payment_instructions = 'Zelle only. Leave the note blank.' where id = ${b.id}`);
+      expect((await lastBreakDefaults(tx, host.id))?.paymentInstructions).toBe("Zelle only. Leave the note blank.");
+    });
+  });
+});
+
 describe("listHostBreaks", () => {
   it("lists the host's breaks newest first, with paid and taken counts", async () => {
     await withTx(async (tx) => {

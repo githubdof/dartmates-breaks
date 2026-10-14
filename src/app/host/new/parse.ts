@@ -6,7 +6,7 @@ const schema = z.object({
   title: z.string().trim().min(1, "Add a title").max(120, "Title: at most 120 characters"),
   description: z.string().max(2000, "Description: at most 2000 characters"),
   lineCount: z.coerce.number({ error: "Lines: enter a number" }).int("Lines: whole numbers only").min(2, "Lines: at least 2").max(MAX_LINES, `Lines: at most ${MAX_LINES}`),
-  linePrice: z.coerce.number({ error: "Price per line: enter an amount" }).positive("Price per line: more than $0").max(10000, "Price per line: at most $10,000"),
+  linePrice: z.coerce.number({ error: "Price per line: enter an amount" }).positive("Price per line: more than $0").min(0.01, "Price per line: at least $0.01").max(10000, "Price per line: at most $10,000"),
   paymentWindowHours: z.coerce.number({ error: "Hours to pay: enter a number" }).int("Hours to pay: whole hours").min(1, "Hours to pay: at least 1").max(336, "Hours to pay: at most 336"),
   maxLinesPerUser: z.coerce.number({ error: "Lines per person: enter a number" }).int("Lines per person: whole numbers").min(1, "Lines per person: at least 1").max(MAX_LINES, `Lines per person: at most ${MAX_LINES}`).nullable(),
   claimMode: z.enum(CLAIM_MODES, { error: "Choose how buyers get lines" }),

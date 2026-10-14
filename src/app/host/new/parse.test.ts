@@ -29,6 +29,7 @@ describe("parseComposer", () => {
   it("names the field in every error", () => {
     expect(parseComposer(form({ ...base, title: " " }))).toEqual({ ok: false, error: "Add a title" });
     expect(parseComposer(form({ ...base, linePrice: "0" }))).toEqual({ ok: false, error: "Price per line: more than $0" });
+    expect(parseComposer(form({ ...base, linePrice: "0.001" }))).toEqual({ ok: false, error: "Price per line: at least $0.01" });
     expect(parseComposer(form({ ...base, linePrice: "" }))).toEqual({ ok: false, error: "Price per line: enter an amount" });
     expect(parseComposer(form({ ...base, lineCount: "51" }))).toEqual({ ok: false, error: "Lines: at most 50" });
     expect(parseComposer(form({ ...base, lineCount: "1" }))).toEqual({ ok: false, error: "Lines: at least 2" });

@@ -53,7 +53,10 @@ export async function lastBreakDefaults(tx: Tx, hostId: string): Promise<LastBre
     lineCount: breaks.lineCount, linePriceCents: breaks.linePriceCents, paymentWindowHours: breaks.paymentWindowHours,
     maxLinesPerUser: breaks.maxLinesPerUser, claimMode: breaks.claimMode, paymentInstructions: breaks.paymentInstructions,
   }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"))).orderBy(desc(breaks.createdAt), desc(breaks.id)).limit(1);
-  return r ?? null;
+  if (!r) return null;
+  // Instructions built from handles ("Venmo @x. Leave the note blank.") go stale when a handle changes: carry only typed ones.
+  const generated = /^(Venmo \S+\. )?(PayPal paypal\.me\/\S+\. )?Leave the note blank\.$/.test(r.paymentInstructions.trim());
+  return { ...r, paymentInstructions: generated ? "" : r.paymentInstructions };
 }
 
 export async function hostPaymentHandles(tx: Tx, hostId: string): Promise<{ venmo?: string; paypal?: string }> {

@@ -118,3 +118,15 @@ test("focusing the ledger search hides the claim bar (D§5.1)", async ({ browser
   await host.getByPlaceholder("Name, handle or amount").focus();
   await expect(host.locator("[data-sticky-bar]")).toBeHidden();
 });
+
+test("Enter in the composer never opens a break", async ({ browser }) => {
+  const host = await signedIn(browser, `en${run}@e2e.test`, "host");
+  await host.goto("/host/new");
+  await host.fill("input[name=title]", "Enter safety");
+  await host.fill("input[name=prize1]", "Chronos 22g");
+  await host.fill("input[name=venmo]", "@e2e-host");
+  await host.locator("input[name=title]").press("Enter");
+  await host.waitForURL(/\/b\//);
+  await expect(host.getByTestId("composer-open")).toHaveCount(0);
+  await expect(host.getByText("Draft", { exact: true }).first()).toBeVisible();
+});
