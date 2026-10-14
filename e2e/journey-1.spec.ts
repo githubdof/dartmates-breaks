@@ -50,8 +50,9 @@ test("host opens, buyers claim and pay, host draws, result verifies", async ({ b
   await host.getByTestId("run-draw").click();
   await host.getByTestId("finish-draw").click();
   await host.getByTestId("ledger-result").click();
-  await expect(host.getByTestId("winner")).toBeVisible({ timeout: 15_000 });
+  await expect(host.getByTestId("winner")).toContainText("Top spot: line", { timeout: 15_000 }); // server-rendered (text is present even while the deal hides it)
   await expect(host.getByTestId("verify-status")).toContainText("Checked"); // runs on load
+  await host.getByTestId("verify-fold").click();
   await host.getByTestId("verify-run").click();
   await expect(host.getByTestId("verify-status")).toContainText("Checked");
 });

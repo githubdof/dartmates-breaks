@@ -1,21 +1,36 @@
-import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { db } from "@/db/client";
 import { getDrawResult } from "@/domain/draws/queries";
-import { Reveal } from "./reveal";
-import { Verify } from "./verify";
-import { Share } from "./share";
 import { QUICKNET } from "@/crypto/beacon";
 import type { PublicInputs } from "@/crypto/verify";
 import { env } from "@/lib/env";
 import { isUuid } from "@/lib/is-uuid";
+import { formatDateTime } from "@/lib/time";
+import { viewerZone } from "@/lib/zone";
+import { shareText } from "@/lib/share-text";
+import { CopyButton } from "@/components/copy-button";
+import { LocalTime } from "@/components/local-time";
+import { dealGateScript } from "./reveal-plan";
+import { Reveal } from "./reveal";
+import { Verify } from "./verify";
 
-export default async function ResultPage({ params }: { params: Promise<{ id: string }> }) {
+type Props = { params: Promise<{ id: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
+  if (!isUuid(id)) return {};
+  const res = await db.transaction((tx) => getDrawResult(tx, id));
+  return res ? { title: `${res.breakTitle}: result`, description: `Top spot: line ${res.ranking[0]}. Check the draw yourself.` } : {};
+}
+
+export default async function ResultPage({ params }: Props) {
   const { id } = await params;
   if (!isUuid(id)) notFound();
   const res = await db.transaction((tx) => getDrawResult(tx, id));
   if (!res) notFound();
-  const handleOf = new Map(res.entries.map((e) => [e.number, e.handleAtDraw]));
+  const handleOf: Record<number, string> = Object.fromEntries(res.entries.map((e) => [e.number, e.handleAtDraw]));
   const publicInputs: PublicInputs = {
     breakId: id,
     version: res.draw.algorithmVersion,
@@ -27,49 +42,42 @@ export default async function ResultPage({ params }: { params: Promise<{ id: str
     resultHash: res.draw.resultHash,
     seedCommitment: res.seedCommitment,
   };
-  const winnerLine = res.ranking[0];
-  const shareText = `${res.breakTitle} — closed and drawn. Winner: @${handleOf.get(winnerLine)} (line ${winnerLine}). Check the draw: ${env().APP_URL}/b/${id}/result`;
+  const top = res.ranking[0];
+  const share = shareText({ state: "ran", topLine: top, topHandle: handleOf[top] || null, url: `${env().APP_URL}/b/${id}/result` });
+  const relayUrl = `${QUICKNET.relays[0]}/${QUICKNET.chainHash}/public/${res.draw.beaconRound}`;
+  const zone = await viewerZone();
+  const when = (d: Date) => <LocalTime iso={d.toISOString()} fallback={formatDateTime(d, zone.tz, zone.labelled)} kind="datetime" />;
+
   return (
-    <main className="mx-auto max-w-md p-4">
-      <h1 className="text-xl font-semibold">{res.breakTitle} — result</h1>
+    <main className="mx-auto max-w-[600px] px-4 pb-8 sm:px-6">
+      {/* Before first paint: hide the final state while the deal is about to play (no spoiler flash). */}
+      <script dangerouslySetInnerHTML={{ __html: dealGateScript(id) }} />
       {res.draw.beaconSignature === "fake" && (
-        <p role="alert" className="mt-2 rounded border border-red-600 bg-red-50 p-2 text-sm font-medium text-red-700">Fake beacon — development only</p>
+        <div role="alert" data-testid="fake-beacon" className="mt-4 rounded-card border border-red bg-card px-4 py-3 text-small text-red">
+          Test draw. This used stand-in randomness, so it proves nothing. Real draws never show this box.
+        </div>
       )}
-      <Reveal ranking={res.ranking} handleOf={Object.fromEntries(handleOf)} awards={res.awards} />
-      <p className="mt-2 text-xs text-neutral-600">
-        Drawn {res.draw.createdAt.toLocaleString()} · Requested by @{res.hostHandle}
-        {res.request.onBehalfNote ? ` (run by admin: ${res.request.onBehalfNote})` : ""}
+      <p className="mt-4 text-small"><Link href={`/b/${id}`} className="underline underline-offset-4">{res.breakTitle}</Link></p>
+      <Reveal breakId={id} ranking={res.ranking} handleOf={handleOf} awards={res.awards} />
+      <p className="mt-4 max-w-[65ch] text-small text-ink-2">
+        Ran {when(res.draw.createdAt)}. Requested by {res.hostHandle ? `@${res.hostHandle}` : "the host"}
+        {res.request.onBehalfNote ? `, run by an admin: ${res.request.onBehalfNote}` : ""}.
       </p>
-      <Verify inputs={publicInputs} />
-      <Share text={shareText} />
-      <details className="mt-4 text-xs">
-        <summary className="cursor-pointer">Entries</summary>
-        <ol className="mt-2 list-decimal pl-5">
-          {res.entries.map((e) => (
-            <li key={e.number}>Line {e.number}: {e.handleAtDraw}{e.isBonus ? " (bonus)" : ""}</li>
-          ))}
+      <div className="mt-4"><CopyButton value={share} label="Share" copiedLabel="Copied" testId="share" /></div>
+      <Verify inputs={publicInputs} seed={res.draw.seed} relayUrl={relayUrl} />
+      <details className="mt-3 rounded-card border border-wire bg-card">
+        <summary className="flex min-h-11 cursor-pointer items-center px-4 font-semibold">Entries</summary>
+        <ol className="space-y-1 px-4 pb-4 text-small">
+          {res.entries.map((e) => <li key={e.number}>Line {e.number}: {e.handleAtDraw ? `@${e.handleAtDraw}` : "unknown"}{e.isBonus ? ", bonus" : ""}</li>)}
         </ol>
       </details>
-      <details className="mt-2 text-xs">
-        <summary className="cursor-pointer">Technical details</summary>
-        <dl className="mt-2 space-y-1 break-all">
-          <dt>Commitment (shown before the break opened)</dt><dd><code>{res.seedCommitment}</code></dd>
-          <dt>Revealed secret (base64)</dt><dd><code>{res.draw.secret}</code></dd>
-          <dt>Beacon</dt>
-          <dd>
-            drand quicknet round {res.draw.beaconRound} —{" "}
-            <a className="underline" href={`${QUICKNET.relays[0]}/${QUICKNET.chainHash}/public/${res.draw.beaconRound}`} target="_blank" rel="noreferrer">view on a public relay</a>
-            <br /><code>{res.draw.beaconRandomness}</code>
-          </dd>
-          <dt>Seed</dt><dd><code>{res.draw.seed}</code></dd>
-          <dt>Result hash</dt><dd><code>{res.draw.resultHash}</code></dd>
-          <dt>Algorithm</dt>
-          <dd>breaks-seed-v{res.draw.algorithmVersion}: HMAC-SHA256 stream, Fisher–Yates with rejection sampling. <Link className="underline" href="/legal/draw">How it works</Link></dd>
-        </dl>
-        <p className="mt-2">Machine-readable: <a className="underline" href={`/b/${id}/result.json`}>result.json</a></p>
-      </details>
       {res.voided.length > 0 && (
-        <p className="mt-4 text-xs text-amber-700">{res.voided.length} earlier draw(s) voided by admin — see technical details on each.</p>
+        <section className="mt-4 text-small">
+          <h2 className="font-semibold">Earlier draws, voided by an admin</h2>
+          <ul className="mt-1 space-y-1 text-ink-2">
+            {res.voided.map((v, i) => <li key={i}>{when(v.createdAt)}: {v.voidReason ?? "no reason recorded"}</li>)}
+          </ul>
+        </section>
       )}
     </main>
   );

@@ -74,3 +74,8 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Result page: while <html data-deal> is set (pre-paint script), the final state waits under the deal layer. */
+[data-deal] [data-reveal-final] {
+  visibility: hidden;
+}

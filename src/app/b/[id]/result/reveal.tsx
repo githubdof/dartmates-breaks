@@ -1,34 +1,97 @@
 "use client";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/button";
+import { dealDelays, DEAL_MS, placeLabel, seenKey, topSpotText } from "./reveal-plan";
 
 type Award = { rank: number; winnerHandle: string | null; itemName: string | null };
 
-export function Reveal({ ranking, handleOf, awards }: { ranking: number[]; handleOf: Record<number, string>; awards: Award[] }) {
-  const [shown, setShown] = useState(0); // reveal worst → best
+/**
+ * The final state is server-rendered and readable without JavaScript. The deal is a decorative,
+ * aria-hidden layer played once per viewer (Replay afterwards); reduced motion skips it.
+ */
+export function Reveal({ breakId, ranking, handleOf, awards }: { breakId: string; ranking: number[]; handleOf: Record<number, string>; awards: Award[] }) {
+  const [dealing, setDealing] = useState(false);
+  const [lifted, setLifted] = useState(false);
+  const [canReplay, setCanReplay] = useState(false);
+  const [ready, setReady] = useState(false);
+  const top = ranking[0];
+
   useEffect(() => {
-    if (shown < ranking.length) {
-      const t = setTimeout(() => setShown(shown + 1), Math.max(60, 1500 / ranking.length));
-      return () => clearTimeout(t);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let seen = true;
+    try {
+      seen = window.localStorage.getItem(seenKey(breakId)) === "1";
+      window.localStorage.setItem(seenKey(breakId), "1");
+    } catch {
+      seen = true; // storage blocked: never force the animation
     }
-  }, [shown, ranking.length]);
-  const done = shown >= ranking.length;
+    setCanReplay(true);
+    if (!seen && !reduced) setDealing(true);
+    setReady(true);
+  }, [breakId]);
+
+  // The deal layer (if any) is committed now: lift the pre-paint hide set by dealGateScript.
+  useEffect(() => {
+    if (ready) delete document.documentElement.dataset.deal;
+  }, [ready]);
+
+  useEffect(() => {
+    if (!dealing) return;
+    setLifted(false);
+    const lift = window.setTimeout(() => setLifted(true), DEAL_MS);
+    const end = window.setTimeout(() => setDealing(false), DEAL_MS + 700);
+    return () => { window.clearTimeout(lift); window.clearTimeout(end); };
+  }, [dealing]);
+
+  const delays = dealDelays(ranking.length);
+  const winner = awards.find((a) => a.rank === 1);
+  const others = awards.filter((a) => a.rank > 1);
+  const handle = (n: number) => (handleOf[n] ? `@${handleOf[n]}` : "");
+
   return (
-    <div className="mt-3">
-      {done && ranking.length > 0 && (
-        <div data-testid="winner" className="rounded bg-green-700 p-4 text-white">
-          <div className="text-sm">Winner</div>
-          <div className="text-2xl font-bold">{handleOf[ranking[0]]} — line {ranking[0]}</div>
-          {awards.filter((a) => a.rank > 1).map((a) => (
-            <div key={a.rank} className="text-sm">#{a.rank}: {a.winnerHandle}{a.itemName ? ` — ${a.itemName}` : ""}</div>
-          ))}
-        </div>
+    <section aria-labelledby="top-spot" className="relative mt-2">
+      <div className="relative z-20 flex min-h-11 justify-end">
+        {dealing
+          ? <Button variant="text" onClick={() => setDealing(false)} data-testid="reveal-skip">Skip</Button>
+          : canReplay && <Button variant="text" onClick={() => setDealing(true)} data-testid="reveal-replay">Replay the draw</Button>}
+      </div>
+      <div data-reveal-final>
+      <h1 id="top-spot" data-testid="winner" className="font-condensed text-display font-semibold">{topSpotText(top)}</h1>
+      <p className="text-headline font-semibold">{handle(top)}</p>
+      {winner?.itemName && <p className="text-ink-2">Wins {winner.itemName}.</p>}
+      {winner && !winner.itemName && <p className="text-ink-2">Picks one of the prize choices.</p>}
+      <div aria-hidden className="mt-4 flex size-28 items-center justify-center bg-green font-condensed text-[56px] leading-none font-semibold text-card">{top}</div>
+      {others.length > 0 && (
+        <ul className="mt-4 space-y-1">
+          {others.map((a) => <li key={a.rank}>{placeLabel(a.rank)} place: {a.winnerHandle ? `@${a.winnerHandle}` : "unknown"}{a.itemName ? `, ${a.itemName}` : ""}.</li>)}
+        </ul>
       )}
-      <ol className="mt-2 text-sm" reversed>
-        {ranking.slice(ranking.length - shown).reverse().map((n, i) => (
-          <li key={n} value={ranking.length - i}>Line {n} · {handleOf[n]}</li>
+      <h2 className="mt-6 text-headline font-semibold">Full order</h2>
+      <ol className="mt-2 divide-y divide-wire-2 rounded-card border border-wire bg-card">
+        {ranking.map((n, i) => (
+          <li key={n} className="flex min-h-11 items-center gap-3 px-4 text-small">
+            <span className="w-20 text-ink-2">{placeLabel(i + 1)}</span>
+            <span className="w-16 font-condensed text-grid font-semibold tabular">Line {n}</span>
+            <span className="min-w-0 truncate">{handle(n)}</span>
+          </li>
         ))}
       </ol>
-      {!done && <button onClick={() => setShown(ranking.length)} className="mt-2 text-xs underline">Skip</button>}
-    </div>
+      </div>
+      {dealing && (
+        <div aria-hidden className="absolute inset-0 z-10 bg-paper pt-12">
+          <div className="flex flex-wrap content-start gap-1">
+            {ranking.map((n, i) => (
+              <span
+                key={n}
+                className={`flex size-11 items-center justify-center border border-wire-strong font-condensed text-grid font-semibold ${i === 0 && lifted ? "animate-lift bg-green text-card" : "animate-deal bg-card text-ink"}`}
+                style={{ animationDelay: i === 0 && lifted ? "0ms" : `${delays[i]}ms` }}
+              >
+                {n}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
