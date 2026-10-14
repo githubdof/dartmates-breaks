@@ -31,3 +31,12 @@ export async function listOpenBreaks(tx: Tx, limit = 50) {
     .from(breaks).innerJoin(users, eq(users.id, breaks.hostId))
     .where(sql`${breaks.status} in ('open','filled','drawing')`).orderBy(sql`${breaks.openedAt} desc`).limit(limit);
 }
+
+/** Interim trust figures (the reputation plan replaces them): drawn breaks and member-since. */
+export async function hostTrust(tx: Tx, hostId: string): Promise<{ breaksRun: number; since: Date }> {
+  const [r] = await tx.select({
+    since: users.createdAt,
+    breaksRun: sql<number>`(select count(*)::int from breaks b where b.host_id = ${hostId}::uuid and b.status = 'drawn')`,
+  }).from(users).where(eq(users.id, hostId));
+  return { breaksRun: r?.breaksRun ?? 0, since: r?.since ?? new Date(0) };
+}
