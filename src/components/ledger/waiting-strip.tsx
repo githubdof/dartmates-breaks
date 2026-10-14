@@ -119,8 +119,13 @@ export function WaitingStrip({ text, rows }: { text: string | null; rows: Waitin
             />
           ))}
         </ul>
-        {error && <p role="alert" className="mt-3 text-small text-red">{error}</p>}
-        <Toast message={toast?.text ?? null} offset="none" />
+        {/* As in the per-break ledger, failures show in a sticky bottom action, where the host can see them from any row. */}
+        {error && (
+          <div className="sticky bottom-0 -mx-4 space-y-2 border-t border-wire bg-paper px-4 pt-3 pb-safe">
+            <p role="alert" className="text-small text-red" data-testid="ledger-error">{error}</p>
+          </div>
+        )}
+        <Toast message={toast?.text ?? null} offset={error ? "sheet-action" : "none"} />
       </Sheet>
     </>
   );
