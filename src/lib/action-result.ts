@@ -1,11 +1,12 @@
-import { CapExceeded, LineTaken, type DomainError } from "@/domain/errors";
+import { CapExceeded, LineTaken, type CapName, type DomainError } from "@/domain/errors";
 
 export type CapKind = "per_person" | "host" | "global" | "bonus";
 export type FailureDetails = { taken?: number[]; limit?: number; capKind?: CapKind };
 export type ActionFailure = { ok: false; code: string; message: string; details?: FailureDetails };
 export type ActionResult<T> = { ok: true; data: T } | ActionFailure;
 
-const CAP_KIND: Record<string, CapKind> = {
+/** Exhaustive over CapName: a new cap kind fails to compile here instead of silently dropping `capKind`. */
+const CAP_KIND: Record<CapName, CapKind> = {
   "lines per person": "per_person",
   "host-held lines": "host",
   "open unpaid claims": "global",

@@ -20,6 +20,7 @@ describe("toFailure", () => {
     expect(toFailure(new NotOpen("filled"))).toEqual({ ok: false, code: "NOT_OPEN", message: "This break is closed. Every line is taken and paid." });
     expect(toFailure(new NotOpen("drawing")).message).toBe("The draw is running. The result is in about a minute.");
     expect(toFailure(new NotOpen("draft")).message).toBe("This break isn't open yet.");
+    expect(toFailure(new NotOpen("open")).message).toBe("This break is already open.");
   });
   it("keeps a message a command rewrote after construction", () => {
     const e = new LineTaken([]);

@@ -4,6 +4,7 @@ import { joinAnd, plural } from "@/lib/list";
 export function notOpenMessage(s: string): string {
   switch (s) {
     case "draft": return "This break isn't open yet.";
+    case "open": return "This break is already open.";
     case "filled": return "This break is closed. Every line is taken and paid.";
     case "drawing": return "The draw is running. The result is in about a minute.";
     case "drawn": return "This break has run. See the result.";
@@ -18,7 +19,10 @@ export function takenMessage(numbers: number[]): string {
   return `Lines ${joinAnd(numbers)} were just taken. Pick others.`;
 }
 
-export function capMessage(kind: string, limit: number): string {
+/** The four caps a claim or bonus can hit; `toFailure` maps each to a wire `CapKind`. */
+export type CapName = "lines per person" | "host-held lines" | "open unpaid claims" | "bonus lines";
+
+export function capMessage(kind: CapName, limit: number): string {
   const lines = `${limit} ${plural(limit, "line", "lines")}`;
   switch (kind) {
     case "lines per person": return `You can hold ${lines} in this break.`;
@@ -40,6 +44,6 @@ export class NotFilled extends DomainError { constructor() { super("NOT_FILLED",
 export class AlreadyDrawn extends DomainError { constructor() { super("ALREADY_DRAWN", "This break has already been drawn", 409); } }
 export class LineTaken extends DomainError { constructor(public numbers: number[]) { super("LINE_TAKEN", takenMessage(numbers), 409); } }
 export class OwnerChanged extends DomainError { constructor() { super("OWNER_CHANGED", "This line changed hands; refresh and try again", 409); } }
-export class CapExceeded extends DomainError { constructor(public kind: string, public limit: number) { super("CAP_EXCEEDED", capMessage(kind, limit), 409); } }
+export class CapExceeded extends DomainError { constructor(public kind: CapName, public limit: number) { super("CAP_EXCEEDED", capMessage(kind, limit), 409); } }
 export class InvalidInput extends DomainError { constructor(msg: string) { super("INVALID_INPUT", msg, 400); } }
 export class BeaconUnavailable extends DomainError { constructor() { super("BEACON_UNAVAILABLE", "Waiting for the public beacon — try again in a moment", 503); } }
