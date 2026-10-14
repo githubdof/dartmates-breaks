@@ -27,7 +27,7 @@ export function AccountForm({ handle, displayName, paymentName, locked }: Props)
         <label htmlFor="paymentName" className="block text-small font-semibold">Name on your payments (optional)</label>
         <input id="paymentName" name="paymentName" maxLength={60} autoComplete="name" defaultValue={state?.values?.paymentName ?? paymentName}
           aria-describedby="payment-name-help" className={field} />
-        <p id="payment-name-help" className="text-small text-ink-2">If your Venmo or PayPal shows another name, hosts can match your payment by it. Only hosts you buy from see it.</p>
+        <p id="payment-name-help" className="text-small text-ink-2">If your Venmo or PayPal shows another name, hosts can match your payment by it. Only hosts you buy from, and Breaks admins, see it.</p>
       </div>
       <Button type="submit" disabled={pending} data-testid="account-save">Save changes</Button>
       <p role="status" className="text-small">{state?.saved ? "Saved." : ""}</p>
