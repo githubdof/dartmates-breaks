@@ -29,10 +29,20 @@ export const LAST_SEEN_EVERY = "5 minutes";
 
 /**
  * Upsert the signed-in user; a promotion to admin also appends `user.role_changed`. The root layout calls this on
- * every request, so an existing row is written only when last_seen_at is older than LAST_SEEN_EVERY, the email
- * changed, or a promotion is due; otherwise it is only read.
+ * every request, so without a promotion the row is read first and returned as is (no write, no row lock) unless
+ * last_seen_at is older than LAST_SEEN_EVERY or the email changed; only then, or for a new user or a promotion, does
+ * the upsert run, and its `setWhere` still skips the write if a concurrent request just made it.
  */
 export async function syncUser(tx: Tx, id: string, email: string, promote: boolean): Promise<SessionUser> {
+  const cols = { id: users.id, email: users.email, role: users.role, handle: users.handle, displayName: users.displayName, ageConfirmedAt: users.ageConfirmedAt, bannedAt: users.bannedAt };
+  if (!promote) {
+    const [cur] = await tx.select({ ...cols, due: sql<boolean>`${users.lastSeenAt} is null or ${users.lastSeenAt} < now() - ${LAST_SEEN_EVERY}::interval or ${users.email} <> ${email}` })
+      .from(users).where(sql`${users.id} = ${id}`);
+    if (cur) {
+      const { due, ...row } = cur;
+      if (!due) return row;
+    }
+  }
   // A promotion needs the previous role: ensure the row exists, then lock it so concurrent
   // sign-ins record exactly one role change.
   let prev: { role: string } | undefined;
@@ -41,7 +51,6 @@ export async function syncUser(tx: Tx, id: string, email: string, promote: boole
     [prev] = await tx.select({ role: users.role }).from(users).where(sql`${users.id} = ${id}`).for("update");
   }
   const set = promote ? { role: "admin" } : {};
-  const cols = { id: users.id, email: users.email, role: users.role, handle: users.handle, displayName: users.displayName, ageConfirmedAt: users.ageConfirmedAt, bannedAt: users.bannedAt };
   const due = promote
     ? sql`${users.lastSeenAt} is null or ${users.lastSeenAt} < now() - ${LAST_SEEN_EVERY}::interval or ${users.email} <> excluded.email or ${users.role} <> 'admin'`
     : sql`${users.lastSeenAt} is null or ${users.lastSeenAt} < now() - ${LAST_SEEN_EVERY}::interval or ${users.email} <> excluded.email`;
