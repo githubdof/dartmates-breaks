@@ -14,6 +14,14 @@ describe("navItems", () => {
     expect(browse.match("/host")).toBe(false);
     expect(host.match("/host/new")).toBe(true);
   });
+  it("points Browse at the feed, and keeps it active on the landing page and profiles", () => {
+    const [browse] = navItems(null);
+    expect(browse.href).toBe("/breaks");
+    expect(browse.match("/")).toBe(true);
+    expect(browse.match("/breaks")).toBe(true);
+    expect(browse.match("/h/jim")).toBe(true);
+    expect(browse.match("/host")).toBe(false);
+  });
 });
 
 describe("showTabBar", () => {

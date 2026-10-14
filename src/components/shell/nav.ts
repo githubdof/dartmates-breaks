@@ -2,9 +2,9 @@ import type { Role } from "@/domain/types";
 
 export type NavItem = { href: string; label: string; match: (path: string) => boolean };
 
-/** Plan A destinations. Plan B adds "My lines" (/me) and points Browse at /breaks. */
+/** Browse (the feed), and Host for hosts and admins. My lines joins with /me (Task 11). */
 export function navItems(role: Role | null): NavItem[] {
-  const items: NavItem[] = [{ href: "/", label: "Browse", match: (p) => p === "/" || p.startsWith("/breaks") }];
+  const items: NavItem[] = [{ href: "/breaks", label: "Browse", match: (p) => p === "/" || p.startsWith("/breaks") || p.startsWith("/h/") }];
   if (role === "host" || role === "admin") items.push({ href: "/host", label: "Host", match: (p) => p.startsWith("/host") });
   return items;
 }

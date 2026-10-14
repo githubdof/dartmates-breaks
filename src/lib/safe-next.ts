@@ -11,3 +11,15 @@ export function safeNext(raw: unknown): string {
   }
   return raw;
 }
+
+/** Where sign-in and onboarding go next: the safe `next` when one was given, else the feed (a member's home). */
+export function afterSignIn(raw: unknown): string {
+  const next = safeNext(raw);
+  return next === "/" ? "/breaks" : next;
+}
+
+/** After a code or link is verified: an unfinished account sets up first, keeping `next` (and any ?pick=). */
+export function signedInTarget(onboarded: boolean, raw: unknown): string {
+  const next = afterSignIn(raw);
+  return onboarded ? next : `/onboarding?next=${encodeURIComponent(next)}`;
+}

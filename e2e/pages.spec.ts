@@ -97,3 +97,29 @@ test("a host profile shows public figures, the open breaks and a past count, and
   await expect(visitor.getByText("e2e-host")).toHaveCount(0);
   expect((await visitor.goto("/h/nobody_here_x"))?.status()).toBe(404);
 });
+
+test("the landing page leads with the newest ran break and links to the feed", async ({ browser }) => {
+  // nh/nb, not lh/lb: those are the layout spec's host and buyer prefixes, and both files key handles on Date.now().
+  const host = await as(browser, `nh${run}@e2e.test`, "host");
+  const url = await composeBreak(host, { title: `Hero ${run}`, lineCount: 2 });
+  const buyer = await as(browser, `nb${run}@e2e.test`);
+  await buyer.goto(url);
+  await buyer.getByTestId("claim-rest").click();
+  await expect(buyer.getByTestId("pay-amount")).toContainText("$10");
+  await host.reload();
+  await host.getByTestId("host-tools").click();
+  await host.getByTestId("ledger-paid").click();
+  await host.getByTestId("run-draw").click();
+  await host.getByTestId("finish-draw").click();
+  await expect(host.getByTestId("ledger-result")).toBeVisible();
+
+  const visitor = await (await browser.newContext()).newPage();
+  await visitor.goto("/");
+  const hero = visitor.getByTestId("hero");
+  await expect(hero).toContainText(`Hero ${run}`);
+  await expect(hero).toContainText("Anyone can check the draw.");
+  await expect(hero).toHaveAttribute("href", `${new URL(url).pathname}/result`);
+  await expect(visitor.getByText("Hosting on Facebook now? Breaks is invite-only for hosts.", { exact: true })).toBeVisible();
+  await visitor.getByTestId("browse-breaks").click();
+  await expect(visitor).toHaveURL(/\/breaks$/);
+});
