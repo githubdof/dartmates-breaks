@@ -68,6 +68,8 @@ export function WaitingStrip({ text, rows }: { text: string | null; rows: Waitin
         return;
       }
       if (r.ok) { onOk(); return; }
+      // Refused: catch the props up now, as the per-break ledger does (the frozen list keeps its rows in place).
+      router.refresh();
       setError(r.message);
     });
 

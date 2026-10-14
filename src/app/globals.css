@@ -46,6 +46,10 @@
   dialog::backdrop {
     background: rgb(0 0 0 / 0.4);
   }
+  /* A sheet covers the tab bar: toasts inside it sit on the sheet's own bottom edge. */
+  dialog {
+    --tab-offset: 0px;
+  }
   /* The claim bar is fixed: reserve its real height (StickyBar measures it into --bar-total, safe area included)
      so the last content and any focused cell stay visible even when the bar grows to two rows. */
   body:has([data-sticky-bar]) {
