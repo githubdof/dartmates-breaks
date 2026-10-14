@@ -39,3 +39,16 @@ test("a host saves a draft and edits it; nobody else can see either page", async
   expect((await stranger.goto(url))?.status()).toBe(404);
   expect((await stranger.goto(`/host/${id}/edit`))?.status()).toBe(404);
 });
+
+test("the handle check answers signed-in callers with taken or free, and nobody else", async ({ browser }) => {
+  const taken = await as(browser, `hk${run}@e2e.test`);
+  const me = await as(browser, `hm${run}@e2e.test`);
+  const ask = async (h: string) => (await me.request.get(`/api/handle?h=${encodeURIComponent(h)}`)).json();
+  expect(await ask(`hk${run}`)).toEqual({ state: "taken" });
+  expect(await ask(`HK${run}`)).toEqual({ state: "taken" });
+  expect(await ask(`hm${run}`)).toEqual({ state: "free" });
+  expect(await ask("admin")).toEqual({ state: "invalid", message: "That handle is reserved" });
+  const anon = await (await browser.newContext()).request.get(`/api/handle?h=hk${run}`);
+  expect(anon.status()).toBe(401);
+  await taken.close();
+});

@@ -7,6 +7,12 @@ export function ipBucket(ip: string): string {
   if (!s.includes(":")) return s;
   const mapped = s.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
   if (mapped) return mapped[1];
+  const hex = s.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/); // the same mapping written in hex
+  if (hex) {
+    const hi = parseInt(hex[1], 16);
+    const lo = parseInt(hex[2], 16);
+    return `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+  }
   const parts = s.split("::");
   if (parts.length > 2) return s;
   const left = parts[0] ? parts[0].split(":") : [];
