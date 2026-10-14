@@ -8,6 +8,7 @@ import type { Caller } from "@/domain/types";
 import { commitment } from "@/crypto/commit";
 import { newSecret, encryptSecret } from "@/crypto/secrets";
 import { validateDraftInput, validateDraftForOpen, isClaimMode, type ClaimMode } from "./rules";
+import { hostPaymentHandles } from "./queries";
 
 export type CreateDraftInput = {
   title: string; description?: string; lineCount: number; linePriceCents: number;
@@ -93,10 +94,18 @@ export async function updateDraft(tx: Tx, caller: Caller, breakId: string, input
   const claimMode = input.claimMode ?? "pick_or_random";
   if (!isClaimMode(claimMode)) throw new InvalidInput("Choose how buyers get lines");
   let paymentInstructions = input.paymentInstructions?.trim() ?? "";
-  if (input.paymentHandles) {
-    const handles = cleanHandles(input.paymentHandles);
-    await savePaymentHandles(tx, b.hostId, handles);
-    if (!paymentInstructions) paymentInstructions = defaultPaymentInstructions(handles);
+  if (caller.id === b.hostId) {
+    if (input.paymentHandles) {
+      const handles = cleanHandles(input.paymentHandles);
+      await savePaymentHandles(tx, b.hostId, handles);
+      if (!paymentInstructions) paymentInstructions = defaultPaymentInstructions(handles);
+    }
+  } else if (!paymentInstructions) {
+    // An admin editing someone else's draft never writes the host's profile: build the instructions from the handles
+    // supplied, or from the host's stored ones when the form left them blank, so a blank form erases nothing.
+    const supplied = cleanHandles(input.paymentHandles ?? {});
+    const handles = supplied.venmo || supplied.paypal ? supplied : await hostPaymentHandles(tx, b.hostId);
+    paymentInstructions = defaultPaymentInstructions(handles);
   }
   await tx.update(breaks).set({
     title: input.title.trim(), description: input.description ?? "", lineCount: input.lineCount, linePriceCents: input.linePriceCents,
@@ -107,7 +116,7 @@ export async function updateDraft(tx: Tx, caller: Caller, breakId: string, input
   await tx.delete(prizes).where(eq(prizes.breakId, b.id));
   await tx.delete(breakItems).where(eq(breakItems.breakId, b.id));
   await insertPrizes(tx, b.id, input);
-  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.updated", payload: { claimMode } });
+  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.updated", payload: { claimMode, lineCount: input.lineCount, linePriceCents: input.linePriceCents } });
   return { breakId: b.id };
 }
 

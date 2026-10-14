@@ -158,6 +158,38 @@ describe("updateDraft", () => {
       expect((await getBreakPage(tx, breakId))!.items.map((i) => i.name).sort()).toEqual(["Chronos 22g", "Chronos 24g"]);
     });
   });
+  it("lets an admin edit a host's draft without touching the host's payment handles", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const admin = await makeUser(tx, { role: "admin" });
+      const asAdmin: Caller = { id: admin.id, role: "admin", onboarded: true, banned: false };
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, paymentHandles: { venmo: "Jim" } });
+      const [before] = await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${host.id}`);
+      // A blank handles form: the instructions come from the host's stored handles, and nothing is erased.
+      await updateDraft(tx, asAdmin, breakId, { ...input, title: "Fixed by admin", paymentHandles: { venmo: "", paypal: "" } });
+      let page = (await getBreakPage(tx, breakId))!;
+      expect(page.break).toMatchObject({ title: "Fixed by admin", paymentInstructions: "Venmo @Jim. Leave the note blank." });
+      // Supplied handles shape the instructions but are not saved to the host's profile.
+      await updateDraft(tx, asAdmin, breakId, { ...input, paymentHandles: { paypal: "Other" } });
+      page = (await getBreakPage(tx, breakId))!;
+      expect(page.break.paymentInstructions).toBe("PayPal paypal.me/Other. Leave the note blank.");
+      const [after] = await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${host.id}`);
+      expect(after.paymentHandles).toEqual({ venmo: "@Jim" });
+      expect(after.paymentHandlesChangedAt).toEqual(before.paymentHandlesChangedAt);
+      const [adminProfile] = await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${admin.id}`);
+      expect(adminProfile).toBeUndefined();
+    });
+  });
+  it("saves the host's own payment handles when the host edits", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, paymentHandles: { venmo: "Jim" } });
+      await updateDraft(tx, asHost(host), breakId, { ...input, paymentHandles: { venmo: "Jim2", paypal: "JimR" } });
+      const [p] = await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${host.id}`);
+      expect(p.paymentHandles).toEqual({ venmo: "@Jim2", paypal: "JimR" });
+      const [ev] = await tx.select().from(events).where(sql`${events.breakId} = ${breakId} and ${events.type} = 'break.updated'`);
+      expect(ev.payload).toMatchObject({ lineCount: 12, linePriceCents: 2000 });
+    });
+  });
   it("validates like createDraft", async () => {
     await withTx(async (tx) => {
       const host = await makeUser(tx, { role: "host" });

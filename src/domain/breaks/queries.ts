@@ -99,11 +99,13 @@ export type DraftForEdit = {
 
 /** A break's editable fields and prize names by rank. The caller decides who may see it (drafts: the host and admins). */
 export async function draftForEdit(tx: Tx, breakId: string): Promise<DraftForEdit | null> {
-  const page = await getBreakPage(tx, breakId);
-  if (!page) return null;
-  const nameOf = new Map(page.items.map((i) => [i.id, i.name]));
-  const names = (rank: number) => page.prizes.flatMap((p) => (p.rank === rank && p.itemId && nameOf.has(p.itemId) ? [nameOf.get(p.itemId)!] : []));
-  const b = page.break;
+  const [b] = await tx.select().from(breaks).where(eq(breaks.id, breakId));
+  if (!b) return null;
+  // Only the prize names: no lines, no holders.
+  const rows = await tx.select({ rank: prizes.rank, name: breakItems.name }).from(prizes)
+    .innerJoin(breakItems, eq(breakItems.id, prizes.itemId)).where(eq(prizes.breakId, breakId))
+    .orderBy(asc(prizes.rank), asc(breakItems.createdAt), asc(breakItems.id));
+  const names = (rank: number) => rows.filter((r) => r.rank === rank).map((r) => r.name);
   return {
     id: b.id, hostId: b.hostId, status: b.status, title: b.title, description: b.description, lineCount: b.lineCount, linePriceCents: b.linePriceCents,
     paymentWindowHours: b.paymentWindowHours, maxLinesPerUser: b.maxLinesPerUser, claimMode: b.claimMode, paymentInstructions: b.paymentInstructions,
