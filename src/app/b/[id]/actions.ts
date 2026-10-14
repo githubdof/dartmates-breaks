@@ -17,7 +17,8 @@ async function ipHash() {
   const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
   return ip ? hashIp(ip) : undefined;
 }
-const done = (breakId: string) => revalidatePath(`/b/${breakId}`);
+/** A buyer's lines changed: the break page and /me both show them. */
+const done = (breakId: string) => { revalidatePath(`/b/${breakId}`); revalidatePath("/me"); };
 
 export async function claim(breakId: string, numbers: number[], batchId: string) {
   const v = parseInput(z.object({ breakId: uuid, numbers: nums, batchId: uuid }), { breakId, numbers, batchId });

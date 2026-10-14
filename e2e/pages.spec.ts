@@ -123,3 +123,37 @@ test("the landing page leads with the newest ran break and links to the feed", a
   await visitor.getByTestId("browse-breaks").click();
   await expect(visitor).toHaveURL(/\/breaks$/);
 });
+
+test("My lines shows what a buyer holds, reopens the pay block, and gives lines back", async ({ browser }) => {
+  const host = await as(browser, `mh${run}@e2e.test`, "host");
+  const url = await composeBreak(host, { title: `Mine ${run}`, lineCount: 6 });
+  const buyer = await as(browser, `mb${run}@e2e.test`);
+  await expect(buyer.getByRole("link", { name: "My lines" })).toBeVisible(); // members get the tab bar now
+  await buyer.goto(url);
+  await buyer.getByTestId("cell-2").click();
+  await buyer.getByTestId("cell-3").click();
+  await buyer.getByTestId("claim-submit").click();
+  await expect(buyer.getByTestId("pay-sheet")).toBeVisible();
+  await buyer.getByRole("button", { name: "I'll pay later" }).click();
+
+  await buyer.goto("/me"); // the break page hides the tab bar (one bar at the bottom)
+  const card = buyer.getByTestId("my-break").filter({ hasText: `Mine ${run}` });
+  await expect(card.getByTestId("my-state")).toHaveText("Unpaid.");
+  await expect(card.getByTestId("my-owed")).toContainText("You owe $10.");
+  await card.getByTestId("how-to-pay").click();
+  await expect(buyer.getByTestId("pay-amount")).toHaveText("Send $10 to @e2e-host");
+  await buyer.getByTestId("pay-sent").click();
+  await expect(buyer.getByTestId("pay-sheet")).toBeHidden();
+  await expect(card.getByTestId("my-state")).toHaveText(`Sent. mh${run} will tick you off when it arrives.`);
+
+  await buyer.goto(url);
+  await buyer.getByTestId("cell-5").click();
+  await buyer.getByTestId("claim-submit").click();
+  await buyer.getByRole("button", { name: "I'll pay later" }).click();
+  await buyer.goto("/me");
+  await card.getByTestId("give-back").click();
+  await expect(card).toContainText("Give back line 5? It goes back on the board.");
+  await card.getByTestId("give-back-yes").click();
+  await expect(card.getByTestId("my-note")).toHaveText("Gave back line 5.");
+  await expect(card.getByTestId("my-owed")).toHaveCount(0);
+});

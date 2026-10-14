@@ -2,14 +2,14 @@ import { describe, it, expect } from "vitest";
 import { navItems, showHeaderNav, showTabBar, signInHref } from "./nav";
 
 describe("navItems", () => {
-  it("shows Host only to hosts and admins", () => {
+  it("shows My lines to signed-in viewers and Host only to hosts and admins", () => {
     expect(navItems(null).map((i) => i.label)).toEqual(["Browse"]);
-    expect(navItems("member").map((i) => i.label)).toEqual(["Browse"]);
-    expect(navItems("host").map((i) => i.label)).toEqual(["Browse", "Host"]);
-    expect(navItems("admin").map((i) => i.label)).toEqual(["Browse", "Host"]);
+    expect(navItems("member").map((i) => i.label)).toEqual(["Browse", "My lines"]);
+    expect(navItems("host").map((i) => i.label)).toEqual(["Browse", "My lines", "Host"]);
+    expect(navItems("admin").map((i) => i.label)).toEqual(["Browse", "My lines", "Host"]);
   });
   it("marks the active destination", () => {
-    const [browse, host] = navItems("host");
+    const [browse, , host] = navItems("host");
     expect(browse.match("/")).toBe(true);
     expect(browse.match("/host")).toBe(false);
     expect(host.match("/host/new")).toBe(true);
@@ -31,9 +31,10 @@ describe("showTabBar", () => {
     expect(showTabBar("/", "host")).toBe(true);
     expect(showTabBar("/host/new", "admin")).toBe(true);
   });
-  it("hides a one-item bar (members and signed-out viewers only have Browse in Plan A)", () => {
-    expect(showTabBar("/", "member")).toBe(false);
+  it("hides a one-item bar: signed-out viewers only have Browse", () => {
     expect(showTabBar("/", null)).toBe(false);
+    expect(showTabBar("/", "member")).toBe(true);
+    expect(showTabBar("/me", "member")).toBe(true);
   });
 });
 
@@ -41,7 +42,7 @@ describe("showHeaderNav", () => {
   it("shows the header nav only with two or more destinations", () => {
     expect(showHeaderNav("host")).toBe(true);
     expect(showHeaderNav("admin")).toBe(true);
-    expect(showHeaderNav("member")).toBe(false);
+    expect(showHeaderNav("member")).toBe(true);
     expect(showHeaderNav(null)).toBe(false);
   });
 });
