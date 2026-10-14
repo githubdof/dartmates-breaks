@@ -110,7 +110,7 @@ export function PaySheet(p: Props) {
                 />
               )}
               {copyFails > 0 && copyValue && (
-                <input ref={fieldRef} readOnly value={copyValue} aria-label={p.handles.venmo ? "Handle to copy" : "PayPal link to copy"} onFocus={(e) => e.currentTarget.select()} className="h-11 w-full rounded-input border border-wire-strong bg-card px-3 font-mono text-small" />
+                <input ref={fieldRef} readOnly value={copyValue} aria-label={p.handles.venmo ? "Handle to copy" : "PayPal link to copy"} onFocus={(e) => e.currentTarget.select()} className="h-11 w-full rounded-input border border-wire-strong bg-card px-3 font-mono text-body" />
               )}
               {links.venmo && (
                 <a href={links.venmo.app} onClick={(e) => { e.preventDefault(); openPayLink(links.venmo!); }} className={buttonClass("secondary", true)}>Pay with Venmo</a>

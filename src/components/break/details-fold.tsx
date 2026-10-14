@@ -1,4 +1,4 @@
-import { CopyButton } from "@/components/copy-button";
+import { CopyField } from "@/components/copy-field";
 
 type Props = {
   description: string;
@@ -27,18 +27,9 @@ export function DetailsFold({ description, prizes, perPerson, picking, closes, h
         {(handles.venmo || handles.paypal) && (
           <div className="space-y-2">
             <h3 className="text-small font-semibold">How to pay {hostName}</h3>
-            {handles.venmo && (
-              <div className="flex items-center justify-between gap-3">
-                <span className="min-w-0 truncate">Venmo <b>{handles.venmo}</b></span>
-                <CopyButton value={handles.venmo} label="Copy" />
-              </div>
-            )}
-            {handles.paypal && (
-              <div className="flex items-center justify-between gap-3">
-                <span className="min-w-0 truncate">PayPal <b>paypal.me/{handles.paypal}</b></span>
-                <CopyButton value={`paypal.me/${handles.paypal}`} label="Copy" />
-              </div>
-            )}
+            {/* Through CopyField: a blocked clipboard leaves the handle selected for a long press. */}
+            {handles.venmo && <CopyField label="Venmo" value={handles.venmo} />}
+            {handles.paypal && <CopyField label="PayPal" value={`paypal.me/${handles.paypal}`} />}
           </div>
         )}
         {instructions && <p className="max-w-[65ch] whitespace-pre-line text-small text-ink-2">{instructions}</p>}
