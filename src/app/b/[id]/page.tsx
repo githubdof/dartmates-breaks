@@ -23,7 +23,7 @@ import { DetailsFold } from "@/components/break/details-fold";
 import { BreakInteractive } from "@/components/break/break-interactive";
 import { commitmentShort } from "@/components/break/pay-copy";
 import { onboardingHref, parsePick } from "@/components/break/selection";
-import { closesText, leftText, payWithinText, perPersonText, pickingText, prizeLines, trustText, youHaveText } from "@/components/break/frame-copy";
+import { closesText, hostLabel, leftText, perPersonText, pickingText, prizeLines, smallLineText, trustText, youHaveText } from "@/components/break/frame-copy";
 import { HostTools } from "@/components/ledger/host-tools";
 import type { LedgerRowView } from "@/components/ledger/ledger-view";
 
@@ -58,7 +58,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
   const grid = shapeGrid(page, caller ? { id: caller.id, role: caller.role, globalUnpaid } : null, now);
 
   const status = b.status as BreakStatus;
-  const hostName = page.host.displayName ?? page.host.handle ?? "the host";
+  const hostName = hostLabel(page.host);
   const hostRef = page.host.handle ? `@${page.host.handle}` : hostName;
   const handles = page.host.paymentHandles;
   const payee = handles.venmo ?? (handles.paypal ? `paypal.me/${handles.paypal}` : hostName);
@@ -111,7 +111,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
         lineCount={b.lineCount}
         title={b.title}
         shareUrl={url}
-        smallLine={`${payWithinText(b.paymentWindowHours)} Hosted by ${hostRef}, ${trustText(trust)}.`}
+        smallLine={smallLineText(status, b.paymentWindowHours, hostRef, trustText(trust))}
         cells={grid.cells}
         counts={grid.counts}
         signedIn={!!caller}
@@ -139,7 +139,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
               rows={ledgerRows}
               counts={{ paid: grid.counts.paid, taken: grid.counts.taken + grid.counts.sent, total: b.lineCount }}
               bonus={{ used: grid.cells.filter((c) => c.bonus).length, max: bonusAllowance(b.lineCount) }}
-              hostName={page.host.displayName ?? (page.host.handle ? `@${page.host.handle}` : "The host")}
+              hostName={hostName}
             />
           )}
         </div>

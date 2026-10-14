@@ -5,6 +5,16 @@ import { formatMonthYear } from "@/lib/time";
 export const leftText = (open: number, total: number) => `${open} of ${total} left`;
 export const payWithinText = (hours: number) => `Pay within ${hours} ${plural(hours, "hour", "hours")}.`;
 
+/** The one name for the host on a break page: display name, else "@handle", else "the host". */
+export const hostLabel = (h: { displayName: string | null; handle: string | null }) =>
+  h.displayName ?? (h.handle ? `@${h.handle}` : "the host");
+
+/** "Pay within 24 hours. Hosted by @jim, new host." The pay window only means something while the break is open. */
+export function smallLineText(status: string, paymentWindowHours: number, hostRef: string, trust: string): string {
+  const hosted = `Hosted by ${hostRef}, ${trust}.`;
+  return status === "open" ? `${payWithinText(paymentWindowHours)} ${hosted}` : hosted;
+}
+
 export function youHaveText(numbers: readonly number[]): string | null {
   if (numbers.length === 0) return null;
   return numbers.length === 1 ? `You have line ${numbers[0]}.` : `You have ${joinAnd(numbers)}.`;

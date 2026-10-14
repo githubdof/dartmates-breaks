@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { closesText, leftText, orList, payWithinText, perPersonText, pickingText, prizeLines, trustText, youHaveText } from "./frame-copy";
+import { closesText, hostLabel, leftText, orList, payWithinText, perPersonText, pickingText, prizeLines, smallLineText, trustText, youHaveText } from "./frame-copy";
 
 describe("frame copy", () => {
   it("counts and deadlines read as sentences, no middle dots", () => {
@@ -33,5 +33,16 @@ describe("frame copy", () => {
     expect(perPersonText(1)).toBe("Up to 1 line per person.");
     expect(perPersonText(5)).toBe("Up to 5 lines per person.");
     expect(closesText("Jim")).toBe("When every line is paid, the break closes and Jim runs the draw.");
+  });
+  it("names the host one way everywhere", () => {
+    expect(hostLabel({ displayName: "Jim", handle: "jim" })).toBe("Jim");
+    expect(hostLabel({ displayName: null, handle: "jim" })).toBe("@jim");
+    expect(hostLabel({ displayName: null, handle: null })).toBe("the host");
+  });
+  it("shows the pay window only while the break is open", () => {
+    expect(smallLineText("open", 24, "@jim", "new host")).toBe("Pay within 24 hours. Hosted by @jim, new host.");
+    for (const s of ["draft", "filled", "drawing", "drawn", "cancelled"]) {
+      expect(smallLineText(s, 24, "@jim", "new host")).toBe("Hosted by @jim, new host.");
+    }
   });
 });
