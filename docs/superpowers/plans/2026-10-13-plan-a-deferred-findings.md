@@ -71,6 +71,16 @@ triaged by the whole-branch reviewer and ruled by the controller.
 - **Photo storage plan:** photos per break; the grid thumbnail stays the
   fallback.
 
+## Open bug reports (not yet reproduced)
+
+- **Safari, pay sheet mini cells:** the owner saw the numbers in the small
+  cells under "You have lines …" cut off after claiming and paying. Not
+  reproduced in Playwright WebKit at iPhone 13, iPhone SE or desktop sizes,
+  nor in Chromium. The cell has no overflow clipping and the number sits on
+  a white chip over the hatch. Candidate fix if a screenshot confirms it:
+  32 px mini cells and a number without `leading-none`. Owner will capture
+  a screenshot next time it happens.
+
 ## Pre-deploy notes for the human
 
 - Migration `0001_claim_mode.sql` adds `breaks.claim_mode` with a CHECK and a
