@@ -25,7 +25,7 @@ export type Bar =
   | { kind: "none" }
   | { kind: "message"; text: string }
   | { kind: "result" }
-  | { kind: "selection"; summary: string; action: "claim" | "sign-in"; label: string }
+  | { kind: "selection"; summary: string; action: "claim" | "sign-in"; label: string; disabled: boolean; hint: string | null }
   | { kind: "owe"; summary: string }
   | { kind: "idle"; note: string | null; stepper: { max: number; action: "random" | "next" } | null; lastN: number | null; hint: string | null; signIn: boolean };
 
@@ -33,7 +33,8 @@ export function limitText(a: Allowance): string {
   const lines = `${a.limit} ${plural(a.limit, "line", "lines")}`;
   switch (a.reason) {
     case "per_person": return `You can hold ${lines} in this break.`;
-    case "host": return `Hosts can hold ${lines} in their own break.`;
+    // A break under 10 lines: 10% rounds down to 0. Never say "0 lines".
+    case "host": return a.limit === 0 ? "Hosts cannot hold lines in a break under 10 lines." : `Hosts can hold ${lines} in their own break.`;
     case "global": return `You can have ${a.limit} unpaid lines across breaks. Pay for some first.`;
   }
 }
@@ -52,13 +53,26 @@ export function claimBar(i: BarInput): Bar {
     case "drawn": return { kind: "result" };
     case "cancelled": return { kind: "message", text: `Cancelled by ${i.hostName}. Your refund comes from ${i.hostName}, not Breaks.` };
     case "open": break;
+    default: {
+      const _exhaustive: never = i.status;
+      return _exhaustive;
+    }
   }
   const n = i.selected.length;
   if (n > 0) {
     const lines = `${n} ${plural(n, "line", "lines")}`;
-    return { kind: "selection", summary: selectionSummary(i.selected, i.priceCents), action: i.signedIn ? "claim" : "sign-in", label: i.signedIn ? `Claim ${lines}` : `Sign in to claim ${lines}` };
+    // Guard: a selection over the allowance cannot be claimed (assertCaps would refuse); say which cap.
+    // Signed out, the button only signs in; the selection is trimmed against the real allowance after sign-in.
+    const over = i.signedIn && n > i.allowance.remaining;
+    return {
+      kind: "selection", summary: selectionSummary(i.selected, i.priceCents),
+      action: i.signedIn ? "claim" : "sign-in", label: i.signedIn ? `Claim ${lines}` : `Sign in to claim ${lines}`,
+      disabled: over, hint: over ? limitText(i.allowance) : null,
+    };
   }
   if (i.owe && i.owe.numbers.length > 0) return { kind: "owe", summary: `You owe ${formatMoney(i.owe.cents)} to ${i.payee}` };
+  // The break stays open until every line is paid: with nothing left to claim, say what it is waiting on.
+  if (i.openCount === 0) return { kind: "message", text: "Every line is taken. Waiting on payments." };
   const note = i.justSent ? `Sent. ${i.hostName} will tick you off when it arrives.` : null;
   if (!i.signedIn) {
     // Signed out with nothing selected still gets a way in: on straight fill it is the only one.

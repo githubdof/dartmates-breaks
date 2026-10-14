@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { GridCell } from "@/domain/breaks/grid";
 import {
-  cellNote, loginHref, onboardingHref, outcomeText, parsePick, reconcileSelection, selectionAnnouncement, selectionSummary, takenAnnouncement, toggleSelection,
+  cellNote, isSelectable, loginHref, onboardingHref, outcomeText, parsePick, reconcileSelection, selectionAnnouncement, selectionSummary, takenAnnouncement, toggleSelection,
 } from "./selection";
 
 const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, ...o });
@@ -12,7 +12,7 @@ describe("parsePick and reconcileSelection", () => {
     const picked = parsePick("7,abc,4,7,0,99,12", 50);
     expect(picked).toEqual([4, 7, 12]);
     const cells = board(50, { 4: { state: "taken" } });
-    expect(reconcileSelection(picked, cells)).toEqual({ kept: [7, 12], dropped: [4] });
+    expect(reconcileSelection(picked, cells, 5)).toEqual({ selected: [7, 12], taken: [4], overLimit: [] });
   });
   it("accepts repeated params and nothing", () => {
     expect(parsePick(["3", "5"], 10)).toEqual([3, 5]);
@@ -21,17 +21,46 @@ describe("parsePick and reconcileSelection", () => {
   });
   it("announces lines others took, and drops my own optimistic lines silently (Review Focus 2)", () => {
     const cells = board(20, { 7: { state: "taken" }, 12: { state: "taken", mine: true } });
-    expect(reconcileSelection([7, 12], cells)).toEqual({ kept: [], dropped: [7] });
-    expect(reconcileSelection([3, 99], cells)).toEqual({ kept: [3], dropped: [] });
+    expect(reconcileSelection([7, 12], cells, 5)).toEqual({ selected: [], taken: [7], overLimit: [] });
+    expect(reconcileSelection([3, 99], cells, 5)).toEqual({ selected: [3], taken: [], overLimit: [] });
+  });
+  it("drops bonus and reserved lines silently: they are not selectable, but nobody took them", () => {
+    const cells = board(20, { 5: { bonus: true }, 6: { state: "reserved" } });
+    expect(reconcileSelection([3, 5, 6], cells, 5)).toEqual({ selected: [3], taken: [], overLimit: [] });
+  });
+  it("a pick link over the limit keeps the lowest open lines; a taken pick does not cost an open one", () => {
+    const cells = board(50, { 4: { state: "taken" } });
+    const picked = parsePick("4,7,12,20,31", 50);
+    expect(reconcileSelection(picked, cells, 2)).toEqual({ selected: [7, 12], taken: [4], overLimit: [20, 31] });
+  });
+  it("a refresh that shrinks the allowance trims the highest numbers", () => {
+    expect(reconcileSelection([3, 9, 14], board(20), 1)).toEqual({ selected: [3], taken: [], overLimit: [9, 14] });
+  });
+  it("a host whose allowance is 0 following a pick link keeps nothing", () => {
+    expect(reconcileSelection(parsePick("2,5", 8), board(8), 0)).toEqual({ selected: [], taken: [], overLimit: [2, 5] });
+  });
+});
+
+describe("isSelectable", () => {
+  it("is open and not bonus", () => {
+    expect(isSelectable(cell(1))).toBe(true);
+    expect(isSelectable(cell(1, { bonus: true }))).toBe(false);
+    expect(isSelectable(cell(1, { state: "reserved" }))).toBe(false);
+    expect(isSelectable(cell(1, { state: "taken" }))).toBe(false);
   });
 });
 
 describe("toggleSelection", () => {
   it("adds, removes and stops at the allowance", () => {
-    expect(toggleSelection([3], 1, 5)).toEqual({ next: [1, 3], blocked: false });
-    expect(toggleSelection([1, 3], 3, 5)).toEqual({ next: [1], blocked: false });
-    expect(toggleSelection([1, 3], 4, 2)).toEqual({ next: [1, 3], blocked: true });
-    expect(toggleSelection([1, 3], 3, 2)).toEqual({ next: [1], blocked: false });
+    expect(toggleSelection([3], cell(1), 5)).toEqual({ next: [1, 3], blocked: false });
+    expect(toggleSelection([1, 3], cell(3), 5)).toEqual({ next: [1], blocked: false });
+    expect(toggleSelection([1, 3], cell(4), 2)).toEqual({ next: [1, 3], blocked: true });
+    expect(toggleSelection([1, 3], cell(3), 2)).toEqual({ next: [1], blocked: false });
+  });
+  it("never adds a line that is not selectable, and still lets an over-limit selection shrink", () => {
+    expect(toggleSelection([1], cell(4, { state: "taken" }), 5)).toEqual({ next: [1], blocked: false });
+    expect(toggleSelection([1], cell(4, { bonus: true }), 5)).toEqual({ next: [1], blocked: false });
+    expect(toggleSelection([1, 3, 5], cell(5), 1)).toEqual({ next: [1, 3], blocked: false });
   });
 });
 

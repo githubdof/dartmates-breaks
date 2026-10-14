@@ -9,10 +9,27 @@ const base: BarInput = {
 
 describe("claimBar (design §5.4 table)", () => {
   it("signed out with a selection: sign in to claim", () => {
-    expect(claimBar({ ...base, signedIn: false, selected: [7, 12] })).toEqual({ kind: "selection", summary: "Lines 7, 12, $10", action: "sign-in", label: "Sign in to claim 2 lines" });
+    expect(claimBar({ ...base, signedIn: false, selected: [7, 12] })).toEqual({ kind: "selection", summary: "Lines 7, 12, $10", action: "sign-in", label: "Sign in to claim 2 lines", disabled: false, hint: null });
   });
   it("signed in with a selection: claim", () => {
-    expect(claimBar({ ...base, selected: [7] })).toEqual({ kind: "selection", summary: "Line 7, $5", action: "claim", label: "Claim 1 line" });
+    expect(claimBar({ ...base, selected: [7] })).toEqual({ kind: "selection", summary: "Line 7, $5", action: "claim", label: "Claim 1 line", disabled: false, hint: null });
+  });
+  it("guard: a selection over the allowance cannot be claimed and says which cap", () => {
+    expect(claimBar({ ...base, selected: [3, 7, 9], allowance: { remaining: 2, reason: "per_person", limit: 5 } })).toEqual({
+      kind: "selection", summary: "Lines 3, 7, 9, $15", action: "claim", label: "Claim 3 lines", disabled: true, hint: "You can hold 5 lines in this break.",
+    });
+    expect(claimBar({ ...base, selected: [2], allowance: { remaining: 0, reason: "host", limit: 0 } })).toMatchObject({
+      disabled: true, hint: "Hosts cannot hold lines in a break under 10 lines.",
+    });
+    expect(claimBar({ ...base, selected: [3, 7], allowance: { remaining: 2, reason: "per_person", limit: 5 } })).toMatchObject({ disabled: false, hint: null });
+  });
+  it("every line taken but the break still open: say it is waiting on payments, in every mode", () => {
+    const full = { kind: "message", text: "Every line is taken. Waiting on payments." };
+    expect(claimBar({ ...base, openCount: 0 })).toEqual(full);
+    expect(claimBar({ ...base, openCount: 0, claimMode: "pick_only" })).toEqual(full);
+    expect(claimBar({ ...base, openCount: 0, claimMode: "straight" })).toEqual(full);
+    expect(claimBar({ ...base, openCount: 0, signedIn: false })).toEqual(full);
+    expect(claimBar({ ...base, openCount: 0, owe: { cents: 500, numbers: [4] } })).toMatchObject({ kind: "owe" });
   });
   it("nothing selected: pick for me, bounded by open lines and the allowance", () => {
     expect(claimBar(base)).toEqual({ kind: "idle", note: null, stepper: { max: 5, action: "random" }, lastN: null, hint: null, signIn: false });

@@ -3,7 +3,11 @@ import { formatMoney } from "@/lib/money";
 import { joinAnd, plural } from "@/lib/list";
 import { cellStateWord } from "@/components/grid/cell-label";
 
-/** `?pick=4,7,11` → sorted, unique, in-range line numbers. Anything else is ignored. */
+/**
+ * `?pick=4,7,11` → sorted, unique, in-range line numbers. Anything else is ignored.
+ * Not trimmed to the allowance here: which picks are still open is known only in `reconcileSelection`, which trims,
+ * so a taken pick never costs the buyer an open one.
+ */
 export function parsePick(raw: string | string[] | undefined, lineCount: number): number[] {
   const s = Array.isArray(raw) ? raw.join(",") : raw ?? "";
   const out = new Set<number>();
@@ -16,23 +20,38 @@ export function parsePick(raw: string | string[] | undefined, lineCount: number)
   return [...out].sort((a, b) => a - b);
 }
 
-/** After fresh server props: keep open lines; announce lines someone else took; drop my own optimistic lines quietly. */
-export function reconcileSelection(selected: readonly number[], cells: readonly GridCell[]): { kept: number[]; dropped: number[] } {
+/** A line a buyer can select: open and not a bonus line. */
+export const isSelectable = (c: Pick<GridCell, "state" | "bonus">): boolean => c.state === "open" && !c.bonus;
+
+/**
+ * After `?pick=` or fresh server props: keep selectable lines, then trim to the allowance, dropping the highest numbers first.
+ * `taken`: lines someone else took (announce "was just taken"). `overLimit`: open lines dropped for the allowance (show the limit hint).
+ * My own optimistic lines, bonus and reserved lines, and numbers not on the board drop silently.
+ */
+export function reconcileSelection(
+  selected: readonly number[],
+  cells: readonly GridCell[],
+  remaining: number,
+): { selected: number[]; taken: number[]; overLimit: number[] } {
   const byNumber = new Map(cells.map((c) => [c.number, c]));
-  const kept: number[] = [];
-  const dropped: number[] = [];
-  for (const n of selected) {
+  const open: number[] = [];
+  const taken: number[] = [];
+  for (const n of [...new Set(selected)].sort((a, b) => a - b)) {
     const c = byNumber.get(n);
-    if (c && c.state === "open" && !c.bonus) kept.push(n);
-    else if (c && !c.mine) dropped.push(n);
+    if (!c) continue;
+    if (isSelectable(c)) open.push(n);
+    else if (c.state !== "open" && c.state !== "reserved" && !c.mine) taken.push(n);
   }
-  return { kept, dropped };
+  const cap = Math.max(0, remaining);
+  return { selected: open.slice(0, cap), taken, overLimit: open.slice(cap) };
 }
 
-export function toggleSelection(selected: readonly number[], n: number, remaining: number): { next: number[]; blocked: boolean } {
-  if (selected.includes(n)) return { next: selected.filter((x) => x !== n), blocked: false };
+/** A tap on a cell. Deselecting always works (also when a refresh left the selection over the allowance). */
+export function toggleSelection(selected: readonly number[], c: GridCell, remaining: number): { next: number[]; blocked: boolean } {
+  if (selected.includes(c.number)) return { next: selected.filter((x) => x !== c.number), blocked: false };
+  if (!isSelectable(c)) return { next: [...selected], blocked: false };
   if (selected.length >= remaining) return { next: [...selected], blocked: true };
-  return { next: [...selected, n].sort((a, b) => a - b), blocked: false };
+  return { next: [...selected, c.number].sort((a, b) => a - b), blocked: false };
 }
 
 /** "Lines 7, 12, 31, $15"; past three: "Lines 7, 12, 31 +2, $25". */
