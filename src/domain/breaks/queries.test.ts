@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
-import { makeUser, makeBreak, openBreakWithLines } from "../../../tests/helpers/fixtures";
+import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../tests/helpers/fixtures";
 import { breaks } from "@/db/schema";
 import { hostTrust, lastBreakDefaults, listHostBreaks } from "./queries";
 import { randomUUID } from "node:crypto";
-import { claimLines, markPaid } from "@/domain/lines/commands";
+import { claimLines, markPaid, addBonusLine } from "@/domain/lines/commands";
 import type { Caller } from "@/domain/types";
 
 describe("hostTrust", () => {
@@ -66,6 +66,35 @@ describe("listHostBreaks", () => {
       expect(rows.map((r) => r.id)).toEqual([newer.id, older.id]);
       expect(rows[1]).toMatchObject({ status: "open", lineCount: 4, paid: 1, taken: 1 });
       expect(rows[0]).toMatchObject({ status: "draft", paid: 0, taken: 0 });
+    });
+  });
+});
+
+describe("listHostBreaks scope", () => {
+  it("lists only this host's main breaks and counts numbered lines only", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const other = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      const mine = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      await claimLines(tx, asCaller(buyer), { breakId: mine.id, numbers: [1], batchId: randomUUID() });
+      await markPaid(tx, asCaller(host, "host"), { breakId: mine.id, number: 1, expectedOwnerId: buyer.id });
+      await addBonusLine(tx, asCaller(host, "host"), { breakId: mine.id, ownerId: buyer.id }); // paid, but above N
+      await makeBreak(tx, { hostId: host.id, kind: "mini" });
+      await makeBreak(tx, { hostId: other.id });
+      const rows = await listHostBreaks(tx, host.id);
+      expect(rows.map((r) => r.id)).toEqual([mine.id]);
+      expect(rows[0]).toMatchObject({ status: "open", lineCount: 4, paid: 1, taken: 0 });
+      expect(rows[0].openedAt).toBeInstanceOf(Date);
+    });
+  });
+});
+
+describe("hostTrust scope", () => {
+  it("ignores other hosts' drawn breaks", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const other = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      await drawnBreak(tx, { hostId: other.id, buyerIds: [buyer.id] });
+      expect((await hostTrust(tx, host.id)).breaksRun).toBe(0);
+      expect((await hostTrust(tx, other.id)).breaksRun).toBe(1);
     });
   });
 });

@@ -25,14 +25,6 @@ export async function getBreakPage(tx: Tx, breakId: string): Promise<BreakPage |
   return { break: b, host: { ...host, paymentHandles: host.paymentHandles ?? {} }, items, prizes: prizeRows, lines: lineRows };
 }
 
-export async function listOpenBreaks(tx: Tx, limit = 50) {
-  return tx.select({ id: breaks.id, title: breaks.title, lineCount: breaks.lineCount, linePriceCents: breaks.linePriceCents, status: breaks.status, openedAt: breaks.openedAt,
-    openLines: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.owner_id is null and l.reserved_for_mini_id is null)`,
-    hostHandle: users.handle })
-    .from(breaks).innerJoin(users, eq(users.id, breaks.hostId))
-    .where(sql`${breaks.status} in ('open','filled','drawing')`).orderBy(sql`${breaks.openedAt} desc`).limit(limit);
-}
-
 /** Interim trust figures (the reputation plan replaces them): drawn breaks and member-since. */
 export async function hostTrust(tx: Tx, hostId: string): Promise<{ breaksRun: number; since: Date }> {
   const [r] = await tx.select({
@@ -64,13 +56,13 @@ export async function hostPaymentHandles(tx: Tx, hostId: string): Promise<{ venm
   return r?.paymentHandles ?? {};
 }
 
-export type HostBreakRow = { id: string; title: string; status: string; lineCount: number; paid: number; taken: number };
+export type HostBreakRow = { id: string; title: string; status: string; lineCount: number; openedAt: Date | null; paid: number; taken: number };
 
-/** The host's breaks for /host, newest first. Paid and taken (claimed, unpaid) count numbered lines only. */
+/** The host's main breaks for /host, newest first (minis wait for their own UI). Paid and taken count numbered lines only. */
 export async function listHostBreaks(tx: Tx, hostId: string): Promise<HostBreakRow[]> {
   return tx.select({
-    id: breaks.id, title: breaks.title, status: breaks.status, lineCount: breaks.lineCount,
+    id: breaks.id, title: breaks.title, status: breaks.status, lineCount: breaks.lineCount, openedAt: breaks.openedAt,
     paid: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.paid_at is not null and l.number <= ${breaks.lineCount})`,
     taken: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.owner_id is not null and l.paid_at is null and l.number <= ${breaks.lineCount})`,
-  }).from(breaks).where(eq(breaks.hostId, hostId)).orderBy(desc(breaks.createdAt), desc(breaks.id));
+  }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"))).orderBy(desc(breaks.createdAt), desc(breaks.id));
 }

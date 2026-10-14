@@ -1,0 +1,146 @@
+import { describe, it, expect } from "vitest";
+import { randomUUID } from "node:crypto";
+import { sql, eq } from "drizzle-orm";
+import { withTx } from "../../../tests/helpers/db";
+import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../tests/helpers/fixtures";
+import { claimLines, markPaid, markSent, addBonusLine } from "@/domain/lines/commands";
+import { draws } from "@/db/schema";
+import type { Caller } from "@/domain/types";
+import type { Tx } from "@/db/client";
+import { listFeed, feedThumbs, feedHosts, latestRanBreak, isFeedSort, type FeedSort } from "./feed";
+
+const c = (u: { id: string }, role: Caller["role"] = "member"): Caller => ({ id: u.id, role, onboarded: true, banned: false });
+const claim = (tx: Tx, u: { id: string }, breakId: string, numbers: number[]) => claimLines(tx, c(u), { breakId, numbers, batchId: randomUUID() });
+const pay = (tx: Tx, host: { id: string }, breakId: string, number: number, owner: { id: string }) =>
+  markPaid(tx, c(host, "host"), { breakId, number, expectedOwnerId: owner.id });
+const openedMinutesAgo = (tx: Tx, id: string, minutes: number) =>
+  tx.execute(sql`update breaks set opened_at = now() - make_interval(mins => ${minutes}::int) where id = ${id}`);
+
+describe("listFeed", () => {
+  it("sorts: filling fast counts numbered lines paid in the last 24 h only (Review Focus 1)", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      // A: lines 1 and 2 paid 25 h ago, plus a bonus line paid now. Open: 2.
+      const a = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4, linePriceCents: 500 });
+      await claim(tx, buyer, a.id, [1, 2]);
+      await pay(tx, host, a.id, 1, buyer); await pay(tx, host, a.id, 2, buyer);
+      await tx.execute(sql`update lines set paid_at = now() - interval '25 hours' where break_id = ${a.id} and number in (1, 2)`);
+      await addBonusLine(tx, c(host, "host"), { breakId: a.id, ownerId: buyer.id });
+      // B: line 1 paid now, line 2 sent. Open: 4.
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 6, linePriceCents: 500 });
+      await claim(tx, buyer, b.id, [1, 2]);
+      await pay(tx, host, b.id, 1, buyer);
+      await markSent(tx, c(buyer), { breakId: b.id, numbers: [2] });
+      // C: nothing claimed, opened last. Open: 6.
+      const cc = await openBreakWithLines(tx, { hostId: host.id, lineCount: 6, linePriceCents: 500 });
+      await openedMinutesAgo(tx, a.id, 30); await openedMinutesAgo(tx, b.id, 20); await openedMinutesAgo(tx, cc.id, 10);
+
+      const ids = async (sort: FeedSort) => (await listFeed(tx, { sort, hostHandle: host.handle, now: new Date() })).map((r) => r.id);
+      expect(await ids("filling")).toEqual([b.id, cc.id, a.id]);
+      expect(await ids("almost")).toEqual([a.id, b.id, cc.id]);
+      expect(await ids("newest")).toEqual([cc.id, b.id, a.id]);
+
+      const rows = await listFeed(tx, { sort: "newest", hostHandle: host.handle, now: new Date() });
+      const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+      expect(by[a.id]).toMatchObject({ open: 2, taken: 0, paid: 2, paidLastDay: 0, lineCount: 4, linePriceCents: 500 });
+      expect(by[b.id]).toMatchObject({ open: 4, taken: 1, paid: 1, paidLastDay: 1 });
+      expect(by[cc.id]).toMatchObject({ open: 6, taken: 0, paid: 0, paidLastDay: 0 });
+      expect(by[a.id].host).toMatchObject({ id: host.id, handle: host.handle, displayName: host.handle, breaksRun: 0 });
+      expect(by[a.id].host.since).toBeInstanceOf(Date);
+      expect(by[a.id].openedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  it("lists open main breaks only: never drafts, closed, ran or mini breaks", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      const open = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      await makeBreak(tx, { hostId: host.id }); // a draft
+      const mini = await makeBreak(tx, { hostId: host.id, kind: "mini" });
+      await tx.execute(sql`update breaks set status = 'open', opened_at = now() where id = ${mini.id}`);
+      await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
+      const closed = await openBreakWithLines(tx, { hostId: host.id, lineCount: 2 });
+      await claim(tx, buyer, closed.id, [1, 2]);
+      await pay(tx, host, closed.id, 1, buyer); await pay(tx, host, closed.id, 2, buyer);
+      const rows = await listFeed(tx, { sort: "newest", hostHandle: host.handle, now: new Date() });
+      expect(rows.map((r) => r.id)).toEqual([open.id]);
+      expect(rows[0].host.breaksRun).toBe(1);
+    });
+  });
+
+  it("filters by host handle, ignoring case, and answers nothing for an unknown handle", async () => {
+    await withTx(async (tx) => {
+      const jim = await makeUser(tx, { role: "host" }); const ann = await makeUser(tx, { role: "host" });
+      const j = await openBreakWithLines(tx, { hostId: jim.id, lineCount: 4 });
+      const a = await openBreakWithLines(tx, { hostId: ann.id, lineCount: 4 });
+      const now = new Date();
+      expect((await listFeed(tx, { sort: "newest", hostHandle: jim.handle.toUpperCase(), now })).map((r) => r.id)).toEqual([j.id]);
+      expect((await listFeed(tx, { sort: "newest", hostHandle: ann.handle, now })).map((r) => r.id)).toEqual([a.id]);
+      expect(await listFeed(tx, { sort: "newest", hostHandle: "nobody_here_x", now })).toEqual([]);
+      expect((await listFeed(tx, { sort: "newest", now, limit: 200 })).map((r) => r.id)).toEqual(expect.arrayContaining([j.id, a.id]));
+    });
+  });
+});
+
+describe("feedThumbs", () => {
+  it("returns each line's state and nothing about who holds it", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      await claim(tx, buyer, b.id, [2, 3, 4]);
+      await markSent(tx, c(buyer), { breakId: b.id, numbers: [3] });
+      await pay(tx, host, b.id, 4, buyer);
+      await addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: buyer.id });
+      const missing = randomUUID();
+      const thumbs = await feedThumbs(tx, [b.id, missing]);
+      expect(thumbs.get(b.id)).toEqual([
+        { number: 1, state: "open", bonus: false },
+        { number: 2, state: "taken", bonus: false },
+        { number: 3, state: "sent", bonus: false },
+        { number: 4, state: "paid", bonus: false },
+        { number: 5, state: "paid", bonus: true },
+      ]);
+      expect(thumbs.get(missing)).toEqual([]);
+      const text = JSON.stringify([...thumbs.entries()]);
+      expect(text).not.toContain(buyer.id);
+      expect(text).not.toContain(buyer.handle);
+      expect(await feedThumbs(tx, [])).toEqual(new Map());
+    });
+  });
+});
+
+describe("feedHosts", () => {
+  it("lists the handles of hosts with an open main break, once each", async () => {
+    await withTx(async (tx) => {
+      const jim = await makeUser(tx, { role: "host" }); const idle = await makeUser(tx, { role: "host" });
+      await openBreakWithLines(tx, { hostId: jim.id, lineCount: 4 });
+      await openBreakWithLines(tx, { hostId: jim.id, lineCount: 4 });
+      await makeBreak(tx, { hostId: idle.id });
+      const hosts = (await feedHosts(tx)).map((h) => h.handle);
+      expect(hosts.filter((h) => h === jim.handle)).toHaveLength(1);
+      expect(hosts).not.toContain(idle.handle);
+    });
+  });
+});
+
+describe("latestRanBreak", () => {
+  it("is the newest break with an active draw, and forgets a voided one", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      const d = await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id], lineCount: 4 });
+      const hero = await latestRanBreak(tx);
+      expect(hero).toMatchObject({ breakId: d.id, title: d.title, lineCount: 4, topLine: d.ranking[0] });
+      expect(hero!.ranAt).toBeInstanceOf(Date);
+      await tx.update(draws).set({ voidedAt: new Date(), voidedBy: host.id, voidReason: "test" }).where(eq(draws.id, d.drawId));
+      expect((await latestRanBreak(tx))?.breakId).not.toBe(d.id);
+    });
+  });
+});
+
+describe("isFeedSort", () => {
+  it("accepts the three sorts and nothing else", () => {
+    expect(["newest", "filling", "almost"].every(isFeedSort)).toBe(true);
+    expect(isFeedSort("closing")).toBe(false);
+    expect(isFeedSort(undefined)).toBe(false);
+  });
+});

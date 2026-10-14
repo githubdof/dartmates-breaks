@@ -1,9 +1,14 @@
 import { randomUUID, randomBytes } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { users, breaks, breakItems, prizes, lines } from "@/db/schema";
+import { users, breaks, breakItems, breakSecrets, prizes, lines } from "@/db/schema";
 import { commitment } from "@/crypto/commit";
+import { encryptSecret } from "@/crypto/secrets";
+import { FakeBeacon } from "@/crypto/beacon";
 import type { ClaimMode } from "@/domain/breaks/rules";
+import { claimLines, markPaid } from "@/domain/lines/commands";
+import { requestDraw, finaliseDraw } from "@/domain/draws/commands";
+import { SYSTEM, type Caller } from "@/domain/types";
 
 // Random, not Date.now(): parallel vitest workers would collide on the same millisecond.
 const uniq = () => randomBytes(6).toString("hex");
@@ -56,4 +61,27 @@ export async function assertInvariants(tx: Tx): Promise<void> {
     select l.break_id, l.number from lines l join breaks b on b.id = l.break_id
     where b.status in ('filled','drawing','drawn') and l.number <= b.line_count and l.paid_at is null`);
   if (unpaidInFull.length) throw new Error(`unpaid numbered lines in a filled/drawing/drawn break: ${ids(unpaidInFull)}`);
+}
+
+/**
+ * A drawn break: every numbered line claimed by `buyerIds` in turn and paid, then the draw requested and finalised
+ * with the fake beacon. `extraTopChoice` adds a second top-spot item before the draw, so the top prize is a choice.
+ */
+export async function drawnBreak(tx: Tx, opts: { hostId: string; buyerIds: string[]; lineCount?: number; extraTopChoice?: string }) {
+  const b = await openBreakWithLines(tx, { hostId: opts.hostId, lineCount: opts.lineCount ?? 4 });
+  const { ciphertext, keyId } = encryptSecret(b.secret, b.id);
+  await tx.insert(breakSecrets).values({ breakId: b.id, ciphertext, keyId });
+  if (opts.extraTopChoice) {
+    const [item] = await tx.insert(breakItems).values({ breakId: b.id, name: opts.extraTopChoice }).returning();
+    await tx.insert(prizes).values({ breakId: b.id, rank: 1, itemId: item.id });
+  }
+  const as = (id: string, role: Caller["role"] = "member"): Caller => ({ id, role, onboarded: true, banned: false });
+  for (let n = 1; n <= b.lineCount; n++) {
+    const owner = opts.buyerIds[(n - 1) % opts.buyerIds.length];
+    await claimLines(tx, as(owner), { breakId: b.id, numbers: [n], batchId: randomUUID() });
+    await markPaid(tx, as(opts.hostId, "host"), { breakId: b.id, number: n, expectedOwnerId: owner });
+  }
+  await requestDraw(tx, as(opts.hostId, "host"), { breakId: b.id });
+  const { drawId, ranking } = await finaliseDraw(tx, SYSTEM, { breakId: b.id }, new FakeBeacon());
+  return { ...b, status: "drawn", drawId, ranking };
 }
