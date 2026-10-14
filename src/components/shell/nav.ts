@@ -14,5 +14,16 @@ export function navItems(role: Role | null): NavItem[] {
  * destination is worse than none, so it also hides below two items (the header still carries Host for hosts).
  */
 export function showTabBar(path: string, role: Role | null): boolean {
-  return !path.startsWith("/b/") && navItems(role).length >= 2;
+  return !path.startsWith("/b/") && showHeaderNav(role);
+}
+
+/** The header's nav follows the same rule as the tab bar: one destination (Browse, which the wordmark already is) is no nav. */
+export function showHeaderNav(role: Role | null): boolean {
+  return navItems(role).length >= 2;
+}
+
+/** Sign in comes back to where it was tapped; the login action still runs `next` through safeNext. */
+export function signInHref(path: string | null): string {
+  if (!path || path === "/" || path.startsWith("/login")) return "/login";
+  return `/login?next=${encodeURIComponent(path)}`;
 }

@@ -2,10 +2,11 @@ import Link from "next/link";
 
 export type ButtonVariant = "primary" | "secondary" | "text";
 
-const BASE = "inline-flex min-h-11 items-center justify-center gap-2 rounded-input px-4 text-body font-semibold transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:opacity-50";
+// Horizontal padding lives in each variant, never in BASE: two px-* classes on one element win by CSS order, not intent.
+const BASE = "inline-flex min-h-11 items-center justify-center gap-2 rounded-input text-body font-semibold transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:opacity-50";
 const VARIANT: Record<ButtonVariant, string> = {
-  primary: "bg-ink text-card hover:bg-ink/85",
-  secondary: "border border-wire-strong bg-card text-ink hover:bg-wire-2",
+  primary: "bg-ink px-4 text-card hover:bg-ink/85",
+  secondary: "border border-wire-strong bg-card px-4 text-ink hover:bg-wire-2",
   text: "px-1 text-ink underline underline-offset-4 hover:no-underline",
 };
 

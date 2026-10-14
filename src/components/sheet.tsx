@@ -63,7 +63,7 @@ export function Sheet({ open, onClose, title, children, full = false, testId, hi
       onClick={(e) => { if (e.target === e.currentTarget && open) onClose(); }}
       className={`${shape} overscroll-contain p-0 text-ink`}
     >
-      <div className={`flex min-h-14 shrink-0 items-center justify-between gap-4 border-b border-wire px-4 ${full ? "bg-paper" : "bg-card"}`}>
+      <div className={`flex min-h-14 shrink-0 items-center justify-between gap-4 border-b border-wire px-4 ${full ? "bg-paper pt-[env(safe-area-inset-top)]" : "bg-card"}`}>
         <h2 id={titleId} className={hideTitle ? "sr-only" : "text-headline font-semibold"}>{title}</h2>
         <button type="button" onClick={() => onClose()} className="-mr-2 inline-flex min-h-11 items-center px-2 text-small font-semibold underline underline-offset-4">
           Close
