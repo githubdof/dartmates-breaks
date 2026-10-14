@@ -7,7 +7,8 @@ import { appendEvent } from "@/domain/events";
 
 export const TERMS_VERSION = "2026-10-13";
 
-const RESERVED = new Set(["admin", "administrator", "host", "support", "breaks", "system", "mod", "moderator", "staff", "help", "me"]);
+export const RESERVED_HANDLES: ReadonlySet<string> = new Set(["admin", "administrator", "host", "support", "breaks", "system", "mod", "moderator", "staff", "help", "me"]);
+const RESERVED = RESERVED_HANDLES;
 
 export function normalizeHandle(raw: string): string {
   const h = raw.normalize("NFKC").trim().toLowerCase();
