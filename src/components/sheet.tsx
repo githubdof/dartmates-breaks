@@ -12,7 +12,14 @@ type Props = {
   hideTitle?: boolean;
 };
 
-/** Native <dialog> with showModal(): focus is trapped, Escape closes, the backdrop closes, focus returns to the opener. */
+/**
+ * Native <dialog> with showModal(): focus is trapped, Escape closes, the backdrop closes, focus returns to the opener.
+ *
+ * `open` is the single source of truth. Every way of closing (Escape, Close, backdrop, the native close event)
+ * asks the parent through `onClose()`, and the effect below closes the element, releases the scroll lock and
+ * returns focus when `open` turns false or the sheet unmounts. Nothing here relies on the dialog's own `close`
+ * event arriving, which some browsers have been seen to drop.
+ */
 export function Sheet({ open, onClose, title, children, full = false, testId, hideTitle = false }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const opener = useRef<Element | null>(null);
@@ -20,28 +27,23 @@ export function Sheet({ open, onClose, title, children, full = false, testId, hi
 
   useEffect(() => {
     const d = ref.current;
-    if (!d) return;
-    if (open && !d.open) {
+    if (!d || !open) return;
+    if (!d.open) {
       opener.current = document.activeElement;
       d.showModal();
-      document.documentElement.style.overflow = "hidden";
-    } else if (!open && d.open) {
-      d.close();
     }
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.documentElement.style.overflow = "";
+      if (d.open) d.close();
+      // Return focus to the opener; if it unmounted meanwhile (the claim button became "You owe"), to the bar.
+      const el = opener.current;
+      const target = el instanceof HTMLElement && el.isConnected && el !== document.body
+        ? el
+        : document.querySelector<HTMLElement>("[data-sticky-bar] button, [data-sticky-bar] a");
+      target?.focus();
+    };
   }, [open]);
-
-  useEffect(() => () => { document.documentElement.style.overflow = ""; }, []);
-
-  const handleClose = () => {
-    document.documentElement.style.overflow = "";
-    // Return focus to the opener; if it unmounted meanwhile (the claim button became "You owe"), to the bar.
-    const el = opener.current;
-    const target = el instanceof HTMLElement && el.isConnected && el !== document.body
-      ? el
-      : document.querySelector<HTMLElement>("[data-sticky-bar] button, [data-sticky-bar] a");
-    target?.focus();
-    if (open) onClose();
-  };
 
   // `open:flex` (not `flex`): a display utility on a closed <dialog> would override display: none.
   // The header stays put and the body scrolls inside the sheet, so the sheet never exceeds 85dvh.
@@ -54,13 +56,14 @@ export function Sheet({ open, onClose, title, children, full = false, testId, hi
       ref={ref}
       aria-labelledby={titleId}
       data-testid={testId}
-      onClose={handleClose}
-      onClick={(e) => { if (e.target === e.currentTarget) ref.current?.close(); }}
+      onCancel={(e) => { e.preventDefault(); if (open) onClose(); }}
+      onClose={() => { if (open) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget && open) onClose(); }}
       className={`${shape} overscroll-contain p-0 text-ink`}
     >
       <div className={`flex min-h-14 shrink-0 items-center justify-between gap-4 border-b border-wire px-4 ${full ? "bg-paper" : "bg-card"}`}>
         <h2 id={titleId} className={hideTitle ? "sr-only" : "text-headline font-semibold"}>{title}</h2>
-        <button type="button" onClick={() => ref.current?.close()} className="-mr-2 inline-flex min-h-11 items-center px-2 text-small font-semibold underline underline-offset-4">
+        <button type="button" onClick={() => onClose()} className="-mr-2 inline-flex min-h-11 items-center px-2 text-small font-semibold underline underline-offset-4">
           Close
         </button>
       </div>
