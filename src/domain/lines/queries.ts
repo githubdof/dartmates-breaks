@@ -5,7 +5,11 @@ import { isOverdue } from "./rules";
 import { buyerStatus, compareLedger, type BuyerStatus } from "./ledger";
 
 export type MyLineState = "taken" | "sent" | "paid";
-export type MyAward = { rank: number; itemName: string | null; choice: boolean; shippedAt: Date | null };
+/**
+ * `choice`: the rank was a set of items to choose from (no item fixed at draw time, and not a mini-break spot, whose
+ * award also has no item). A choice is unanswered until `pickedAt` is set; `shippedAt` only drives the shipped state word.
+ */
+export type MyAward = { rank: number; itemName: string | null; choice: boolean; pickedAt: Date | null; shippedAt: Date | null };
 export type MyBreak = {
   breakId: string; title: string; status: string; openedAt: Date | null; lineCount: number; linePriceCents: number;
   seedCommitment: string | null; paymentWindowHours: number; paymentInstructions: string;
@@ -17,12 +21,15 @@ export type MyBreak = {
   /** First unsent claim plus the payment window; null when nothing is owed. */
   payBy: Date | null;
   late: boolean;
-  /** From the active draw only: a voided draw's award is gone. */
-  award: MyAward | null;
+  /**
+   * Every award the viewer holds on this break, by rank, from the active draw only (a voided draw's awards are gone).
+   * A buyer can win several ranks unless the break sets one prize per person.
+   */
+  awards: MyAward[];
   ranAt: Date | null;
   /**
    * Ran or cancelled more than EARLIER_DAYS ago with nothing pending: listed under "Earlier" (design §5.8). Unpaid
-   * lines (sent or not) and an unanswered choice win keep a break in the recent group whatever its age.
+   * lines (sent or not) and any unanswered choice win keep a break in the recent group whatever its age.
    */
   earlier: boolean;
 };
@@ -45,7 +52,11 @@ export async function myLines(tx: Tx, userId: string, now: Date): Promise<MyBrea
   const ids = [...new Set(rows.map((r) => r.breakId))];
   const ran = await tx.select({ breakId: draws.breakId, ranAt: draws.createdAt }).from(draws)
     .where(and(inArray(draws.breakId, ids), isNull(draws.voidedAt)));
-  const won = await tx.select({ breakId: awards.breakId, rank: awards.rank, itemId: awards.itemId, itemName: breakItems.name, shippedAt: awards.shippedAt })
+  // Written out rather than `${awards.breakId}`: inside a subquery the outer column must be qualified.
+  const won = await tx.select({
+    breakId: awards.breakId, rank: awards.rank, itemId: awards.itemId, itemName: breakItems.name, pickedAt: awards.pickedAt, shippedAt: awards.shippedAt,
+    spot: sql<boolean>`exists (select 1 from prizes p where p.break_id = "awards"."break_id" and p.rank = "awards"."rank" and p.parent_break_id is not null)`,
+  })
     .from(awards).innerJoin(draws, eq(draws.id, awards.drawId)).leftJoin(breakItems, eq(breakItems.id, awards.itemId))
     .where(and(eq(awards.winnerId, userId), isNull(draws.voidedAt), inArray(awards.breakId, ids))).orderBy(asc(awards.rank));
   // A cancelled break is dated by its latest cancel event; with none (no cancel command exists yet) it stays current.
@@ -53,9 +64,11 @@ export async function myLines(tx: Tx, userId: string, now: Date): Promise<MyBrea
     .where(and(inArray(events.breakId, ids), eq(events.type, "break.cancelled"))).groupBy(events.breakId);
   const ranAt = new Map(ran.map((r) => [r.breakId, r.ranAt]));
   const cancelledAt = new Map(cancels.map((c) => [c.breakId, c.at]));
-  const awardOf = new Map<string, MyAward>();
+  const awardsOf = new Map<string, MyAward[]>();
   for (const a of won) {
-    if (!awardOf.has(a.breakId)) awardOf.set(a.breakId, { rank: a.rank, itemName: a.itemName, choice: a.itemId === null, shippedAt: a.shippedAt });
+    const list = awardsOf.get(a.breakId) ?? [];
+    list.push({ rank: a.rank, itemName: a.itemName, choice: a.itemId === null && !a.spot, pickedAt: a.pickedAt, shippedAt: a.shippedAt });
+    awardsOf.set(a.breakId, list);
   }
   const cutoff = now.getTime() - EARLIER_DAYS * 86_400_000;
   const groups = new Map<string, MyBreak & { firstUnsent: Date | null; endedAt: Date | null }>();
@@ -71,7 +84,7 @@ export async function myLines(tx: Tx, userId: string, now: Date): Promise<MyBrea
         seedCommitment: r.seedCommitment, paymentWindowHours: r.paymentWindowHours, paymentInstructions: r.paymentInstructions,
         host: { id: r.hostId, handle: r.hostHandle, displayName: r.hostDisplayName, paymentHandles: r.paymentHandles ?? {} },
         lines: [], unsent: [], sent: [], paid: [], owedCents: 0, payBy: null, late: false,
-        award: awardOf.get(r.breakId) ?? null, ranAt: ra, earlier: false, firstUnsent: null, endedAt,
+        awards: awardsOf.get(r.breakId) ?? [], ranAt: ra, earlier: false, firstUnsent: null, endedAt,
       };
       groups.set(r.breakId, g);
     }
@@ -88,7 +101,7 @@ export async function myLines(tx: Tx, userId: string, now: Date): Promise<MyBrea
   return [...groups.values()].map(({ firstUnsent, endedAt, ...g }) => {
     const payBy = firstUnsent ? new Date(firstUnsent.getTime() + g.paymentWindowHours * 3_600_000) : null;
     // Something still to do here keeps the break in the recent group: unpaid lines, or a choice to name.
-    const pending = g.unsent.length > 0 || g.sent.length > 0 || (g.award !== null && g.award.choice && g.award.shippedAt === null);
+    const pending = g.unsent.length > 0 || g.sent.length > 0 || g.awards.some((a) => a.choice && a.pickedAt === null);
     const earlier = endedAt !== null && endedAt.getTime() < cutoff && !pending;
     return { ...g, payBy, late: payBy !== null && payBy.getTime() < now.getTime(), earlier };
   });
