@@ -18,3 +18,15 @@ it("knows when onboarding came from a claim", () => {
   expect(fromClaim("/b/123")).toBe(false);
   expect(fromClaim("/")).toBe(false);
 });
+
+it("shapes awkward addresses into a valid handle", () => {
+  expect(suggestHandle("Ünïcode.Name+tag@x.com")).toBe("unicode_name_tag");
+  expect(suggestHandle("a@x.com")).toBe("a__");
+  expect(suggestHandle("___@x.com")).toBe("user");
+  expect(suggestHandle("admin@x.com")).toBe("admin_1");
+  expect(suggestHandle("a-very-long-local-part-indeed@x.com")).toBe("a_very_long_local_pa");
+  expect(suggestHandle("")).toBe("user");
+  for (const email of ["Ünïcode.Name+tag@x.com", "a@x.com", "admin@x.com", "a-very-long-local-part-indeed@x.com"]) {
+    expect(() => normalizeHandle(suggestHandle(email))).not.toThrow();
+  }
+});

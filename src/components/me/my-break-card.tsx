@@ -31,7 +31,7 @@ export function MyBreakCard(p: MyBreakCardProps) {
   // One flag for every transition on the card: marking sent and giving back disable the same controls.
   const pending = giving || pay.pending;
   const actionable = p.status === "open" || p.status === "filled";
-  const prompt = owe ? giveBackPrompt(owe.numbers) : null;
+  const prompt = owe ? giveBackPrompt(owe.numbers, owe.bonusLost) : null;
 
   const doGiveBack = () => {
     if (!owe) return;

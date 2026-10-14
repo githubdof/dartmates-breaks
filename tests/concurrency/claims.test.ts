@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { makeUser, openBreakWithLines, assertInvariants } from "../helpers/fixtures";
-import { claimLines, claimRandom } from "@/domain/lines/commands";
+import { claimLines, claimNext, claimRandom } from "@/domain/lines/commands";
 import { CapExceeded } from "@/domain/errors";
 import { GLOBAL_UNPAID_CAP } from "@/domain/breaks/rules";
 import { lines } from "@/db/schema";
@@ -41,6 +41,21 @@ describe("concurrent claims", () => {
     expect(results.filter((r) => r.status === "fulfilled").length).toBe(5); // 10 lines / 2 each
     const owned = await db.select().from(lines).where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} is not null`);
     expect(owned).toHaveLength(10);
+    await db.transaction((tx) => assertInvariants(tx));
+  });
+
+  it("straight-fill claims racing hand out the lowest numbers, each once, in consecutive pairs", async () => {
+    const { b, buyers } = await db.transaction(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 10, claimMode: "straight" });
+      const buyers = await Promise.all(Array.from({ length: 6 }, () => makeUser(tx)));
+      return { b, buyers };
+    });
+    const results = await Promise.allSettled(buyers.map((u) => db.transaction((tx) => claimNext(tx, c(u.id), { breakId: b.id, count: 2, batchId: randomUUID() }))));
+    const won = results.flatMap((r) => (r.status === "fulfilled" ? [r.value.got] : []));
+    expect(won).toHaveLength(5); // 10 lines, 2 each
+    expect(won.flat().sort((x, y) => x - y)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    for (const got of won) expect(got[1] - got[0]).toBe(1); // the break row lock serialises callers
     await db.transaction((tx) => assertInvariants(tx));
   });
 

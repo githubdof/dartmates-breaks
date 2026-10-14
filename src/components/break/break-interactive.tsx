@@ -256,8 +256,10 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     claimer.run([], (id) => (action === "next" ? claimNextAction(p.breakId, n, id) : claimRandomAction(p.breakId, n, id)));
   };
   const onLast = () => {
+    if (bar.kind !== "idle" || bar.lastN === null) return;
+    const expected = bar.lastN; // the N on the button: the server refuses if the open count moved since
     const open = cells.filter((c) => c.state === "open" && !c.bonus).map((c) => c.number);
-    claimer.run(open, (id) => claimRest(p.breakId, id));
+    claimer.run(open, (id) => claimRest(p.breakId, id, expected));
   };
   const onRetry = (n: number) => { pay.setError(null); claimer.run([], (id) => claimRandomAction(p.breakId, n, id)); };
 

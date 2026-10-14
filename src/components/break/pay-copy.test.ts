@@ -1,5 +1,5 @@
 import { it, expect } from "vitest";
-import { commitmentShort, nextPendingOwe, giveBackPrompt, lateReleaseText, payeeFor, payHeadline, releaseText, retryRandomLabel, SENT_HINT } from "./pay-copy";
+import { bonusGoesWith, commitmentShort, nextPendingOwe, giveBackPrompt, lateReleaseText, payeeFor, payHeadline, releaseText, retryRandomLabel, SENT_HINT } from "./pay-copy";
 
 it("writes the pay block", () => {
   expect(payHeadline(1000, "@Jim-Roberts-36")).toBe("Send $10 to @Jim-Roberts-36");
@@ -33,4 +33,15 @@ it("words a missed deadline and names who to pay", () => {
   expect(payeeFor({ venmo: "@Jim-R", paypal: "JimR" }, "Jim")).toBe("@Jim-R");
   expect(payeeFor({ paypal: "JimR" }, "Jim")).toBe("paypal.me/JimR");
   expect(payeeFor({}, "Jim")).toBe("Jim");
+});
+
+it("names the bonus lines a give-back takes with it (recorded ruling 6)", () => {
+  expect(bonusGoesWith([{ number: 5, bonus: false }, { number: 51, bonus: true }], [5])).toEqual([51]);
+  expect(bonusGoesWith([{ number: 3, bonus: false }, { number: 5, bonus: false }, { number: 51, bonus: true }], [5])).toEqual([]);
+  expect(bonusGoesWith([{ number: 5, bonus: false }], [5])).toEqual([]);
+  expect(giveBackPrompt([5], [51]).text).toBe("Give back line 5? It goes back on the board. Your bonus line 51 goes too.");
+  expect(giveBackPrompt([4, 5], [51, 52]).text).toBe("Give back lines 4 and 5? They go back on the board. Your bonus lines 51 and 52 go too.");
+  expect(giveBackPrompt([4])).toEqual({ text: "Give back line 4? It goes back on the board.", confirm: "Give back 1 line" });
+  const base = { numbers: [5], cents: 500, payByIso: null, payByFallback: null, late: false, bonusLost: [51] };
+  expect(nextPendingOwe(base, [6], 500)?.bonusLost).toEqual([51]);
 });

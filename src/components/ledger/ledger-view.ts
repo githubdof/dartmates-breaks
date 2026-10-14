@@ -82,10 +82,16 @@ export function paidToast(r: Pick<LedgerRowView, "handle" | "displayName">, numb
   return `Marked ${who(r)} paid (${numbers.length} ${plural(numbers.length, "line", "lines")}, ${formatMoney(cents)}).`;
 }
 
-export function releaseConfirm(r: Pick<LedgerRowView, "handle" | "displayName" | "sent">, numbers: readonly number[]): { text: string; confirm: string; warning: string | null } {
+export function releaseConfirm(r: Pick<LedgerRowView, "handle" | "displayName" | "sent" | "numbers" | "bonus">, numbers: readonly number[]): { text: string; confirm: string; warning: string | null } {
   const sentAmong = r.sent.filter((n) => numbers.includes(n));
+  // Releasing every numbered line the buyer holds takes their bonus lines too (recorded ruling 6): say so.
+  const numbered = r.numbers.filter((n) => !r.bonus.includes(n));
+  const bonusGoes = r.bonus.length > 0 && numbered.every((n) => numbers.includes(n)) ? [...r.bonus].sort((a, b) => a - b) : [];
+  const bonus = bonusGoes.length === 0 ? ""
+    : bonusGoes.length === 1 ? ` Their bonus line ${bonusGoes[0]} goes too.`
+    : ` Their bonus lines ${joinAnd(bonusGoes)} go too.`;
   return {
-    text: `Release ${linesPhrase(numbers)} from ${who(r)}? ${numbers.length === 1 ? "It reopens" : "They reopen"} now.`,
+    text: `Release ${linesPhrase(numbers)} from ${who(r)}? ${numbers.length === 1 ? "It reopens" : "They reopen"} now.${bonus}`,
     confirm: `Release ${numbers.length} ${plural(numbers.length, "line", "lines")}`,
     warning: sentAmong.length ? `${who(r)} marked ${linesPhrase(sentAmong)} as sent. Check your payments before releasing.` : null,
   };

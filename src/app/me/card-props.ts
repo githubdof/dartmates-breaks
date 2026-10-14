@@ -1,7 +1,7 @@
 import type { MyBreak } from "@/domain/lines/queries";
 import { formatDeadline, type Zone } from "@/lib/time";
 import { hostLabel } from "@/components/break/frame-copy";
-import { commitmentShort, payeeFor } from "@/components/break/pay-copy";
+import { bonusGoesWith, commitmentShort, payeeFor } from "@/components/break/pay-copy";
 import { stateLine, type MyBreakCardProps } from "@/components/me/me-copy";
 
 /** One /me group → the card's props. The deadline goes down as ISO plus a fallback in the viewer's zone (LocalTime). */
@@ -19,6 +19,7 @@ export function toCardProps(g: MyBreak, now: Date, zone: Zone): MyBreakCardProps
           payByIso: g.payBy ? g.payBy.toISOString() : null,
           payByFallback: g.payBy ? formatDeadline(g.payBy, now, zone.tz, zone.labelled) : null,
           late: g.late,
+          bonusLost: bonusGoesWith(g.lines, g.unsent),
         }
       : null,
   };

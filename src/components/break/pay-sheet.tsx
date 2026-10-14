@@ -68,7 +68,7 @@ export function PaySheet(p: Props) {
   }, [copyFails]);
 
   const links = p.owe ? payLinks(p.handles, p.owe.cents) : {};
-  const prompt = p.owe ? giveBackPrompt(p.owe.numbers) : null;
+  const prompt = p.owe ? giveBackPrompt(p.owe.numbers, p.owe.bonusLost) : null;
   const retryCount = p.outcome ? Math.min(p.outcome.taken.length, p.retryMax) : 0;
   const copyValue = p.handles.venmo ?? (p.handles.paypal ? `paypal.me/${p.handles.paypal}` : null);
 

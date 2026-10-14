@@ -6,7 +6,7 @@ import { action } from "@/lib/action";
 import { hashIp } from "@/lib/ip-hash";
 import { parseInput } from "@/lib/parse-input";
 import {
-  claimLines, claimRandom, claimAllOpen, claimNext, markSent, markPaid, unmarkPaid, releaseLine, releaseForBuyer, addBonusLine,
+  claimLines, claimRandom, claimAllOpen, claimNext, markSent, markPaid, releaseForBuyer, addBonusLine, giveBackLines, unmarkPaidLines,
 } from "@/domain/lines/commands";
 
 const uuid = z.string().uuid();
@@ -47,8 +47,9 @@ export async function claimNextAction(breakId: string, count: number, batchId: s
   if (r.ok) done(breakId);
   return r;
 }
-export async function claimRest(breakId: string, batchId: string) {
-  const v = parseInput(z.object({ breakId: uuid, batchId: uuid }), { breakId, batchId });
+/** "Take the last N": `expected` is the N the bar showed; if the open count differs, nothing is claimed. */
+export async function claimRest(breakId: string, batchId: string, expected: number) {
+  const v = parseInput(z.object({ breakId: uuid, batchId: uuid, expected: z.number().int().min(1).max(50) }), { breakId, batchId, expected });
   if (!v.ok) return v;
   const p = v.data;
   const hash = await ipHash();
@@ -69,10 +70,7 @@ export async function giveBack(breakId: string, numbers: number[]) {
   const v = parseInput(z.object({ breakId: uuid, numbers: nums }), { breakId, numbers });
   if (!v.ok) return v;
   const p = v.data;
-  const r = await action(async (tx, c) => {
-    for (const number of p.numbers) await releaseLine(tx, c, { breakId: p.breakId, number, reason: "withdrawn" });
-    return { released: p.numbers };
-  });
+  const r = await action((tx, c) => giveBackLines(tx, c, p));
   if (r.ok) done(breakId);
   return r;
 }
@@ -94,7 +92,7 @@ export async function unpaidForBuyer(breakId: string, numbers: number[]) {
   if (!v.ok) return v;
   const p = v.data;
   const r = await action(async (tx, c) => {
-    for (const number of p.numbers) await unmarkPaid(tx, c, { breakId: p.breakId, number });
+    await unmarkPaidLines(tx, c, p);
     return null;
   });
   if (r.ok) done(breakId);

@@ -5,7 +5,11 @@ import { sent } from "@/app/b/[id]/actions";
 import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
 
 /** What the viewer owes for unsent lines. The deadline travels as ISO plus the server's fallback text (LocalTime). */
-export type Owe = { numbers: number[]; cents: number; payByIso: string | null; payByFallback: string | null; late: boolean };
+export type Owe = {
+  numbers: number[]; cents: number; payByIso: string | null; payByFallback: string | null; late: boolean;
+  /** Bonus lines a give-back of every owed line would take with it (recorded ruling 6); the give-back confirm names them. */
+  bonusLost?: number[];
+};
 export type SheetError = { for: "sent" | "retry"; text: string };
 
 type Options = {

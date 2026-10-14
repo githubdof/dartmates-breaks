@@ -17,7 +17,7 @@ import { ButtonLink } from "@/components/button";
 import type { BreakStatus } from "@/components/status-word";
 import { DetailsFold } from "@/components/break/details-fold";
 import { BreakInteractive } from "@/components/break/break-interactive";
-import { commitmentShort } from "@/components/break/pay-copy";
+import { bonusGoesWith, commitmentShort } from "@/components/break/pay-copy";
 import { onboardingHref, parsePick } from "@/components/break/selection";
 import { closesText, hostLabel, leftText, perPersonText, pickingText, prizeLines, smallLineText, trustText, youHaveText } from "@/components/break/frame-copy";
 import { HostTools } from "@/components/ledger/host-tools";
@@ -73,6 +73,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
         payByIso: payBy ? payBy.toISOString() : null,
         payByFallback: payBy ? formatDeadline(payBy, now, zone.tz, zone.labelled) : null,
         late: payBy !== null && payBy.getTime() < now.getTime(),
+        bonusLost: bonusGoesWith(grid.cells.filter((c) => c.mine), grid.viewer.unsent),
       }
     : null;
   const youHave = grid.viewer ? youHaveText(grid.viewer.held) : null;

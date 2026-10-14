@@ -117,3 +117,24 @@ describe("markedPaid", () => {
     expect(markedPaid(alice)).toMatchObject({ unpaid: [], sent: [], paid: [2, 5], owedCents: 0, status: "paid" });
   });
 });
+
+describe("release confirm and bonus lines", () => {
+  it("names the bonus line when the release takes every numbered line the buyer holds", () => {
+    const fay = row({ ownerId: "f", handle: "fay", numbers: [4, 11, 51], unpaid: [4, 11], paid: [51], bonus: [51], owedCents: 1000, status: "unpaid" });
+    expect(releaseConfirm(fay, [4, 11]).text).toBe("Release lines 4 and 11 from @fay? They reopen now. Their bonus line 51 goes too.");
+    // A paid numbered line stays with fay, so her bonus line stays too.
+    expect(releaseConfirm(row({ ...fay, numbers: [3, 4, 11, 51], paid: [3, 51] }), [4, 11]).text).toBe("Release lines 4 and 11 from @fay? They reopen now.");
+  });
+});
+
+describe("edge cases", () => {
+  it("an empty ledger has zero counts and shows nobody", () => {
+    expect(chipCounts([])).toEqual({ all: 0, sent: 0, unpaid: 0, overdue: 0 });
+    expect(applyView(freezeView([], "all"), [], "")).toEqual([]);
+  });
+  it("applyOrder drops a buyer who left and puts a newcomer last", () => {
+    expect(applyOrder([dave, alice], ["a", "x", "d"]).map((r) => r.ownerId)).toEqual(["a", "d"]);
+    expect(applyOrder([bob, alice], ["a"]).map((r) => r.ownerId)).toEqual(["a", "b"]);
+    expect(applyOrder([], ["a"])).toEqual([]);
+  });
+});

@@ -24,7 +24,7 @@ describe("toCardProps", () => {
         { number: 11, state: "paid", mine: true, overdue: false, bonus: true },
       ],
       stateLine: "Unpaid.",
-      owe: { numbers: [5], cents: 500, payByIso: "2026-10-15T01:40:00.000Z", payByFallback: "9:40 pm today", late: false },
+      owe: { numbers: [5], cents: 500, payByIso: "2026-10-15T01:40:00.000Z", payByFallback: "9:40 pm today", late: false, bonusLost: [] },
     });
   });
   it("owes nothing once every unsent line is gone", () => {
@@ -38,5 +38,9 @@ describe("toCardProps", () => {
     expect(cancelled.owe).toBeNull();
     expect(cancelled.stateLine).toBe("Cancelled.");
     expect(toCardProps({ ...g, status: "drawn" }, now, zone).owe).toBeNull();
+  });
+  it("says which bonus lines a give-back would take", () => {
+    const onlyUnsent = { ...g, lines: [{ number: 5, state: "taken" as const, bonus: false }, { number: 11, state: "paid" as const, bonus: true }], sent: [], paid: [11] };
+    expect(toCardProps(onlyUnsent, now, { tz: "America/New_York", labelled: false }).owe?.bonusLost).toEqual([11]);
   });
 });
