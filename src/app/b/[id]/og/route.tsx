@@ -28,10 +28,18 @@ const GRID_PX = 500;
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!isUuid(id)) return new Response("Not found", { status: 404 });
-  const page = await db.transaction((tx) => getBreakPage(tx, id));
+  let page: Awaited<ReturnType<typeof getBreakPage>>;
+  try {
+    page = await db.transaction((tx) => getBreakPage(tx, id));
+  } catch {
+    // A crawler gets no image rather than a bare 500.
+    return new Response(null, { status: 404 });
+  }
   const m = page ? ogModel(page, new Date()) : null;
   if (!m) return new Response("Not found", { status: 404 });
   const cell = Math.floor(GRID_PX / m.columns);
+  // A long title steps down a size and stops at three lines.
+  const titlePx = m.title.length <= 40 ? 60 : 44;
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", gap: 56, padding: 64, background: PAPER, color: INK }}>
@@ -49,7 +57,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           ))}
         </div>
         <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 28 }}>
-          <div style={{ display: "flex", fontSize: 60, lineHeight: 1.1 }}>{m.title}</div>
+          <div style={{ display: "flex", fontSize: titlePx, lineHeight: 1.1, overflow: "hidden", maxHeight: Math.ceil(titlePx * 1.1 * 3) }}>{m.title}</div>
           <div style={{ display: "flex", fontSize: 40, color: INK_2 }}>{m.caption}</div>
           <div style={{ display: "flex", fontSize: 32 }}>Breaks</div>
         </div>
