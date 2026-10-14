@@ -4,27 +4,28 @@ import { notFound, redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { getBreakPage, hostTrust } from "@/domain/breaks/queries";
 import { shapeGrid, canViewBreak, isHostView } from "@/domain/breaks/grid";
+import { bonusAllowance } from "@/domain/breaks/rules";
 import { ledgerByBuyer, globalUnpaidCount } from "@/domain/lines/queries";
 import { getDrawResult } from "@/domain/draws/queries";
 import { getCaller } from "@/auth/session";
 import { env } from "@/lib/env";
 import { isUuid } from "@/lib/is-uuid";
 import { formatMoney } from "@/lib/money";
-import { daysSince, formatDeadline } from "@/lib/time";
+import { daysSince, formatDeadline, formatLate } from "@/lib/time";
 import { viewerZone } from "@/lib/zone";
 import { pageShare } from "@/lib/share-text";
 import { GridPreview } from "@/components/grid/grid-preview";
 import { Legend } from "@/components/legend";
 import { StatusPill } from "@/components/status-pill";
 import { CopyButton } from "@/components/copy-button";
-import { buttonClass } from "@/components/button";
 import type { BreakStatus } from "@/components/status-word";
 import { DetailsFold } from "@/components/break/details-fold";
 import { BreakInteractive } from "@/components/break/break-interactive";
 import { commitmentShort } from "@/components/break/pay-copy";
 import { onboardingHref, parsePick } from "@/components/break/selection";
 import { closesText, leftText, payWithinText, perPersonText, pickingText, prizeLines, trustText, youHaveText } from "@/components/break/frame-copy";
-import { HostPanel } from "./host-panel";
+import { HostTools } from "@/components/ledger/host-tools";
+import type { LedgerRowView } from "@/components/ledger/ledger-view";
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ pick?: string | string[] }> };
 
@@ -79,7 +80,13 @@ export default async function BreakPage({ params, searchParams }: Props) {
       }
     : null;
   const youHave = grid.viewer ? youHaveText(grid.viewer.held) : null;
+  // Rows arrive in the ledger order (ledgerByBuyer sorts with compareLedger); the sheet freezes that order.
   const ledger = grid.hostView ? await db.transaction((tx) => ledgerByBuyer(tx, id, now)) : [];
+  const ledgerRows: LedgerRowView[] = ledger.map((r) => ({
+    ownerId: r.ownerId, handle: r.handle, displayName: r.displayName,
+    numbers: r.numbers, unpaid: r.unpaid, sent: r.sent, overdue: r.overdue, paid: r.paid, bonus: r.bonus,
+    owedCents: r.owedCents, status: r.status, lateText: r.overdueSince ? formatLate(r.overdueSince, now) : null,
+  }));
 
   return (
     <main className="mx-auto max-w-[600px] px-4 pb-6 sm:px-6">
@@ -125,7 +132,15 @@ export default async function BreakPage({ params, searchParams }: Props) {
         )}
         <div className="mt-4 flex flex-wrap gap-2">
           {share && <CopyButton value={share} label="Share" copiedLabel="Copied" testId="share" />}
-          {grid.hostView && <a href="#host-tools" className={buttonClass("secondary")}>Host tools</a>}
+          {grid.hostView && (
+            <HostTools
+              breakId={id}
+              status={status}
+              rows={ledgerRows}
+              counts={{ paid: grid.counts.paid, taken: grid.counts.taken + grid.counts.sent, total: b.lineCount }}
+              bonus={{ used: grid.cells.filter((c) => c.bonus).length, max: bonusAllowance(b.lineCount) }}
+            />
+          )}
         </div>
         <DetailsFold
           description={b.description}
@@ -137,13 +152,6 @@ export default async function BreakPage({ params, searchParams }: Props) {
           instructions={b.paymentInstructions}
           hostName={hostName}
         />
-        {grid.hostView && (
-          <section id="host-tools" className="mt-6 space-y-2">
-            <h2 className="text-headline font-semibold">Host tools</h2>
-            <p className="text-small tabular" data-testid="paid-count">{grid.counts.paid} of {b.lineCount} paid</p>
-            <HostPanel breakId={id} status={b.status} rows={ledger.map((u) => ({ ownerId: u.ownerId, handle: u.handle, unpaid: u.unpaid, sent: u.sent, overdue: u.overdue, owedCents: u.owedCents, status: u.status }))} />
-          </section>
-        )}
       </BreakInteractive>
     </main>
   );

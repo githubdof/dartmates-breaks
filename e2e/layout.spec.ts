@@ -108,3 +108,12 @@ test("a failed 'I've sent it' reports inside the pay sheet, not behind it", asyn
   await page.getByTestId("pay-sent").click();
   await expect(page.getByTestId("pay-sheet").getByRole("alert")).toBeVisible();
 });
+
+test("focusing the ledger search hides the claim bar (D§5.1)", async ({ browser }) => {
+  const host = await signedIn(browser, hostEmail, "host");
+  await host.goto(url);
+  await expect(host.locator("[data-sticky-bar]")).toBeVisible(); // a 50-line break: the host may hold 5, so the bar shows
+  await host.getByTestId("host-tools").click();
+  await host.getByPlaceholder("Name, handle or amount").focus();
+  await expect(host.locator("[data-sticky-bar]")).toBeHidden();
+});

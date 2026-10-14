@@ -24,7 +24,7 @@ export function matchesFilter(r: LedgerRowView, f: LedgerFilter): boolean {
 export function matchesQuery(r: LedgerRowView, q: string): boolean {
   const s = q.trim().toLowerCase().replace(/^@/, "");
   if (!s) return true;
-  const money = s.replace(/^\$/, "");
+  const money = s.replace(/^\$/, "").replace(/,/g, "");
   if (/^\d+(\.\d{1,2})?$/.test(money) && Math.round(Number(money) * 100) === r.owedCents) return true;
   return [r.handle, r.displayName].some((v) => v?.toLowerCase().includes(s) ?? false);
 }
@@ -74,7 +74,7 @@ export function releaseConfirm(r: Pick<LedgerRowView, "handle" | "displayName" |
 export const releaseReason = (r: Pick<LedgerRowView, "unpaid" | "overdue">): "overdue" | "host_dropped" =>
   r.overdue.length > 0 && r.overdue.length === r.unpaid.length ? "overdue" : "host_dropped";
 
-export const bonusText = (used: number, max: number) => `${max - used} of ${max} bonus ${plural(max, "line", "lines")} left`;
+export const bonusText = (used: number, max: number) => `${Math.max(0, max - used)} of ${max} bonus ${plural(max, "line", "lines")} left`;
 
 const WORD: Record<BuyerStatus, string> = { sent: "Sent", unpaid: "Unpaid", overdue: "Overdue", paid: "Paid" };
 export const rowStateWord = (r: Pick<LedgerRowView, "status">) => WORD[r.status];

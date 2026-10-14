@@ -37,17 +37,19 @@ test("host opens, buyers claim and pay, host draws, result verifies", async ({ b
   await expect(bob.getByTestId("pay-amount")).toContainText("$5");
 
   await host.reload(); // pick up claims made in the other contexts
+  await host.getByTestId("host-tools").click();
   await expect(host.locator("[data-testid=ledger-row][data-status=sent]")).toHaveCount(1);
   const paid = host.getByTestId("ledger-paid");
-  await expect(paid).toHaveCount(2); // one per buyer
+  await expect(paid).toHaveCount(2); // one per buyer with unpaid lines
   await paid.first().click();
-  await expect(paid).toHaveCount(1);
+  await expect(paid).toHaveCount(1); // the row stays, showing Paid and Undo
+  await expect(host.getByTestId("ledger-undo")).toHaveCount(1);
   await paid.first().click();
   await expect(paid).toHaveCount(0);
   await expect(host.getByTestId("paid-count")).toContainText("3 of 3 paid");
   await host.getByTestId("run-draw").click();
   await host.getByTestId("finish-draw").click();
-  await host.getByTestId("bar-result").click(); // "See the result" now lives in the claim bar
+  await host.getByTestId("ledger-result").click();
   await expect(host.getByTestId("winner")).toBeVisible({ timeout: 15_000 });
   await expect(host.getByTestId("verify-status")).toContainText("Checked"); // runs on load
   await host.getByTestId("verify-run").click();

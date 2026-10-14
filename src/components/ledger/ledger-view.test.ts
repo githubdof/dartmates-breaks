@@ -29,6 +29,13 @@ describe("filters and search", () => {
     expect(matchesQuery(dave, "10")).toBe(false);
     expect(matchesQuery(dave, "zzz")).toBe(false);
   });
+  it("matches an amount written with thousands commas", () => {
+    const big = row({ ownerId: "g", handle: "gus", owedCents: 125000, status: "unpaid" });
+    expect(matchesQuery(big, "$1,250")).toBe(true);
+    expect(matchesQuery(big, "1,250.00")).toBe(true);
+    expect(matchesQuery(big, "1250")).toBe(true);
+    expect(matchesQuery(big, "1,25")).toBe(false);
+  });
 });
 
 describe("fixed order", () => {
@@ -62,6 +69,7 @@ describe("row copy", () => {
   it("shows the bonus allowance and the row state word", () => {
     expect(bonusText(2, 5)).toBe("3 of 5 bonus lines left");
     expect(bonusText(0, 1)).toBe("1 of 1 bonus line left");
+    expect(bonusText(7, 5)).toBe("0 of 5 bonus lines left"); // never a negative count
     expect([alice, dave, erin, bob].map(rowStateWord)).toEqual(["Sent", "Unpaid", "Overdue", "Paid"]);
   });
   it("draws each line's state as a mini cell", () => {
