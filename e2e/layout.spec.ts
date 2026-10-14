@@ -89,3 +89,22 @@ test("Escape closes the pay sheet and focus lands on the claim bar (D§7)", asyn
   // Polled: if Escape lands while the claim is still resolving, the island hands focus to the bar once it settles.
   await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest("[data-sticky-bar]"))).toBe(true);
 });
+
+test("a failed 'I've sent it' reports inside the pay sheet, not behind it", async ({ browser }) => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await loginAs(page, `lg${run}@e2e.test`);
+  await page.goto(url);
+  await page.getByTestId("cell-21").click();
+  await page.getByTestId("claim-submit").click();
+  await expect(page.getByTestId("pay-sheet")).toBeVisible();
+  // The same buyer gives the line back from a second tab, so marking it sent must now fail.
+  const other = await ctx.newPage();
+  await other.goto(url);
+  await other.getByTestId("owed").click();
+  await other.getByRole("button", { name: "Give back these lines" }).click();
+  await other.getByTestId("give-back-confirm").click();
+  await expect(other.getByTestId("pay-sheet")).toBeHidden();
+  await page.getByTestId("pay-sent").click();
+  await expect(page.getByTestId("pay-sheet").getByRole("alert")).toBeVisible();
+});

@@ -26,7 +26,11 @@ type Props = {
   /** How many random lines may replace taken ones (0 hides the offer). */
   retryMax: number;
   onRetry: (count: number) => void;
-  onSent: () => void;
+  /** `done` runs only once the server accepted it. */
+  onSent: (done: () => void) => void;
+  onGaveBack: () => void;
+  /** A failure from onSent or onRetry, shown here because the page behind a modal is inert. */
+  error: { for: "sent" | "retry"; text: string } | null;
   pending: boolean;
 };
 
@@ -47,35 +51,34 @@ export function PaySheet(p: Props) {
   const [confirming, setConfirming] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copyFailed, setCopyFailed] = useState(false);
+  const [copyFails, setCopyFails] = useState(0);
   const [giving, startGive] = useTransition();
   const fieldRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try { setShowHint(window.localStorage.getItem(SENT_HINT_KEY) !== "1"); } catch { setShowHint(true); }
   }, []);
-  useEffect(() => { if (!p.open) { setConfirming(false); setError(null); setCopyFailed(false); } }, [p.open]);
+  useEffect(() => { if (!p.open) { setConfirming(false); setError(null); setCopyFails(0); } }, [p.open]);
   // The clipboard is blocked (some in-app browsers): show the value selected so a long press can copy it.
   useEffect(() => {
-    if (copyFailed) { fieldRef.current?.focus(); fieldRef.current?.select(); }
-  }, [copyFailed]);
+    if (copyFails > 0) { fieldRef.current?.focus(); fieldRef.current?.select(); }
+  }, [copyFails]);
 
   const links = p.owe ? payLinks(p.handles, p.owe.cents) : {};
   const prompt = p.owe ? giveBackPrompt(p.owe.numbers) : null;
   const retryCount = p.outcome ? Math.min(p.outcome.taken.length, p.retryMax) : 0;
   const copyValue = p.handles.venmo ?? (p.handles.paypal ? `paypal.me/${p.handles.paypal}` : null);
 
-  const markSent = () => {
+  const markSent = () => p.onSent(() => {
     try { window.localStorage.setItem(SENT_HINT_KEY, "1"); } catch { /* storage blocked: the hint shows again next time */ }
     setShowHint(false);
-    p.onSent();
-  };
+  });
   const doGiveBack = () => {
     if (!p.owe) return;
     const numbers = p.owe.numbers;
     startGive(async () => {
       const r = await giveBack(p.breakId, numbers);
-      if (r.ok) { setConfirming(false); p.onClose(); } else setError(r.message);
+      if (r.ok) { setConfirming(false); p.onGaveBack(); p.onClose(); } else setError(r.message);
     });
   };
 
@@ -88,6 +91,7 @@ export function PaySheet(p: Props) {
             {retryCount > 0 && (
               <Button variant="text" onClick={() => p.onRetry(retryCount)} disabled={p.pending}>{retryRandomLabel(retryCount)}</Button>
             )}
+            {p.error?.for === "retry" && <p role="alert" className="text-small text-red" data-testid="pay-error">{p.error.text}</p>}
           </div>
         )}
         {p.owe ? (
@@ -102,11 +106,11 @@ export function PaySheet(p: Props) {
                   copiedLabel={p.handles.venmo ? "Handle copied" : "Link copied"}
                   full
                   testId="pay-copy"
-                  onFail={() => setCopyFailed(true)}
+                  onFail={() => setCopyFails((n) => n + 1)}
                 />
               )}
-              {copyFailed && copyValue && (
-                <input ref={fieldRef} readOnly value={copyValue} aria-label="Handle to copy" onFocus={(e) => e.currentTarget.select()} className="h-11 w-full rounded-input border border-wire-strong bg-card px-3 font-mono text-small" />
+              {copyFails > 0 && copyValue && (
+                <input ref={fieldRef} readOnly value={copyValue} aria-label={p.handles.venmo ? "Handle to copy" : "PayPal link to copy"} onFocus={(e) => e.currentTarget.select()} className="h-11 w-full rounded-input border border-wire-strong bg-card px-3 font-mono text-small" />
               )}
               {links.venmo && (
                 <a href={links.venmo.app} onClick={(e) => { e.preventDefault(); openPayLink(links.venmo!); }} className={buttonClass("secondary", true)}>Pay with Venmo</a>
@@ -122,6 +126,7 @@ export function PaySheet(p: Props) {
             )}
             <div className="space-y-2">
               <Button full onClick={markSent} disabled={p.pending} data-testid="pay-sent">I&apos;ve sent it</Button>
+              {p.error?.for === "sent" && <p role="alert" className="text-small text-red" data-testid="pay-error">{p.error.text}</p>}
               {showHint && <p className="text-small text-ink-2">{SENT_HINT}</p>}
               {p.owe.payByIso && p.owe.payByFallback && (
                 <p className="text-small" data-testid="pay-by">

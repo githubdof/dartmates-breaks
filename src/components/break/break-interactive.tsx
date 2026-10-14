@@ -13,6 +13,7 @@ import { clampStep } from "@/components/stepper-math";
 import { ClaimBar } from "./claim-bar";
 import { LineList } from "./line-list";
 import { PaySheet } from "./pay-sheet";
+import { nextPendingOwe } from "./pay-copy";
 import { barShown, claimBar, failureNote, limitText } from "./claim-bar-state";
 import { cellNote, isSelectable, loginHref, onboardingHref, outcomeText, reconcileSelection, selectionAnnouncement, takenAnnouncement, toggleSelection } from "./selection";
 import { useAutoRefresh } from "./use-auto-refresh";
@@ -69,6 +70,10 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const [outcome, setOutcome] = useState<{ got: number[]; taken: number[] } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   // The claim can resolve before the refreshed props arrive: the sheet shows a provisional amount until they do.
+  // Failures while the sheet is open show inside it: the page behind a modal dialog is inert.
+  const [sheetError, setSheetError] = useState<{ for: "sent" | "retry"; text: string } | null>(null);
+  const sheetOpenRef = useRef(false);
+  sheetOpenRef.current = sheetOpen;
   const [pendingOwe, setPendingOwe] = useState<Owe | null>(null);
   const [justSent, setJustSent] = useState(false);
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -133,7 +138,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   // Closing the sheet hands focus back to the bar. The Sheet does it itself, but if the claim is still resolving it
   // may aim at the claim button that is about to be replaced; once the refresh has landed, look again.
   const restoreFocus = useRef(false);
-  const closeSheet = () => { restoreFocus.current = true; setSheetOpen(false); };
+  const closeSheet = () => { restoreFocus.current = true; setSheetError(null); setSheetOpen(false); };
   const barKind = bar.kind;
   useEffect(() => {
     if (sheetOpen || pending || !restoreFocus.current) return;
@@ -148,7 +153,9 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const struckSet = useMemo(() => new Set(struck), [struck]);
   const canPick = p.status === "open" && p.claimMode !== "straight";
-  const retryMax = p.status === "open" && p.claimMode === "pick_or_random" ? Math.min(p.counts.open, p.allowance.remaining) : 0;
+  // Until the refreshed props land, the lines just got still count as open and unspent in them.
+  const justGot = pendingOwe && outcome ? outcome.got.length : 0;
+  const retryMax = p.status === "open" && p.claimMode === "pick_or_random" ? Math.max(0, Math.min(p.counts.open, p.allowance.remaining) - justGot) : 0;
 
   /** "Line 7: @mike, paid" in a small popover under the tapped cell, and in the polite live region. */
   const showCellNote = (c: GridCell) => {
@@ -194,14 +201,9 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       setStruck(taken);
       setOutcome({ got: r.data.got, taken });
       say(outcomeText(r.data.got, taken));
-      if (r.data.got.length > 0) {
-        setPendingOwe({
-          numbers: [...(p.owe?.numbers ?? []), ...r.data.got].sort((x, y) => x - y),
-          cents: (p.owe?.cents ?? 0) + r.data.got.length * p.priceCents,
-          payByIso: p.owe?.payByIso ?? null,
-          payByFallback: p.owe?.payByFallback ?? null,
-        });
-      }
+      setSheetError(null);
+      // Built on what is already shown (a retry adds to the first claim's provisional amount); none got, none provisional.
+      setPendingOwe((prev) => nextPendingOwe(p.owe ?? prev, r.data.got, p.priceCents));
       setSheetOpen(true); // the claim is committed; now the pay step
       return;
     }
@@ -217,7 +219,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     // Called inside the claim's transition, so the optimistic marks hold until the fresh props land.
     router.refresh();
     const text = failureNote(r);
-    setNote(text);
+    if (sheetOpenRef.current) setSheetError({ for: "retry", text });
+    else setNote(text);
     say(text);
   };
 
@@ -239,19 +242,23 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     const open = cells.filter((c) => c.state === "open" && !c.bonus).map((c) => c.number);
     runClaim(open, () => claimRest(p.breakId, batchId));
   };
-  const onRetry = (n: number) => runClaim([], () => claimRandomAction(p.breakId, n, batchId));
-  const onSent = () => {
+  const onRetry = (n: number) => { setSheetError(null); runClaim([], () => claimRandomAction(p.breakId, n, batchId)); };
+  const onSent = (done?: () => void) => {
     if (!owe) return;
+    setSheetError(null);
     const numbers = owe.numbers;
     startTransition(async () => {
       const r = await sent(p.breakId, numbers);
       if (r.ok) {
+        done?.();
         setJustSent(true);
         setOutcome(null);
+        setPendingOwe(null);
         closeSheet();
         say(`Sent. ${p.hostName} will tick you off when it arrives.`);
       } else {
-        setNote(r.message);
+        if (sheetOpenRef.current) setSheetError({ for: "sent", text: r.message });
+        else setNote(r.message);
         say(r.message);
       }
     });
@@ -317,8 +324,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         signInHref={loginHref(p.breakId, selected)}
         onStep={onStep}
         onLast={onLast}
-        onSent={onSent}
-        onOweTap={() => { setOutcome(null); setSheetOpen(true); }}
+        onSent={() => onSent()}
+        onOweTap={() => { setOutcome(null); setSheetError(null); setSheetOpen(true); }}
         resultHref={`/b/${p.breakId}/result`}
       />
       <PaySheet
@@ -335,6 +342,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         retryMax={retryMax}
         onRetry={onRetry}
         onSent={onSent}
+        onGaveBack={() => setPendingOwe(null)}
+        error={sheetError}
         pending={pending}
       />
     </>

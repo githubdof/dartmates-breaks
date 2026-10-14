@@ -16,3 +16,16 @@ export function giveBackPrompt(numbers: readonly number[]): { text: string; conf
 export const retryRandomLabel = (n: number) => (n === 1 ? "Take a random open line instead" : `Take ${n} random open lines instead`);
 
 export const commitmentShort = (c: string | null) => (c ? c.slice(0, 12) : null);
+
+type OweShape = { numbers: number[]; cents: number; payByIso: string | null; payByFallback: string | null };
+
+/** The provisional amount shown before refreshed props land: what was owed, plus the lines just got. Nothing got, nothing provisional. */
+export function nextPendingOwe(base: OweShape | null, got: readonly number[], priceCents: number): OweShape | null {
+  if (got.length === 0) return null;
+  return {
+    numbers: [...(base?.numbers ?? []), ...got].sort((x, y) => x - y),
+    cents: (base?.cents ?? 0) + got.length * priceCents,
+    payByIso: base?.payByIso ?? null,
+    payByFallback: base?.payByFallback ?? null,
+  };
+}
