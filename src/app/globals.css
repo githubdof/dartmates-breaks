@@ -1,24 +1,76 @@
 @import "tailwindcss";
+@import "./tokens.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Taken and sent cells: a 45° hatch, ink-2 at 35%, 1px every 4px (design §4). */
+@utility bg-hatch {
+  background-color: var(--card);
+  background-image: repeating-linear-gradient(45deg, rgb(92 90 85 / 0.35) 0 1px, transparent 1px 4px);
+}
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+@utility pb-safe {
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@theme {
+  --animate-deal: deal 240ms ease-out both;
+  --animate-lift: lift 300ms ease-out forwards;
+  @keyframes deal {
+    from { opacity: 0; transform: translateY(-16px) scale(0.9); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes lift {
+    from { transform: none; }
+    to { transform: translateY(-6px) scale(1.12); }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+@layer base {
+  html {
+    background-color: var(--paper);
+    color: var(--ink);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-barlow), ui-sans-serif, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 24px;
+  }
+  :focus-visible {
+    outline: 2px solid var(--green);
+    outline-offset: 2px;
+  }
+  dialog::backdrop {
+    background: rgb(0 0 0 / 0.4);
+  }
+  /* The claim bar is fixed: reserve its real height (StickyBar measures it into --bar-total, safe area included)
+     so the last content and any focused cell stay visible even when the bar grows to two rows. */
+  body:has([data-sticky-bar]) {
+    padding-bottom: var(--bar-total, calc(var(--bar-h) + max(12px, env(safe-area-inset-bottom))));
+  }
+  :root:has([data-sticky-bar]) {
+    scroll-padding-bottom: var(--bar-total, calc(var(--bar-h) + max(12px, env(safe-area-inset-bottom))));
+  }
+  @media (max-width: 639px) {
+    body:has([data-tab-bar]) {
+      padding-bottom: calc(var(--tab-h) + max(12px, env(safe-area-inset-bottom)));
+    }
+  }
+  /* One bar at a time: the claim bar steps aside while the keyboard is up, except for the bar's own
+     inputs (the Pick for me stepper), which must not hide the bar they live in. */
+  body:has(:is(input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), textarea, select):focus:not([data-sticky-bar] *)) [data-sticky-bar] {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

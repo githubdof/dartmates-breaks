@@ -1,0 +1,49 @@
+/* Board tokens (UI design §3). Raw values live on :root so a later dark mode is a variable remap. */
+:root {
+  --paper: #F6F5F1;
+  --card: #FFFFFF;
+  --ink: #000000;
+  --ink-2: #5C5A55;
+  --wire-strong: #86827A;
+  --wire: #C9C6BE;
+  --wire-2: #E6E4DE;
+  --green: #1E7A4C;
+  --red: #C8102E;
+  --bar-h: 64px;
+  --tab-h: 56px;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-wire-strong: var(--wire-strong);
+  --color-wire: var(--wire);
+  --color-wire-2: var(--wire-2);
+  --color-green: var(--green);
+  --color-red: var(--red);
+
+  --font-sans: var(--font-barlow), ui-sans-serif, system-ui, sans-serif;
+  --font-condensed: var(--font-barlow-condensed), var(--font-barlow), ui-sans-serif, sans-serif;
+
+  --text-display: 34px;
+  --text-display--line-height: 36px;
+  --text-title: 26px;
+  --text-title--line-height: 28px;
+  --text-grid: 18px;
+  --text-grid--line-height: 1;
+  --text-headline: 20px;
+  --text-headline--line-height: 26px;
+  --text-body: 16px;
+  --text-body--line-height: 24px;
+  --text-small: 14px;
+  --text-small--line-height: 20px;
+  --text-micro: 12px;
+  --text-micro--line-height: 16px;
+
+  --radius-input: 4px;
+  --radius-card: 8px;
+
+  --shadow-sheet: 0 -8px 24px rgb(0 0 0 / 0.12);
+}
