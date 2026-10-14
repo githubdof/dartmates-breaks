@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-const PUBLIC = [/^\/$/, /^\/login(\/|$)/, /^\/auth\//, /^\/b\//, /^\/breaks(\/|$)/, /^\/h\//, /^\/legal(\/|$)/, /^\/api\//, /^\/test\//, /^\/_next\//, /^\/favicon/];
+const PUBLIC = [/^\/$/, /^\/login(\/|$)/, /^\/auth\//, /^\/b\//, /^\/breaks(\/|$)/, /^\/h\//, /^\/legal(\/|$)/, /^\/api\//, /^\/test\//, /^\/dev\//, /^\/_next\//, /^\/favicon/];
 
 export async function middleware(req: NextRequest) {
   let res = NextResponse.next({ request: req });
