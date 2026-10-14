@@ -2,12 +2,13 @@ import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const ROOTS = ["src/app", "src/components", "src/lib", "src/domain"];
+// src/auth throws messages the login and onboarding screens show, so it is buyer copy too.
+const ROOTS = ["src/app", "src/components", "src/lib", "src/domain", "src/auth"];
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((f) => {
     const p = join(dir, f);
     if (statSync(p).isDirectory()) return files(p);
-    return /\.(ts|tsx)$/.test(p) && !/\.test\.ts$/.test(p) ? [p] : [];
+    return /\.(ts|tsx)$/.test(p) && !/\.test\.tsx?$/.test(p) ? [p] : [];
   });
 }
 const sources = ROOTS.flatMap(files).map((path) => ({ path, text: readFileSync(path, "utf8") }));
@@ -39,8 +40,11 @@ describe("copy audit (design §6, §7)", () => {
     expect(hits(/["'`](Filled|Drawing|Drawn)\b/, ui)).toEqual([]);
   });
   it("has no bullet characters", () => expect(hits(/•/)).toEqual([]));
-  it("has no exclamation marks in .ts string literals", () => {
-    const ts = sources.filter((s) => s.path.endsWith(".ts"));
-    expect(hits(/["'`][^"'`\n]*[A-Za-z]![\s"'`]/, ts)).toEqual([]);
+  it("has no exclamation marks in string literals (.ts and .tsx)", () => {
+    expect(hits(/["'`][^"'`\n]*[A-Za-z]![\s"'`]/)).toEqual([]);
+  });
+  it("never writes a price per line as /line", () => expect(hits(/["'`][^"'`\n]*\/line(?![\w-])/)).toEqual([]));
+  it("never writes money with .00 outside money.ts and pay-links.ts", () => {
+    expect(hits(/["'`][^"'`\n]*[\d}]\.00\b/).filter((p) => !/src\/lib\/(money|pay-links)\.ts$/.test(p))).toEqual([]);
   });
 });
