@@ -33,6 +33,12 @@ triaged by the whole-branch reviewer and ruled by the controller.
 6. **Journey 2 e2e.** Draft then open, prize choice, 2nd place, all three
    picking modes, a real check of result verification. Clean up the e2e's
    users and breaks in the dev DB, or point the e2e at its own database.
+   The forced sent-failure layout test flaked once in a full run (two tabs
+   plus a paused clock) and passed on every re-run; make it deterministic.
+7. **Offline refresh.** When the device is fully offline, the
+   `router.refresh()` after a thrown action can itself fail and Next falls
+   back to a hard navigation; show the "couldn't reach" note without
+   refreshing in that case.
 7. **E2E in CI.** CI runs lint, unit, concurrency, the RLS suite and the
    build, but no e2e (Playwright needs Supabase Auth). Consider
    `supabase start` in a CI job with `E2E_SECRET` and `BEACON=fake` set only
