@@ -108,6 +108,8 @@ export function PaySheet(p: Props) {
             {p.error?.for === "retry" && <p role="alert" className="text-small text-red" data-testid="pay-error">{p.error.text}</p>}
           </div>
         )}
+        {/* Outside the owe branch: a refused sent refreshes, and the owe it cleared must not take the reason with it. */}
+        {p.error?.for === "sent" && <p role="alert" className="text-small text-red" data-testid="pay-error">{p.error.text}</p>}
         {p.owe ? (
           <>
             <MiniCells label="Your unpaid lines" cells={p.owe.numbers.map((n) => ({ number: n, state: "taken" as const, mine: true, overdue: false, bonus: false }))} />
@@ -140,7 +142,6 @@ export function PaySheet(p: Props) {
             )}
             <div className="space-y-2">
               <Button full onClick={markSent} disabled={p.pending} data-testid="pay-sent">I&apos;ve sent it</Button>
-              {p.error?.for === "sent" && <p role="alert" className="text-small text-red" data-testid="pay-error">{p.error.text}</p>}
               {showHint && <p className="text-small text-ink-2">{SENT_HINT}</p>}
               {p.owe.payByIso && p.owe.payByFallback && (
                 <p className="text-small" data-testid="pay-by">

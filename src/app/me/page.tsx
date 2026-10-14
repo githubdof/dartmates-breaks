@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { myLines } from "@/domain/lines/queries";
 import { viewerZone } from "@/lib/zone";
 import { MyBreakCard } from "@/components/me/my-break-card";
+import { MeNotes } from "@/components/me/me-notes";
 import { toCardProps } from "./card-props";
 
 export const metadata = { title: "My lines" };
@@ -18,9 +19,10 @@ export default async function MyLinesPage() {
   return (
     <main className="mx-auto max-w-[600px] space-y-4 px-4 py-6 sm:px-6">
       <h1 className="font-condensed text-title font-semibold">My lines</h1>
+      <MeNotes>
       {groups.length === 0 && (
         <p className="text-ink-2" data-testid="me-empty">
-          No lines yet. <Link href="/breaks" className="underline underline-offset-4">Browse breaks</Link> to find one.
+          No lines yet. <Link href="/breaks" className="inline-flex min-h-11 items-center underline underline-offset-4">Browse breaks</Link> to find one.
         </p>
       )}
       {current.length > 0 && <ul className="space-y-3">{current.map((c) => <MyBreakCard key={c.breakId} {...c} />)}</ul>}
@@ -30,6 +32,7 @@ export default async function MyLinesPage() {
           <ul className="space-y-3 px-4 pb-4">{earlier.map((c) => <MyBreakCard key={c.breakId} {...c} />)}</ul>
         </details>
       )}
+      </MeNotes>
     </main>
   );
 }

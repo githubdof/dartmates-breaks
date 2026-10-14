@@ -113,18 +113,13 @@ test("a failed 'I've sent it' reports inside the pay sheet, not behind it", asyn
   await other.getByRole("button", { name: "Give back these lines" }).click();
   await other.getByTestId("give-back-confirm").click();
   await expect(other.getByTestId("pay-sheet")).toBeHidden();
-  // The failure also refreshes the page's props, and the refreshed (given back) owe unmounts the sheet's owe block
-  // with its alert a moment later, so a poll can miss it. Watch the DOM for the alert instead of polling for it.
-  const sawAlert = page.evaluate(() => new Promise<string>((resolve, reject) => {
-    const find = () => document.querySelector('[data-testid="pay-sheet"] [role="alert"]')?.textContent ?? null;
-    const now = find();
-    if (now) return resolve(now);
-    const obs = new MutationObserver(() => { const t = find(); if (t) { obs.disconnect(); resolve(t); } });
-    obs.observe(document.body, { childList: true, subtree: true, characterData: true });
-    setTimeout(() => { obs.disconnect(); reject(new Error("no alert appeared inside the pay sheet")); }, 10_000);
-  }));
+  await other.context().close();
+  // The failure refreshes the page's props and the given-back owe clears; the alert stays in the open sheet.
   await page.getByTestId("pay-sent").click();
-  expect(await sawAlert).toBeTruthy();
+  const alert = page.getByTestId("pay-sheet").getByRole("alert");
+  await expect(alert).toBeVisible();
+  await expect(alert).toHaveText("Those lines aren't yours or are already paid");
+  await ctx.close();
 });
 
 test("a claim whose request never arrives keeps the buyer on the board with a note (I2)", async ({ browser }) => {
