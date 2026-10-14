@@ -5,7 +5,7 @@ import { joinAnd, plural } from "@/lib/list";
 
 /** One buyer as the host ledger shows it; dates already turned into strings on the server. */
 export type LedgerRowView = {
-  ownerId: string; handle: string | null; displayName: string | null;
+  ownerId: string; handle: string | null; displayName: string | null; paymentName: string | null;
   numbers: number[]; unpaid: number[]; sent: number[]; overdue: number[]; paid: number[]; bonus: number[];
   owedCents: number; status: BuyerStatus; lateText: string | null;
 };
@@ -26,7 +26,7 @@ export function matchesQuery(r: LedgerRowView, q: string): boolean {
   if (!s) return true;
   const money = s.replace(/^\$/, "").replace(/,/g, "");
   if (/^\d+(\.\d{1,2})?$/.test(money) && Math.round(Number(money) * 100) === r.owedCents) return true;
-  return [r.handle, r.displayName].some((v) => v?.toLowerCase().includes(s) ?? false);
+  return [r.handle, r.displayName, r.paymentName].some((v) => v?.toLowerCase().includes(s) ?? false);
 }
 
 export const freezeOrder = (rows: readonly LedgerRowView[]) => rows.map((r) => r.ownerId);

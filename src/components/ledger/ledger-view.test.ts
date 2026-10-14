@@ -4,7 +4,7 @@ import {
 } from "./ledger-view";
 
 const row = (o: Partial<LedgerRowView> & { ownerId: string }): LedgerRowView => ({
-  handle: null, displayName: null, numbers: [], unpaid: [], sent: [], overdue: [], paid: [], bonus: [], owedCents: 0, status: "paid", lateText: null, ...o,
+  handle: null, displayName: null, paymentName: null, numbers: [], unpaid: [], sent: [], overdue: [], paid: [], bonus: [], owedCents: 0, status: "paid", lateText: null, ...o,
 });
 const alice = row({ ownerId: "a", handle: "alice", displayName: "Alice Smith", numbers: [2, 5], unpaid: [2, 5], sent: [2, 5], owedCents: 1000, status: "sent" });
 const dave = row({ ownerId: "d", handle: "dave", displayName: "Dave", numbers: [4], unpaid: [4], owedCents: 500, status: "unpaid" });
@@ -35,6 +35,12 @@ describe("filters and search", () => {
     expect(matchesQuery(big, "1,250.00")).toBe(true);
     expect(matchesQuery(big, "1250")).toBe(true);
     expect(matchesQuery(big, "1,25")).toBe(false);
+  });
+  it("matches the name a buyer pays with", () => {
+    const pat = row({ ownerId: "p", handle: "pat", displayName: "Pat", paymentName: "Patricia Lee", owedCents: 500, status: "unpaid" });
+    expect(matchesQuery(pat, "patricia")).toBe(true);
+    expect(matchesQuery(pat, "lee")).toBe(true);
+    expect(matchesQuery(dave, "patricia")).toBe(false);
   });
 });
 

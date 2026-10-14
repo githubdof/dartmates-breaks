@@ -53,6 +53,7 @@ export function LedgerRow(p: Props) {
           <button type="button" onClick={p.onToggle} aria-expanded={p.expanded} className="flex min-h-11 w-full min-w-0 items-baseline gap-2 text-left">
             <span className="truncate font-semibold">{name}</span>
             {r.handle && r.displayName && <span className="truncate text-small text-ink-2">@{r.handle}</span>}
+            {r.paymentName && <span className="truncate text-small text-ink-2" data-testid="pays-as">pays as {r.paymentName}</span>}
           </button>
           <div className="flex flex-wrap items-center gap-2 text-small sm:contents">
             <MiniCells cells={cells} />

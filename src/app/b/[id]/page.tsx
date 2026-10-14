@@ -83,7 +83,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
   // Rows arrive in the ledger order (ledgerByBuyer sorts with compareLedger); the sheet freezes that order.
   const ledger = grid.hostView ? await db.transaction((tx) => ledgerByBuyer(tx, id, now)) : [];
   const ledgerRows: LedgerRowView[] = ledger.map((r) => ({
-    ownerId: r.ownerId, handle: r.handle, displayName: r.displayName,
+    ownerId: r.ownerId, handle: r.handle, displayName: r.displayName, paymentName: r.paymentName,
     numbers: r.numbers, unpaid: r.unpaid, sent: r.sent, overdue: r.overdue, paid: r.paid, bonus: r.bonus,
     owedCents: r.owedCents, status: r.status, lateText: r.overdueSince ? formatLate(r.overdueSince, now) : null,
   }));

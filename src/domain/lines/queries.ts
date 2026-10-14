@@ -24,7 +24,7 @@ export async function myLines(tx: Tx, userId: string) {
 }
 
 export type LedgerBuyer = {
-  ownerId: string; handle: string | null; displayName: string | null;
+  ownerId: string; handle: string | null; displayName: string | null; paymentName: string | null;
   numbers: number[]; unpaid: number[]; sent: number[]; overdue: number[]; paid: number[]; bonus: number[];
   owedCents: number; firstClaimAt: Date; overdueSince: Date | null; status: BuyerStatus;
 };
@@ -34,7 +34,7 @@ export async function ledgerByBuyer(tx: Tx, breakId: string, now: Date): Promise
   const [b] = await tx.select({ paymentWindowHours: breaks.paymentWindowHours }).from(breaks).where(eq(breaks.id, breakId));
   if (!b) return [];
   const rows = await tx.select({
-    number: lines.number, ownerId: lines.ownerId, handle: users.handle, displayName: users.displayName,
+    number: lines.number, ownerId: lines.ownerId, handle: users.handle, displayName: users.displayName, paymentName: users.paymentName,
     claimedAt: lines.claimedAt, sentAt: lines.sentAt, paidAt: lines.paidAt, priceCents: lines.priceCents, isBonus: lines.isBonus,
   }).from(lines).innerJoin(users, eq(users.id, lines.ownerId)).where(eq(lines.breakId, breakId)).orderBy(asc(lines.number));
   const by = new Map<string, LedgerBuyer>();
@@ -42,7 +42,7 @@ export async function ledgerByBuyer(tx: Tx, breakId: string, now: Date): Promise
     const ownerId = r.ownerId!;
     const claimedAt = r.claimedAt!; // lines_owned_claimed_chk: owned lines always have claimed_at
     const g: LedgerBuyer = by.get(ownerId) ?? {
-      ownerId, handle: r.handle, displayName: r.displayName, numbers: [], unpaid: [], sent: [], overdue: [], paid: [], bonus: [],
+      ownerId, handle: r.handle, displayName: r.displayName, paymentName: r.paymentName, numbers: [], unpaid: [], sent: [], overdue: [], paid: [], bonus: [],
       owedCents: 0, firstClaimAt: claimedAt, overdueSince: null, status: "paid",
     };
     g.numbers.push(r.number);

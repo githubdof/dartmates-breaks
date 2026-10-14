@@ -309,7 +309,10 @@ describe("ledgerByBuyer", () => {
       await tx.execute(sql`update lines set claimed_at = now() - interval '30 hours' where break_id = ${b.id} and number = 9`);
       await tx.execute(sql`update lines set claimed_at = now() - interval '29 hours' where break_id = ${b.id} and number = 12`);
 
+      await tx.execute(sql`update users set payment_name = 'Dave Payer' where id = ${dave.id}`);
       const rows = await ledgerByBuyer(tx, b.id, new Date());
+      expect(rows.find((r) => r.ownerId === dave.id)?.paymentName).toBe("Dave Payer");
+      expect(rows.find((r) => r.ownerId === alice.id)?.paymentName).toBeNull();
       expect(rows.map((r) => r.ownerId)).toEqual([alice.id, dave.id, carol.id, erin.id, bob.id]);
       const by = Object.fromEntries(rows.map((r) => [r.ownerId, r]));
       expect(by[alice.id]).toMatchObject({ status: "sent", handle: alice.handle, unpaid: [2, 5], sent: [2, 5], overdue: [], paid: [], owedCents: 1000, overdueSince: null });

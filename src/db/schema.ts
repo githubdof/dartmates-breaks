@@ -10,6 +10,8 @@ export const users = pgTable("users", {
   id: uuid("id").primaryKey(), // = auth.users.id
   handle: text("handle"),
   displayName: text("display_name"),
+  /** The name on the buyer's Venmo or PayPal, when it differs; hosts match payments by it. Hosts and the owner only. */
+  paymentName: text("payment_name"),
   avatarUrl: text("avatar_url"),
   email: text("email").notNull(),
   role: text("role").notNull().default("member"),
@@ -23,6 +25,7 @@ export const users = pgTable("users", {
 }, (t) => [
   uniqueIndex("users_handle_lower_idx").on(sql`lower(${t.handle})`),
   check("users_role_chk", sql`${t.role} in ('member','host','admin')`),
+  check("users_payment_name_chk", sql`char_length(${t.paymentName}) <= 60`),
 ]);
 
 export const hostProfiles = pgTable("host_profiles", {
