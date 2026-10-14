@@ -1,23 +1,40 @@
 import Link from "next/link";
-import { sql, eq, desc } from "drizzle-orm";
 import { requireCaller } from "@/auth/session";
 import { db } from "@/db/client";
-import { breaks } from "@/db/schema";
+import { listHostBreaks } from "@/domain/breaks/queries";
+import { ButtonLink } from "@/components/button";
+import { StatusPill } from "@/components/status-pill";
+import { FillBar } from "@/components/fill-bar";
+
+export const metadata = { title: "Your breaks" };
 
 export default async function HostHome() {
   const caller = await requireCaller("/host");
-  if (caller.role !== "host" && caller.role !== "admin") return <main className="p-4">Only hosts can list a break.</main>;
-  const rows = await db.select({ id: breaks.id, title: breaks.title, status: breaks.status, lineCount: breaks.lineCount,
-    paid: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.paid_at is not null and l.number <= ${breaks.lineCount})` })
-    .from(breaks).where(eq(breaks.hostId, caller.id)).orderBy(desc(breaks.createdAt));
+  if (caller.role !== "host" && caller.role !== "admin") {
+    return <main className="mx-auto max-w-[600px] px-4 py-6"><p>Only hosts can list a break.</p></main>;
+  }
+  const rows = await db.transaction((tx) => listHostBreaks(tx, caller.id));
+
   return (
-    <main className="mx-auto max-w-md p-4">
-      <div className="flex items-center justify-between"><h1 className="text-xl font-semibold">My breaks</h1><Link href="/host/new" className="rounded bg-black px-3 py-2 text-sm text-white">New break</Link></div>
-      <ul className="mt-4 divide-y">
+    <main className="mx-auto max-w-[600px] px-4 py-6 sm:px-6">
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="font-condensed text-title font-semibold">Your breaks</h1>
+        <ButtonLink href="/host/new">New break</ButtonLink>
+      </div>
+      <ul className="mt-4 divide-y divide-wire rounded-card border border-wire bg-card">
         {rows.map((b) => (
-          <li key={b.id} className="py-3"><Link href={`/b/${b.id}`} className="block"><div className="font-medium">{b.title}</div><div className="text-sm text-neutral-600">{b.status} · {b.paid}/{b.lineCount} paid</div></Link></li>
+          <li key={b.id}>
+            <Link href={`/b/${b.id}`} className="block space-y-2 px-4 py-3">
+              <span className="flex items-start justify-between gap-3">
+                <span className="font-semibold">{b.title}</span>
+                <StatusPill status={b.status} />
+              </span>
+              <FillBar total={b.lineCount} paid={b.paid} taken={b.taken} />
+              <span className="block text-small text-ink-2 tabular">{b.paid} of {b.lineCount} paid</span>
+            </Link>
+          </li>
         ))}
-        {rows.length === 0 && <li className="py-3 text-sm text-neutral-600">No breaks yet.</li>}
+        {rows.length === 0 && <li className="px-4 py-3 text-small text-ink-2">No breaks yet. Start one with New break.</li>}
       </ul>
     </main>
   );

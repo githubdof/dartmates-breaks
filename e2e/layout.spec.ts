@@ -26,7 +26,8 @@ test.beforeAll(async ({ browser }) => {
   const host = await signedIn(browser, hostEmail, "host");
   await host.goto("/host/new");
   await host.fill("input[name=title]", "Layout fifty");
-  await host.fill("textarea[name=items]", "Chronos 22g");
+  await host.fill("input[name=prize1]", "Chronos 22g");
+  await host.fill("input[name=venmo]", "@e2e-host");
   await host.fill("input[name=lineCount]", "50");
   await host.fill("input[name=linePrice]", "5");
   await host.getByTestId("composer-open").click();

@@ -91,6 +91,17 @@ node --import tsx scripts/verify-draw.ts https://<host>/b/<id>/result.json
 
 It prints `OK` or `MISMATCH`.
 
+## UI conventions
+
+- Tokens live in `src/app/tokens.css` (raw colours on `:root`, mapped through Tailwind v4 `@theme inline`); there is no `tailwind.config`. Use `bg-paper`, `text-ink-2`, `border-wire-strong`, `font-condensed`, `text-title` and friends, never Tailwind's default palette.
+- Shared components are in `src/components/`. In development, `/dev/components` shows them all (it 404s in production).
+- Grid shaping, holder visibility and the host-only overdue flag are decided in `src/domain/breaks/grid.ts` on the server; client components receive the result.
+- Copy rules (no middle dots or bullets, gambling-neutral words, `formatMoney` for money, no default palette, no caps labels, no "Submit", the community's state words, no exclamation marks) are enforced by `src/lib/copy-audit.test.ts`.
+- Absolute times reach the browser as ISO plus a server fallback and render through `LocalTime` in the viewer's zone; the `tz` cookie lets the server's fallback match.
+- `e2e/layout.spec.ts` pins the break page's pixel budget, grid columns, cell names, focus return and bar hiding in a real browser.
+- The Playwright journey keys on `data-testid`; keep ids stable when restyling.
+- Migration `0001_claim_mode` adds the picking mode (`pick_or_random`, `pick_only`, `straight`); `allow_random_claims` is kept in step and will be dropped later.
+
 ## Spec and plans
 
 - Design: [`docs/superpowers/specs/`](docs/superpowers/specs/)

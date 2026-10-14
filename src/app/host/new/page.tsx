@@ -1,17 +1,24 @@
-import { eq } from "drizzle-orm";
 import { requireCaller } from "@/auth/session";
 import { db } from "@/db/client";
-import { hostProfiles } from "@/db/schema";
+import { hostPaymentHandles, lastBreakDefaults } from "@/domain/breaks/queries";
+import { MAX_LINES } from "@/domain/breaks/rules";
 import { ComposerForm } from "./form";
+
+export const metadata = { title: "New break" };
 
 export default async function NewBreakPage() {
   const caller = await requireCaller("/host/new");
-  if (caller.role !== "host" && caller.role !== "admin") return <main className="p-4">Only hosts can list a break.</main>;
-  const [profile] = await db.select({ paymentHandles: hostProfiles.paymentHandles }).from(hostProfiles).where(eq(hostProfiles.userId, caller.id));
+  if (caller.role !== "host" && caller.role !== "admin") {
+    return <main className="mx-auto max-w-[600px] px-4 py-6"><p>Only hosts can list a break.</p></main>;
+  }
+  const { handles, defaults } = await db.transaction(async (tx) => ({
+    handles: await hostPaymentHandles(tx, caller.id),
+    defaults: await lastBreakDefaults(tx, caller.id),
+  }));
   return (
-    <main className="mx-auto max-w-md p-4">
-      <h1 className="text-xl font-semibold">New break</h1>
-      <ComposerForm handles={profile?.paymentHandles ?? {}} />
+    <main className="mx-auto max-w-[600px] px-4 py-6 sm:px-6">
+      <h1 className="font-condensed text-title font-semibold">New break</h1>
+      <ComposerForm handles={handles} maxLines={MAX_LINES} defaults={defaults} />
     </main>
   );
 }

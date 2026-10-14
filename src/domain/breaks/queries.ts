@@ -1,6 +1,7 @@
-import { sql, eq, asc } from "drizzle-orm";
+import { sql, eq, asc, desc, and } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { breaks, breakItems, prizes, lines, users, hostProfiles } from "@/db/schema";
+import type { ClaimMode } from "./rules";
 
 export type BreakPage = {
   break: typeof breaks.$inferSelect;
@@ -39,4 +40,34 @@ export async function hostTrust(tx: Tx, hostId: string): Promise<{ breaksRun: nu
     breaksRun: sql<number>`(select count(*)::int from breaks b where b.host_id = ${hostId}::uuid and b.status = 'drawn')`,
   }).from(users).where(eq(users.id, hostId));
   return { breaksRun: r?.breaksRun ?? 0, since: r?.since ?? new Date(0) };
+}
+
+export type LastBreakDefaults = {
+  lineCount: number; linePriceCents: number; paymentWindowHours: number; maxLinesPerUser: number | null;
+  claimMode: ClaimMode; paymentInstructions: string;
+};
+
+/** The host's most recent main break: the composer starts from it (design §5.6, hosts run several a week). */
+export async function lastBreakDefaults(tx: Tx, hostId: string): Promise<LastBreakDefaults | null> {
+  const [r] = await tx.select({
+    lineCount: breaks.lineCount, linePriceCents: breaks.linePriceCents, paymentWindowHours: breaks.paymentWindowHours,
+    maxLinesPerUser: breaks.maxLinesPerUser, claimMode: breaks.claimMode, paymentInstructions: breaks.paymentInstructions,
+  }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"))).orderBy(desc(breaks.createdAt), desc(breaks.id)).limit(1);
+  return r ?? null;
+}
+
+export async function hostPaymentHandles(tx: Tx, hostId: string): Promise<{ venmo?: string; paypal?: string }> {
+  const [r] = await tx.select({ paymentHandles: hostProfiles.paymentHandles }).from(hostProfiles).where(eq(hostProfiles.userId, hostId));
+  return r?.paymentHandles ?? {};
+}
+
+export type HostBreakRow = { id: string; title: string; status: string; lineCount: number; paid: number; taken: number };
+
+/** The host's breaks for /host, newest first. Paid and taken (claimed, unpaid) count numbered lines only. */
+export async function listHostBreaks(tx: Tx, hostId: string): Promise<HostBreakRow[]> {
+  return tx.select({
+    id: breaks.id, title: breaks.title, status: breaks.status, lineCount: breaks.lineCount,
+    paid: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.paid_at is not null and l.number <= ${breaks.lineCount})`,
+    taken: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.owner_id is not null and l.paid_at is null and l.number <= ${breaks.lineCount})`,
+  }).from(breaks).where(eq(breaks.hostId, hostId)).orderBy(desc(breaks.createdAt), desc(breaks.id));
 }

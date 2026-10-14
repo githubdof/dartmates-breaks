@@ -13,7 +13,8 @@ test("host opens, buyers claim and pay, host draws, result verifies", async ({ b
   const host = await newContext(browser, `host${run}@e2e.test`, "host");
   await host.goto("/host/new");
   await host.fill("input[name=title]", "E2E Chronos");
-  await host.fill("textarea[name=items]", "Chronos 22g");
+  await host.fill("input[name=prize1]", "Chronos 22g");
+  await host.fill("input[name=venmo]", "@e2e-host");
   await host.fill("input[name=lineCount]", "3");
   await host.fill("input[name=linePrice]", "5");
   await host.getByTestId("composer-open").click();
