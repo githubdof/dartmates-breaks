@@ -2,7 +2,7 @@ import { RESERVED_HANDLES } from "./commands";
 
 /** Prefill for onboarding: the email's local part shaped to [a-z0-9_]{3,20}, never a reserved name. */
 export function suggestHandle(email: string): string {
-  const local = (email.split("@")[0] ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "");
+  const local = (email.split("@")[0] ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
   let h = local.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 20);
   if (!h) h = "user";
   if (h.length < 3) h = h.padEnd(3, "_");
