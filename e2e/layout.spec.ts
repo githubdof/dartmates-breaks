@@ -1,6 +1,6 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { loginAs } from "./helpers";
+import { gotoReady, loginAs } from "./helpers";
 
 // The design's layout and accessibility claims, checked in a real browser (no jsdom). One 50-line open break
 // serves the whole file; it is created through the composer exactly as journey-1 creates its break.
@@ -119,6 +119,31 @@ test("a failed 'I've sent it' reports inside the pay sheet, not behind it", asyn
   const alert = page.getByTestId("pay-sheet").getByRole("alert");
   await expect(alert).toBeVisible();
   await expect(alert).toHaveText("Those lines aren't yours or are already paid");
+  await ctx.close();
+});
+
+test("on My lines, a refused 'I've sent it' whose card leaves still says why, at the top of the page", async ({ browser }) => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await loginAs(page, `lm${run}@e2e.test`);
+  await gotoReady(page, url);
+  await page.getByTestId("cell-30").click();
+  await page.getByTestId("claim-submit").click();
+  await expect(page.getByTestId("pay-sheet")).toBeVisible();
+  await gotoReady(page, "/me");
+  await page.getByTestId("my-break").getByTestId("how-to-pay").click();
+  await expect(page.getByTestId("pay-sheet")).toBeVisible();
+  // The same buyer gives back every line in that break from a second context, so the card has nothing left to show.
+  const other = await (await browser.newContext({ storageState: await ctx.storageState() })).newPage();
+  await gotoReady(other, url);
+  await other.getByTestId("owed").click();
+  await other.getByRole("button", { name: "Give back these lines" }).click();
+  await other.getByTestId("give-back-confirm").click();
+  await expect(other.getByTestId("pay-sheet")).toBeHidden();
+  await other.context().close();
+  await page.getByTestId("pay-sent").click();
+  await expect(page.getByTestId("me-note")).toHaveText("Those lines aren't yours or are already paid");
+  await expect(page.getByTestId("my-break")).toHaveCount(0);
   await ctx.close();
 });
 

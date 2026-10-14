@@ -24,12 +24,17 @@ export function MyBreakCard(p: MyBreakCardProps) {
   const setNote = (text: string) => setNoteState((s) => ({ text, n: s.n + 1 }));
   const pageNote = useContext(MeNoteContext);
   const titleRef = useRef<HTMLAnchorElement>(null);
+  // A refused sent not yet shown anywhere that outlives the card. A sent is refused mostly because the lines were
+  // released; if that was every line here, the refresh drops this card, so its unmount hands the reason to the page.
+  const sentFail = useRef<string | null>(null);
+  useEffect(() => () => { if (sentFail.current) pageNote?.(sentFail.current); }, [pageNote]);
   const [confirming, setConfirming] = useState(false);
   const [giving, startGive] = useTransition();
   const pay = usePaySheet({
     breakId: p.breakId,
     owe: p.owe,
     onNote: setNote,
+    onFail: (forWhat, text) => { if (forWhat === "sent") sentFail.current = text; },
     onSentOk: () => { setNote(sentNote(p.hostName)); router.refresh(); },
   });
   const owe = pay.owe;
@@ -45,8 +50,11 @@ export function MyBreakCard(p: MyBreakCardProps) {
   useEffect(() => {
     if (!sheetLost) return;
     if (payError) setNote(payError.text);
+    sentFail.current = null; // shown on the surviving card: the page need not repeat it
     closePay();
   }, [sheetLost, payError, closePay]);
+  // Once the error is cleared (sheet closed, or a new attempt), it no longer belongs on the page either.
+  useEffect(() => { if (!payError) sentFail.current = null; }, [payError]);
 
   // Once a sent or a give-back clears the owe, the buttons that had focus are gone: hand focus to the card's title
   // (as the break page restores focus after its refresh), unless it already sits somewhere live.

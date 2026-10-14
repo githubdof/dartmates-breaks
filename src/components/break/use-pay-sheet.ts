@@ -18,6 +18,8 @@ type Options = {
   owe: Owe | null;
   /** A failure while the sheet is closed shows on the page through this. */
   onNote?: (text: string) => void;
+  /** Every failure, wherever it shows, as it happens (before any re-render): /me keeps it in case the card leaves. */
+  onFail?: (forWhat: SheetError["for"], text: string) => void;
   /** The polite live region. */
   say?: (text: string) => void;
   onSentOk?: () => void;
@@ -44,6 +46,7 @@ export function usePaySheet(o: Options) {
     if (openRef.current) setError({ for: forWhat, text });
     else o.onNote?.(text);
     o.say?.(text);
+    o.onFail?.(forWhat, text);
   };
   /** "I've sent it" for every line still owed. `done` runs only once the server accepted it. */
   const markSent = (done?: () => void) => {
