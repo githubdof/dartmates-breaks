@@ -104,15 +104,27 @@ test("a failed 'I've sent it' reports inside the pay sheet, not behind it", asyn
   await page.getByTestId("cell-21").click();
   await page.getByTestId("claim-submit").click();
   await expect(page.getByTestId("pay-sheet")).toBeVisible();
-  // The same buyer gives the line back from a second tab, so marking it sent must now fail.
-  const other = await ctx.newPage();
+  // The same buyer gives the line back from a second browser context with the same session, so marking it sent
+  // must now fail. A second tab in the same context took focus from `page`, and the visibility change could fire
+  // the auto-refresh, which replaced the owe this test makes stale (the flake).
+  const other = await (await browser.newContext({ storageState: await ctx.storageState() })).newPage();
   await other.goto(url);
   await other.getByTestId("owed").click();
   await other.getByRole("button", { name: "Give back these lines" }).click();
   await other.getByTestId("give-back-confirm").click();
   await expect(other.getByTestId("pay-sheet")).toBeHidden();
+  // The failure also refreshes the page's props, and the refreshed (given back) owe unmounts the sheet's owe block
+  // with its alert a moment later, so a poll can miss it. Watch the DOM for the alert instead of polling for it.
+  const sawAlert = page.evaluate(() => new Promise<string>((resolve, reject) => {
+    const find = () => document.querySelector('[data-testid="pay-sheet"] [role="alert"]')?.textContent ?? null;
+    const now = find();
+    if (now) return resolve(now);
+    const obs = new MutationObserver(() => { const t = find(); if (t) { obs.disconnect(); resolve(t); } });
+    obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+    setTimeout(() => { obs.disconnect(); reject(new Error("no alert appeared inside the pay sheet")); }, 10_000);
+  }));
   await page.getByTestId("pay-sent").click();
-  await expect(page.getByTestId("pay-sheet").getByRole("alert")).toBeVisible();
+  expect(await sawAlert).toBeTruthy();
 });
 
 test("a claim whose request never arrives keeps the buyer on the board with a note (I2)", async ({ browser }) => {

@@ -48,6 +48,19 @@ Set `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/breaks_test` in
 ENV_FILE=.env.test pnpm db:migrate
 ```
 
+### E2E database
+
+`pnpm test:e2e` runs against a third database, `breaks_e2e`, which Playwright empties before every run (`e2e/global-setup.ts` refuses any other name). Create it once with the repo's own `postgres` package (no `psql` needed), and migrate it once and again after every new migration:
+
+```bash
+pnpm exec tsx scripts/create-db.ts breaks_e2e
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/breaks_e2e pnpm db:migrate
+```
+
+Without the script, the stack's own container has `psql`: `docker exec supabase_db_plan-1-tracer-bullet psql -U postgres -c 'create database breaks_e2e'`, then `docker exec -i supabase_db_plan-1-tracer-bullet psql -U postgres -d breaks_e2e < supabase/ci-auth-stub.sql`. The same script creates the test database: `pnpm exec tsx scripts/create-db.ts breaks_test`.
+
+Set `E2E_DATABASE_URL` to use another server; the database must still be called `breaks_e2e`. Sign-in for e2e users still goes through the local Supabase Auth, so their auth rows stay in the stack's own database.
+
 Then migrate the dev database and run:
 
 ```bash
