@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { claimBar, lastLabel, limitText, stepLabel, type BarInput } from "./claim-bar-state";
+import { barShown, claimBar, failureNote, lastLabel, limitText, stepLabel, type BarInput } from "./claim-bar-state";
 
 const base: BarInput = {
   status: "open", signedIn: true, claimMode: "pick_or_random", selected: [], priceCents: 500, openCount: 19,
@@ -74,5 +74,37 @@ describe("claimBar (design §5.4 table)", () => {
     expect(limitText({ remaining: 0, reason: "host", limit: 1 })).toBe("Hosts can hold 1 line in their own break.");
     expect([stepLabel("random", 1), stepLabel("random", 3), stepLabel("next", 1), stepLabel("next", 4)]).toEqual(["Claim 1 random", "Claim 3 random", "Claim the next line", "Claim the next 4"]);
     expect([lastLabel(1), lastLabel(3)]).toEqual(["Take the last line", "Take the last 3"]);
+  });
+});
+
+describe("failureNote (a refused claim)", () => {
+  it("names the cap the server hit, in the bar's words", () => {
+    expect(failureNote({ ok: false, code: "CAP_EXCEEDED", message: "Cap exceeded: lines per person", details: { limit: 2, capKind: "per_person" } }))
+      .toBe("You can hold 2 lines in this break.");
+    expect(failureNote({ ok: false, code: "CAP_EXCEEDED", message: "x", details: { limit: 5, capKind: "host" } })).toBe("Hosts can hold 5 lines in their own break.");
+    expect(failureNote({ ok: false, code: "CAP_EXCEEDED", message: "x", details: { limit: 10, capKind: "global" } }))
+      .toBe("You can have 10 unpaid lines across breaks. Pay for some first.");
+  });
+  it("keeps the server's message otherwise", () => {
+    expect(failureNote({ ok: false, code: "LINE_TAKEN", message: "Line 7 is taken", details: { taken: [7] } })).toBe("Line 7 is taken");
+    expect(failureNote({ ok: false, code: "CAP_EXCEEDED", message: "Bonus cap", details: { limit: 1, capKind: "bonus" } })).toBe("Bonus cap");
+    expect(failureNote({ ok: false, code: "CAP_EXCEEDED", message: "No limit sent", details: { capKind: "per_person" } })).toBe("No limit sent");
+    expect(failureNote({ ok: false, code: "INTERNAL", message: "Something went wrong. Please try again." })).toBe("Something went wrong. Please try again.");
+  });
+});
+
+describe("barShown", () => {
+  const idle = { kind: "idle", note: null, stepper: null, lastN: null, hint: null, signIn: false } as const;
+  it("hides the bar when it has nothing to say", () => {
+    expect(barShown({ kind: "none" })).toBe(false);
+    expect(barShown(idle)).toBe(false);
+  });
+  it("shows every other bar", () => {
+    expect(barShown({ ...idle, hint: "Tap the open lines you want." })).toBe(true);
+    expect(barShown({ ...idle, signIn: true })).toBe(true);
+    expect(barShown({ ...idle, lastN: 2 })).toBe(true);
+    expect(barShown({ ...idle, stepper: { max: 3, action: "random" } })).toBe(true);
+    expect(barShown({ kind: "result" })).toBe(true);
+    expect(barShown({ kind: "message", text: "Every line is taken. Waiting on payments." })).toBe(true);
   });
 });

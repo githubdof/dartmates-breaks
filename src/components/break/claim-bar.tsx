@@ -2,7 +2,7 @@
 import { Button, ButtonLink } from "@/components/button";
 import { Stepper } from "@/components/stepper";
 import { StickyBar } from "@/components/sticky-bar";
-import { lastLabel, stepLabel, type Bar } from "./claim-bar-state";
+import { barShown, lastLabel, stepLabel, type Bar } from "./claim-bar-state";
 
 type Props = {
   bar: Bar;
@@ -20,11 +20,8 @@ type Props = {
   resultHref: string;
 };
 
-/** An idle bar with nothing to say (a host who may not claim) is not rendered at all. */
-const emptyIdle = (b: Bar) => b.kind === "idle" && !b.note && !b.hint && !b.stepper && b.lastN === null && !b.signIn;
-
 export function ClaimBar({ bar, pending, count, onCount, onClaim, signInHref, onStep, onLast, onSent, onOweTap, resultHref }: Props) {
-  if (bar.kind === "none" || emptyIdle(bar)) return null;
+  if (!barShown(bar)) return null;
   return (
     <StickyBar id="claim-bar">
       {bar.kind === "message" && <p className="flex-1 py-2 text-small" data-testid="bar-message">{bar.text}</p>}

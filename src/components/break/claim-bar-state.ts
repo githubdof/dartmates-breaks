@@ -1,6 +1,7 @@
 import type { Allowance } from "@/domain/breaks/grid";
 import type { ClaimMode } from "@/domain/breaks/rules";
 import type { BreakStatus } from "@/components/status-word";
+import type { ActionFailure } from "@/lib/action-result";
 import { formatMoney } from "@/lib/money";
 import { plural } from "@/lib/list";
 import { selectionSummary } from "./selection";
@@ -39,7 +40,23 @@ export function limitText(a: Allowance): string {
   }
 }
 
-export const stepLabel = (action: "random" | "next", count: number) =>
+/** A refused claim: name the cap in the bar's words when the server says which one; otherwise keep its message. */
+export function failureNote(r: ActionFailure): string {
+  const { limit, capKind } = r.details ?? {};
+  if (limit !== undefined && (capKind === "per_person" || capKind === "host" || capKind === "global")) {
+    return limitText({ reason: capKind, limit, remaining: 0 });
+  }
+  return r.message;
+}
+
+/** An idle bar with nothing to say (a host who may not claim) is not rendered at all, nor is `none`. */
+export function barShown(b: Bar): boolean {
+  if (b.kind === "none") return false;
+  if (b.kind === "idle") return !!(b.note || b.hint || b.stepper || b.lastN !== null || b.signIn);
+  return true;
+}
+
+export const stepLabel =(action: "random" | "next", count: number) =>
   action === "next" ? (count === 1 ? "Claim the next line" : `Claim the next ${count}`) : `Claim ${count} random`;
 export const lastLabel = (n: number) => (n === 1 ? "Take the last line" : `Take the last ${n}`);
 

@@ -13,7 +13,7 @@ import { Banner } from "@/components/banner";
 import { clampStep } from "@/components/stepper-math";
 import { ClaimBar } from "./claim-bar";
 import { LineList } from "./line-list";
-import { claimBar, limitText } from "./claim-bar-state";
+import { barShown, claimBar, failureNote, limitText } from "./claim-bar-state";
 import { cellNote, isSelectable, loginHref, onboardingHref, outcomeText, reconcileSelection, selectionAnnouncement, takenAnnouncement, toggleSelection } from "./selection";
 import { useAutoRefresh } from "./use-auto-refresh";
 
@@ -58,7 +58,9 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   });
   const [selected, setSelected] = useState<number[]>(initial.selected);
   const [struck, setStruck] = useState<number[]>([]);
-  const [announce, setAnnounce] = useState(initial.note ?? "");
+  // The live region: `n` re-keys the message so the same words twice (one taken cell tapped twice) are announced twice.
+  const [announce, setAnnounce] = useState({ text: initial.note ?? "", n: 0 });
+  const say = (text: string) => setAnnounce((a) => ({ text, n: a.n + 1 }));
   const [note, setNote] = useState<string | null>(initial.note);
   const [tapNote, setTapNote] = useState<TapNote | null>(null);
   const [outcome, setOutcome] = useState<{ got: number[]; taken: number[] } | null>(null);
@@ -68,6 +70,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const [batchId, setBatchId] = useState(() => crypto.randomUUID());
   const [pending, startTransition] = useTransition();
   const gridWrap = useRef<HTMLDivElement>(null);
+  // The grid's single roving tab stop; null lets the grid choose (first selected, then first open).
+  const [focusNumber, setFocusNumber] = useState<number | null>(null);
 
   // Open: claims move. Closed: the host may start the draw. Running draw: the result lands. Keep all three fresh.
   useAutoRefresh(p.status === "open" || p.status === "filled" || p.status === "drawing");
@@ -94,7 +98,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       setNote(text);
       said.push(text);
     }
-    if (said.length > 0) setAnnounce(said.join(" "));
+    if (said.length > 0) setAnnounce((a) => ({ text: said.join(" "), n: a.n + 1 }));
   }, [freshCells, allowance]);
 
   // The taken-cell popover closes on the next tap anywhere or on Escape.
@@ -125,7 +129,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   /** "Line 7: @mike, paid" in a small popover under the tapped cell, and in the polite live region. */
   const showCellNote = (c: GridCell) => {
     const text = cellNote(c);
-    setAnnounce(text);
+    say(text);
     const wrap = gridWrap.current;
     const btn = wrap?.querySelector<HTMLElement>(`[data-testid="cell-${c.number}"]`);
     if (!wrap || !btn) { setTapNote({ text, top: 0, left: 0 }); return; }
@@ -137,6 +141,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const onPress = (n: number) => {
     const c = cells.find((x) => x.number === n);
     if (!c) return;
+    setFocusNumber(n); // the tab stop follows the last cell touched
     // Bonus and reserved lines are never selectable; a selected line can always be deselected.
     if (!selected.includes(n) && !isSelectable(c)) { showCellNote(c); return; }
     if (!canPick) return;
@@ -145,14 +150,14 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     if (r.blocked) {
       const text = limitText(p.allowance);
       setNote(text);
-      setAnnounce(text);
+      say(text);
       return;
     }
     setNote(null);
     setStruck([]);
     setOutcome(null);
     setSelected(r.next);
-    setAnnounce(selectionAnnouncement(r.next.length, p.priceCents));
+    say(selectionAnnouncement(r.next.length, p.priceCents));
   };
 
   const finish = (r: ActionResult<ClaimData>, requested: number[]) => {
@@ -164,7 +169,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       setNote(null);
       setStruck(taken);
       setOutcome({ got: r.data.got, taken });
-      setAnnounce(outcomeText(r.data.got, taken));
+      say(outcomeText(r.data.got, taken));
       return;
     }
     if (r.code === "NOT_SIGNED_IN") { router.push(loginHref(p.breakId, requested)); return; }
@@ -174,8 +179,13 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       setSelected((cur) => cur.filter((n) => !taken.includes(n)));
       setStruck(taken);
     }
-    setNote(r.message);
-    setAnnounce(r.message);
+    // The actions revalidate only on success: refresh so the grid and the allowance catch up with the server
+    // (struck lines turn taken, a lowered allowance disables the claim) instead of waiting for the 20 s refresh.
+    // Called inside the claim's transition, so the optimistic marks hold until the fresh props land.
+    router.refresh();
+    const text = failureNote(r);
+    setNote(text);
+    say(text);
   };
 
   const runClaim = (optimistic: number[], call: () => Promise<ActionResult<ClaimData>>) => {
@@ -204,10 +214,10 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       if (r.ok) {
         setJustSent(true);
         setOutcome(null);
-        setAnnounce(`Sent. ${p.hostName} will tick you off when it arrives.`);
+        say(`Sent. ${p.hostName} will tick you off when it arrives.`);
       } else {
         setNote(r.message);
-        setAnnounce(r.message);
+        say(r.message);
       }
     });
   };
@@ -221,7 +231,9 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     const next = nextFocusIndex(index, e.key, cols, buttons.length);
     if (next === null) return;
     e.preventDefault();
-    buttons.forEach((b, i) => { b.tabIndex = i === next ? 0 : -1; });
+    // The roving tab stop lives in state (the Grid renders it), never in DOM tabIndex writes React does not know about.
+    const n = Number(buttons[next].dataset.testid?.replace("cell-", ""));
+    if (Number.isInteger(n)) setFocusNumber(n);
     buttons[next].focus();
   };
 
@@ -232,7 +244,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         <p className="min-w-0 flex-1 text-small text-ink-2">{p.smallLine}</p>
         <SegmentedControl label="Show lines as" value={view} onChange={setView} options={[{ value: "grid", label: "Grid" }, { value: "list", label: "List" }]} />
       </div>
-      <a href="#claim-bar" className="sr-only focus:not-sr-only focus:inline-flex focus:min-h-11 focus:items-center focus:px-2 focus:text-small focus:underline">Skip to claim bar</a>
+      {/* Only when the bar renders: an idle host with nothing to do gets no bar, and the link would go nowhere. */}
+      {barShown(bar) && <a href="#claim-bar" className="sr-only focus:not-sr-only focus:inline-flex focus:min-h-11 focus:items-center focus:px-2 focus:text-small focus:underline">Skip to claim bar</a>}
       {outcome && <div className="mt-3" data-testid="claim-outcome"><Banner tone="success">{outcomeText(outcome.got, outcome.taken)}</Banner></div>}
       <div ref={gridWrap} className="relative mt-3">
         {view === "grid" ? (
@@ -246,6 +259,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
             readOnly={!canPick}
             onPress={onPress}
             onKeyDown={onGridKey}
+            focusNumber={focusNumber}
           />
         ) : (
           <LineList cells={cells} title={p.title} shareUrl={p.shareUrl} />
@@ -258,7 +272,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         )}
       </div>
       {note && <p className="mt-2 text-small text-red" data-testid="bar-note">{note}</p>}
-      <p role="status" aria-live="polite" className="sr-only">{announce}</p>
+      <p role="status" aria-live="polite" className="sr-only"><span key={announce.n}>{announce.text}</span></p>
       {p.children}
       <ClaimBar
         bar={bar}

@@ -15,16 +15,20 @@ type Props = {
   readOnly?: boolean;
   onPress?: (n: number) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  /** The roving tab stop, owned by the caller (arrow keys). Falls back to the first selected, then the first open cell. */
+  focusNumber?: number | null;
 };
 
 /** The board laid flat: cells touch along shared wires, no gap; bonus lines sit on their own row after N. */
-export function Grid({ cells, lineCount, label, selected, struck, disabledOpen = false, readOnly = false, onPress, onKeyDown }: Props) {
+export function Grid({ cells, lineCount, label, selected, struck, disabledOpen = false, readOnly = false, onPress, onKeyDown, focusNumber: rovingNumber = null }: Props) {
   const tier = gridTier(lineCount);
   const numbered = cells.filter((c) => !c.bonus);
   const bonus = cells.filter((c) => c.bonus);
-  const focusNumber = onPress
-    ? (numbered.find((c) => selected?.has(c.number)) ?? numbered.find((c) => c.state === "open") ?? numbered[0])?.number
-    : undefined;
+  const focusNumber = !onPress
+    ? undefined
+    : rovingNumber !== null && cells.some((c) => c.number === rovingNumber)
+      ? rovingNumber
+      : (numbered.find((c) => selected?.has(c.number)) ?? numbered.find((c) => c.state === "open") ?? numbered[0])?.number;
 
   const renderCell = (c: GridCell) => {
     const isSelected = selected?.has(c.number) ?? false;
