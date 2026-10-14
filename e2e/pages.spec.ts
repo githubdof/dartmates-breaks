@@ -52,3 +52,48 @@ test("the handle check answers signed-in callers with taken or free, and nobody 
   expect(anon.status()).toBe(401);
   await taken.close();
 });
+
+test("the feed lists an open break and never a draft; the host filter and sorts live in the URL", async ({ browser }) => {
+  const handle = `fh${run}`;
+  const host = await as(browser, `${handle}@e2e.test`, "host");
+  const url = await composeBreak(host, { title: `Feed open ${run}` });
+  await composeBreak(host, { title: `Feed draft ${run}`, intent: "draft" });
+  const visitor = await (await browser.newContext()).newPage();
+  await visitor.goto(`/breaks?host=${handle}`);
+  const card = visitor.getByTestId("break-card").filter({ hasText: `Feed open ${run}` });
+  await expect(card).toContainText("4 of 4 left");
+  await expect(card).toContainText("$5 a line");
+  await expect(card).toContainText(`Hosted by @${handle}. New host.`);
+  await expect(visitor.getByText(`Feed draft ${run}`)).toHaveCount(0);
+  await expect(visitor.getByTestId("host-filter")).toHaveValue(handle);
+  await visitor.getByRole("radio", { name: "Almost full" }).click();
+  await expect(visitor).toHaveURL(new RegExp(`/breaks\\?sort=almost&host=${handle}$`));
+  await expect(visitor.getByRole("radio", { name: "Almost full" })).toHaveAttribute("aria-checked", "true");
+  await card.click();
+  await expect(visitor).toHaveURL(url);
+  await visitor.getByTestId("host-line").click();
+  await expect(visitor).toHaveURL(new RegExp(`/h/${handle}$`));
+  // A host with nothing open: the empty state points at every open break.
+  await visitor.goto(`/breaks?host=nobody_here_x`);
+  await expect(visitor.getByTestId("feed-empty")).toContainText("@nobody_here_x has no open breaks right now.");
+  await visitor.getByRole("link", { name: "See all open breaks" }).click();
+  await expect(visitor).toHaveURL(/\/breaks$/);
+});
+
+test("a host profile shows public figures, the open breaks and a past count, and nothing private", async ({ browser }) => {
+  const handle = `ph${run}`;
+  const host = await as(browser, `${handle}@e2e.test`, "host");
+  await composeBreak(host, { title: `Profile open ${run}` });
+  await composeBreak(host, { title: `Profile draft ${run}`, intent: "draft" });
+  const visitor = await (await browser.newContext()).newPage();
+  await visitor.goto(`/h/${handle}`);
+  await expect(visitor.getByRole("heading", { level: 1 })).toHaveText(`@${handle}`);
+  await expect(visitor.getByTestId("profile-trust")).toHaveText("New host. No breaks run yet.");
+  await expect(visitor.getByTestId("profile-since")).toContainText("On Breaks since");
+  await expect(visitor.getByTestId("break-card")).toHaveCount(1);
+  await expect(visitor.getByText(`Profile draft ${run}`)).toHaveCount(0);
+  await expect(visitor.getByTestId("profile-past")).toHaveText("No past breaks yet.");
+  await expect(visitor.getByText("@e2e.test")).toHaveCount(0);
+  await expect(visitor.getByText("e2e-host")).toHaveCount(0);
+  expect((await visitor.goto("/h/nobody_here_x"))?.status()).toBe(404);
+});

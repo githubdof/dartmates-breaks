@@ -9,9 +9,12 @@ export const payWithinText = (hours: number) => `Pay within ${hours} ${plural(ho
 export const hostLabel = (h: { displayName: string | null; handle: string | null }) =>
   h.displayName ?? (h.handle ? `@${h.handle}` : "the host");
 
-/** "Pay within 24 hours. Hosted by @jim, new host." The pay window only means something while the break is open. */
+/** "Hosted by @jim. New host." on the break page and on feed cards. */
+export const hostedByText = (hostRef: string, trust: string) => `Hosted by ${hostRef}. ${trust}.`;
+
+/** "Pay within 24 hours. Hosted by @jim. New host." The pay window only means something while the break is open. */
 export function smallLineText(status: string, paymentWindowHours: number, hostRef: string, trust: string): string {
-  const hosted = `Hosted by ${hostRef}, ${trust}.`;
+  const hosted = hostedByText(hostRef, trust);
   return status === "open" ? `${payWithinText(paymentWindowHours)} ${hosted}` : hosted;
 }
 
@@ -22,8 +25,20 @@ export function youHaveText(numbers: readonly number[]): string | null {
 
 /** Interim trust line (design §5.3) until the reputation plan adds "98% would buy again". */
 export function trustText(t: { breaksRun: number; since: Date }): string {
-  return t.breaksRun < 5 ? "new host" : `${t.breaksRun} breaks run since ${formatMonthYear(t.since)}`;
+  return t.breaksRun < 5 ? "New host" : `${t.breaksRun} breaks run since ${formatMonthYear(t.since)}`;
 }
+
+/**
+ * The profile's one-sentence trust line (design §5.9, interim). Never "0 breaks run"; the date only from 5 breaks on,
+ * where the page drops its separate "On Breaks since" line so the date is never said twice.
+ */
+export function profileTrustText(t: { breaksRun: number; since: Date }): string {
+  if (t.breaksRun === 0) return "New host. No breaks run yet.";
+  if (t.breaksRun < 5) return `New host. ${t.breaksRun} ${plural(t.breaksRun, "break", "breaks")} run.`;
+  return `${t.breaksRun} breaks run since ${formatMonthYear(t.since)}.`;
+}
+
+export const pastText = (n: number) => (n === 0 ? "No past breaks yet." : `${n} past ${plural(n, "break", "breaks")}.`);
 
 export function orList(items: readonly string[]): string {
   if (items.length <= 1) return items[0] ?? "";

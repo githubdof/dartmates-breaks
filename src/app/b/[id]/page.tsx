@@ -97,6 +97,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
         title={b.title}
         shareUrl={url}
         smallLine={smallLineText(status, b.paymentWindowHours, hostRef, trustText(trust))}
+        hostHref={page.host.handle ? `/h/${page.host.handle}` : null}
         cells={grid.cells}
         counts={grid.counts}
         signedIn={!!caller}

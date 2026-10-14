@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Allowance, GridCell, GridCounts } from "@/domain/breaks/grid";
@@ -32,6 +33,8 @@ export type BreakInteractiveProps = {
   shareUrl: string;
   /** "Pay within 24 hours. Hosted by @jim, new host." It shares one row with the Grid | List toggle (pixel budget). */
   smallLine: string;
+  /** The host's profile (/h/handle): the whole small line links there (design §5.4). Null when the host has no handle. */
+  hostHref: string | null;
   cells: GridCell[];
   counts: GridCounts;
   signedIn: boolean;
@@ -316,7 +319,9 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     <>
       {/* One row for the small line and the Grid | List toggle: a separate row would push the grid under the bar. */}
       <div className="mt-2 flex min-h-11 items-center gap-3">
-        <p className="min-w-0 flex-1 text-small text-ink-2">{p.smallLine}</p>
+        <p className="min-w-0 flex-1 text-small text-ink-2">
+          {p.hostHref ? <Link href={p.hostHref} className="inline-flex min-h-11 items-center hover:underline hover:underline-offset-4" data-testid="host-line">{p.smallLine}</Link> : p.smallLine}
+        </p>
         <SegmentedControl label="Show lines as" value={view} onChange={setView} options={[{ value: "grid", label: "Grid" }, { value: "list", label: "List" }]} />
       </div>
       {/* Only when the bar renders: an idle host with nothing to do gets no bar, and the link would go nowhere. */}
