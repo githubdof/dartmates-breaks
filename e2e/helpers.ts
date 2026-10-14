@@ -5,6 +5,12 @@ export async function loginAs(page: Page, email: string, role: "member" | "host"
   await page.waitForURL("/");
 }
 
+/** A page load, then React's hydration (the root layout marks `html[data-hydrated]`): a click before it can do nothing. */
+export async function gotoReady(page: Page, url: string) {
+  await page.goto(url);
+  await page.locator("html[data-hydrated]").waitFor({ state: "attached" });
+}
+
 export type PickingMode = "Pick or random" | "Pick only, no randoms" | "Straight fill";
 
 /** Fills /host/new as a signed-in host and submits it; returns the break's URL. */

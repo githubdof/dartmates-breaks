@@ -1,19 +1,17 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { verifyInputs, type PublicInputs } from "../src/crypto/verify";
-import { composeBreak, loginAs } from "./helpers";
+import { composeBreak, gotoReady, loginAs } from "./helpers";
 
 const run = Date.now();
 
-/** A click right after a hard page load can land before React hydrates and do nothing: retry the action until its effect shows. */
-async function settle(act: () => Promise<void>, done: () => Promise<void>) {
-  await expect(async () => {
-    await act();
-    await done();
-  }).toPass({ timeout: 20_000 });
-}
+/** Every context `as()` opens, closed after each test. */
+const contexts: BrowserContext[] = [];
+test.afterEach(async () => { await Promise.all(contexts.splice(0).map((c) => c.close())); });
 
 async function as(browser: Browser, email: string, role: "member" | "host" = "member"): Promise<Page> {
-  const page = await (await browser.newContext()).newPage();
+  const ctx = await browser.newContext();
+  contexts.push(ctx);
+  const page = await ctx.newPage();
   await loginAs(page, email, role);
   return page;
 }
@@ -73,11 +71,9 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
 
   // 4. Buyer B takes the last two and marks them sent from the sheet.
   const b = await as(browser, `j2b${run}@e2e.test`);
-  await b.goto(url);
-  await settle(
-    async () => { if ((await b.getByTestId("claim-step").textContent({ timeout: 500 }).catch(() => null)) !== "Claim the next 2") await b.getByRole("button", { name: "Increase Number of lines" }).click(); },
-    () => expect(b.getByTestId("claim-step")).toHaveText("Claim the next 2", { timeout: 2_000 }),
-  );
+  await gotoReady(b, url);
+  await b.getByRole("button", { name: "Increase Number of lines" }).click();
+  await expect(b.getByTestId("claim-step")).toHaveText("Claim the next 2");
   await b.getByTestId("claim-step").click();
   await expect(b.getByTestId("pay-outcome")).toHaveText("You have lines 3 and 4.");
   await b.getByTestId("pay-sent").click();
@@ -110,7 +106,9 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await expect(host.getByTestId("verify-status")).toContainText("Checked");
   const inputs = (await (await host.request.get(`${url}/result.json`)).json()) as PublicInputs;
   expect(verifyInputs(inputs).ok).toBe(true);
-  expect(verifyInputs({ ...inputs, ranking: [...inputs.ranking].reverse() }).ok).toBe(false);
+  const tampered = verifyInputs({ ...inputs, ranking: [...inputs.ranking].reverse() });
+  expect(tampered.ok).toBe(false);
+  expect(tampered.reasons).toEqual(["ranking does not match the recomputation"]);
   // The Technical details fold shows the same result hash the recomputation just checked.
   await host.getByTestId("technical-details").locator("summary").click();
   await expect(host.getByLabel("Result hash")).toHaveValue(inputs.resultHash);
@@ -146,21 +144,17 @@ test("each picking mode offers its own controls", async ({ browser }) => {
   const straight = await composeBreak(host, { title: `Modes C ${run}`, lineCount: 6, mode: "Straight fill" });
   const buyer = await as(browser, `j2p${run}@e2e.test`);
 
-  await buyer.goto(pickOrRandom);
+  await gotoReady(buyer, pickOrRandom);
   await expect(buyer.getByTestId("claim-step")).toHaveText("Claim 1 random");
   await expect(buyer.getByTestId("cell-1")).not.toHaveAttribute("aria-disabled", "true");
-  await settle(
-    async () => { if (!(await buyer.getByTestId("pay-outcome").isVisible())) await buyer.getByTestId("claim-step").click(); },
-    () => expect(buyer.getByTestId("pay-outcome")).toHaveText(/^You have line \d\.$/, { timeout: 3_000 }),
-  );
+  await buyer.getByTestId("claim-step").click();
+  await expect(buyer.getByTestId("pay-outcome")).toHaveText(/^You have line \d\.$/);
   await buyer.getByRole("button", { name: "I'll pay later" }).click();
 
-  await buyer.goto(pickOnly);
+  await gotoReady(buyer, pickOnly);
   await expect(buyer.getByTestId("claim-step")).toHaveCount(0);
-  await settle(
-    async () => { if ((await buyer.getByTestId("bar-summary").textContent({ timeout: 500 }).catch(() => null)) !== "Line 4, $5") await buyer.getByTestId("cell-4").click(); },
-    () => expect(buyer.getByTestId("bar-summary")).toHaveText("Line 4, $5", { timeout: 2_000 }),
-  );
+  await buyer.getByTestId("cell-4").click();
+  await expect(buyer.getByTestId("bar-summary")).toHaveText("Line 4, $5");
 
   await buyer.goto(straight);
   await expect(buyer.getByTestId("cell-1")).toHaveAttribute("aria-disabled", "true");

@@ -207,5 +207,11 @@ test("every visible break has a link-preview image; a draft's 404s even for its 
   const img = await visitor.request.get(`${url}/og`);
   expect(img.status()).toBe(200);
   expect(img.headers()["content-type"]).toBe("image/png");
+  expect(img.headers()["cache-control"]).toBe("public, max-age=300, s-maxage=300");
+  // The PNG's IHDR chunk: width, then height, as big-endian 32-bit integers at bytes 16 and 20.
+  const png = await img.body();
+  expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630]);
   expect((await host.request.get(`${draft}/og`)).status()).toBe(404);
+  await visitor.context().close();
+  await host.context().close();
 });

@@ -5,6 +5,7 @@ import { AppHeader } from "@/components/shell/app-header";
 import { TabBar } from "@/components/shell/tab-bar";
 import { Footer } from "@/components/shell/footer";
 import { TzCookie } from "@/components/tz-cookie";
+import { HydrationMark } from "@/components/hydration-mark";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -32,6 +33,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <Footer />
         <TabBar role={viewer?.role ?? null} />
         <TzCookie />
+        <HydrationMark />
       </body>
     </html>
   );
