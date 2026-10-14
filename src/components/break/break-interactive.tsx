@@ -14,7 +14,8 @@ import { ClaimBar } from "./claim-bar";
 import { LineList } from "./line-list";
 import { PaySheet } from "./pay-sheet";
 import { nextPendingOwe } from "./pay-copy";
-import { barShown, claimBar, failureNote, limitText } from "./claim-bar-state";
+import { barShown, claimBar, failureNote, limitText, sentNote } from "./claim-bar-state";
+import { NETWORK_NOTE } from "@/lib/network-note";
 import { cellNote, isSelectable, loginHref, onboardingHref, outcomeText, reconcileSelection, selectionAnnouncement, takenAnnouncement, toggleSelection } from "./selection";
 import { useAutoRefresh } from "./use-auto-refresh";
 
@@ -108,6 +109,10 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       const text = limitText(allowance);
       setNote(text);
       said.push(text);
+    } else {
+      // Back inside the allowance: a limit note left from before no longer applies.
+      const text = limitText(allowance);
+      setNote((cur) => (cur === text ? null : cur));
     }
     if (said.length > 0) setAnnounce((a) => ({ text: said.join(" "), n: a.n + 1 }));
   }, [freshCells, allowance]);
@@ -224,10 +229,28 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     say(text);
   };
 
+  /**
+   * A thrown action (dropped connection, 5xx) never reaches `finish`. The claim may have committed, so refresh the
+   * props and say so where the buyer is looking. The batch id is kept: a retry returns the same lines, not new ones.
+   */
+  const unreachable = (inSheet: "sent" | "retry") => {
+    router.refresh();
+    if (sheetOpenRef.current) setSheetError({ for: inSheet, text: NETWORK_NOTE });
+    else setNote(NETWORK_NOTE);
+    say(NETWORK_NOTE);
+  };
+
   const runClaim = (optimistic: number[], call: () => Promise<ActionResult<ClaimData>>) => {
     startTransition(async () => {
       if (optimistic.length > 0) markClaimed(optimistic);
-      finish(await call(), optimistic);
+      let r: ActionResult<ClaimData>;
+      try {
+        r = await call();
+      } catch {
+        unreachable("retry");
+        return;
+      }
+      finish(r, optimistic);
     });
   };
 
@@ -248,15 +271,23 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     setSheetError(null);
     const numbers = owe.numbers;
     startTransition(async () => {
-      const r = await sent(p.breakId, numbers);
+      let r: Awaited<ReturnType<typeof sent>>;
+      try {
+        r = await sent(p.breakId, numbers);
+      } catch {
+        unreachable("sent");
+        return;
+      }
       if (r.ok) {
         done?.();
         setJustSent(true);
         setOutcome(null);
         setPendingOwe(null);
         closeSheet();
-        say(`Sent. ${p.hostName} will tick you off when it arrives.`);
+        say(sentNote(p.hostName));
       } else {
+        // Same rule as a refused claim: the owe or the lines changed under us, so catch the props up now.
+        router.refresh();
         if (sheetOpenRef.current) setSheetError({ for: "sent", text: r.message });
         else setNote(r.message);
         say(r.message);
@@ -274,7 +305,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     if (next === null) return;
     e.preventDefault();
     // The roving tab stop lives in state (the Grid renders it), never in DOM tabIndex writes React does not know about.
-    const n = Number(buttons[next].dataset.testid?.replace("cell-", ""));
+    const n = Number(buttons[next].dataset.cell);
     if (Number.isInteger(n)) setFocusNumber(n);
     buttons[next].focus();
   };

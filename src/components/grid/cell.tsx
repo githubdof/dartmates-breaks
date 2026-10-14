@@ -71,7 +71,7 @@ export function Cell({ cell, size = "md", boxed = false, selected = false, struc
   return (
     <button
       type="button"
-      data-cell
+      data-cell={cell.number}
       data-testid={testId}
       data-state={cell.state}
       aria-label={label ?? cellLabel(cell)}

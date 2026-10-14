@@ -1,6 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { NETWORK_NOTE } from "@/lib/network-note";
 import { Sheet } from "@/components/sheet";
 import { Button, buttonClass } from "@/components/button";
 import { CopyButton } from "@/components/copy-button";
@@ -54,6 +56,7 @@ export function PaySheet(p: Props) {
   const [copyFails, setCopyFails] = useState(0);
   const [giving, startGive] = useTransition();
   const fieldRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
   useEffect(() => {
     try { setShowHint(window.localStorage.getItem(SENT_HINT_KEY) !== "1"); } catch { setShowHint(true); }
@@ -77,8 +80,16 @@ export function PaySheet(p: Props) {
     if (!p.owe) return;
     const numbers = p.owe.numbers;
     startGive(async () => {
-      const r = await giveBack(p.breakId, numbers);
-      if (r.ok) { setConfirming(false); p.onGaveBack(); p.onClose(); } else setError(r.message);
+      setError(null);
+      try {
+        const r = await giveBack(p.breakId, numbers);
+        if (r.ok) { setConfirming(false); p.onGaveBack(); p.onClose(); return; }
+        setError(r.message);
+      } catch {
+        setError(NETWORK_NOTE); // the give-back may have gone through: the refresh shows what the server holds
+      }
+      // Actions revalidate only on success: catch the owe and the board up with the server now.
+      router.refresh();
     });
   };
 

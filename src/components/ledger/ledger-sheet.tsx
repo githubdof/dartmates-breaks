@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { NETWORK_NOTE } from "@/lib/network-note";
 import { Sheet } from "@/components/sheet";
 import { FillBar } from "@/components/fill-bar";
 import { FilterChips } from "@/components/filter-chips";
@@ -38,6 +40,7 @@ export function LedgerSheet(p: LedgerSheetProps) {
   const [toast, setToast] = useState<{ ownerId: string; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const router = useRouter();
 
   // Order and listed rows are fixed when the ledger opens and when the host changes the filter, so rows never
   // move or vanish under the thumb while auto-refresh updates them. Adjusted during render (not in an effect)
@@ -75,12 +78,22 @@ export function LedgerSheet(p: LedgerSheetProps) {
     return () => window.clearTimeout(t);
   }, [recent]);
 
+  // Failures refresh the rows at once (actions revalidate only on success; an OWNER_CHANGED row would otherwise stay
+  // stale for up to 20 s) and show in the sticky bottom action, where the host can see them from any row.
   const run = (fn: () => Promise<ActionResult<unknown>>, onOk?: () => void) =>
     start(async () => {
       setError(null);
-      const r = await fn();
-      if (r.ok) onOk?.();
-      else setError(r.message);
+      let r: ActionResult<unknown>;
+      try {
+        r = await fn();
+      } catch {
+        router.refresh();
+        setError(NETWORK_NOTE);
+        return;
+      }
+      if (r.ok) { onOk?.(); return; }
+      router.refresh();
+      setError(r.message);
     });
 
   const markPaid = (row: LedgerRowView) => {
@@ -126,7 +139,6 @@ export function LedgerSheet(p: LedgerSheetProps) {
           { value: "unpaid", label: "Unpaid", count: chips.unpaid },
           { value: "overdue", label: "Overdue", count: chips.overdue },
         ]} />
-        {error && <p role="alert" className="text-small text-red">{error}</p>}
         <ul className="-mx-4 border-t border-wire">
           {/* Column names: screen readers always, sighted users only where the rows become a table (above 640). */}
           <li className={`sr-only gap-3 text-micro font-medium text-ink-2 sm:not-sr-only sm:px-4 sm:py-2 ${LEDGER_COLS}`}>
@@ -157,6 +169,7 @@ export function LedgerSheet(p: LedgerSheetProps) {
         </ul>
         {/* The bottom action stays in reach: a host with 30 buyers should not scroll to the end to draw. */}
         <div className="sticky bottom-0 -mx-4 space-y-2 border-t border-wire bg-paper px-4 pt-3 pb-safe">
+          {error && <p role="alert" className="text-small text-red" data-testid="ledger-error">{error}</p>}
           {p.status === "draft" && (
             <>
               <p className="text-small text-ink-2">This break is a draft. Only you can see it.</p>

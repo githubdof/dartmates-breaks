@@ -56,7 +56,10 @@ export function barShown(b: Bar): boolean {
   return true;
 }
 
-export const stepLabel =(action: "random" | "next", count: number) =>
+/** Said in the bar and in the live region once "I've sent it" is accepted. */
+export const sentNote = (hostName: string) => `Sent. ${hostName} will tick you off when it arrives.`;
+
+export const stepLabel = (action: "random" | "next", count: number) =>
   action === "next" ? (count === 1 ? "Claim the next line" : `Claim the next ${count}`) : `Claim ${count} random`;
 export const lastLabel = (n: number) => (n === 1 ? "Take the last line" : `Take the last ${n}`);
 
@@ -90,7 +93,7 @@ export function claimBar(i: BarInput): Bar {
   if (i.owe && i.owe.numbers.length > 0) return { kind: "owe", summary: `You owe ${formatMoney(i.owe.cents)} to ${i.payee}` };
   // The break stays open until every line is paid: with nothing left to claim, say what it is waiting on.
   if (i.openCount === 0) return { kind: "message", text: "Every line is taken. Waiting on payments." };
-  const note = i.justSent ? `Sent. ${i.hostName} will tick you off when it arrives.` : null;
+  const note = i.justSent ? sentNote(i.hostName) : null;
   if (!i.signedIn) {
     // Signed out with nothing selected still gets a way in: on straight fill it is the only one.
     return { kind: "idle", note, stepper: null, lastN: null, hint: i.claimMode === "straight" ? "Straight fill. Sign in, then say how many." : "Tap the open lines you want.", signIn: true };
