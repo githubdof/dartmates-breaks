@@ -4,12 +4,16 @@ Plan: `2026-10-14-plan-b-new-pages.md`. Specs: `../specs/2026-10-13-dart-breaks-
 `../specs/2026-10-13-ui-design.md`. Every task was reviewed; the whole-branch review's fix wave applied both
 Important items, its minors, and the per-task items ruled into the wave. What follows was deliberately deferred.
 
-## Pre-deploy notes for the human
+## Notes for the deployment plan (there is no deployment yet)
 
-1. **Apply migrations 0002 (`users.payment_name`) and 0003 (`rate_limits`, RLS forced) to production before
-   deploying this code**, over the direct connection, not the 6543 pooler: `ENV_FILE=.env.production pnpm db:migrate`.
-   Both are additive, so the old code keeps working on the migrated schema. If the code goes first, `/api/tick`
-   fails every minute at `pruneRateLimits`, and `/account`, the ledgers and `/api/handle` error.
+1. **Migrations go in the pipeline, not in a runbook.** The first deploy applies every migration from 0000 up to an
+   empty hosted database. After that, each deploy runs `pnpm db:migrate` against the hosted project's direct
+   connection (port 5432, not the 6543 pooler) *before* the new code goes live: a GitHub Actions job that migrates
+   and then triggers the Vercel deploy, or an equivalent deploy hook. Migrations stay additive (0001 through 0003
+   are), so the old code keeps working between the migrate and the swap. Shipping code ahead of its schema is the
+   failure to design against: for this branch, `/api/tick` would fail every minute at `pruneRateLimits`, and
+   `/account`, the ledgers and `/api/handle` would error until 0002 and 0003 landed. CI today runs lint, unit,
+   concurrency, the RLS suite and the build; the migrate and e2e jobs are the deployment plan's to add.
 2. **No new environment variables.** `APP_URL` must be the public origin: the `og:image` URL is built from it.
    `E2E_SECRET` and `BEACON` stay unset on Vercel (`assertDeployEnv` enforces it).
 3. **Proxy assumption:** the handle check and onboarding trust the first `x-forwarded-for` entry. Correct on Vercel,
