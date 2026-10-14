@@ -21,6 +21,7 @@ import { buttonClass } from "@/components/button";
 import type { BreakStatus } from "@/components/status-word";
 import { DetailsFold } from "@/components/break/details-fold";
 import { BreakInteractive } from "@/components/break/break-interactive";
+import { commitmentShort } from "@/components/break/pay-copy";
 import { onboardingHref, parsePick } from "@/components/break/selection";
 import { closesText, leftText, payWithinText, perPersonText, pickingText, prizeLines, trustText, youHaveText } from "@/components/break/frame-copy";
 import { HostPanel } from "./host-panel";
@@ -111,6 +112,9 @@ export default async function BreakPage({ params, searchParams }: Props) {
         owe={owe}
         hostName={hostName}
         payee={payee}
+        handles={handles}
+        instructions={b.paymentInstructions}
+        commitment={commitmentShort(b.seedCommitment)}
         closedDaysAgo={status === "filled" && b.filledAt ? daysSince(b.filledAt, now) : null}
         initialPick={initialPick}
       >

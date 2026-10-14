@@ -77,3 +77,15 @@ test("an anonymous viewer's cell names never carry a handle (D§4)", async ({ br
   expect(names.filter((n) => n.includes(buyerHandle) || n.includes("@"))).toEqual([]);
   expect(names[2]).toBe("Line 3, taken");
 });
+
+test("Escape closes the pay sheet and focus lands on the claim bar (D§7)", async ({ browser }) => {
+  const page = await signedIn(browser, `lf${run}@e2e.test`);
+  await page.goto(url);
+  await page.getByTestId("cell-20").click();
+  await page.getByTestId("claim-submit").click();
+  await expect(page.getByTestId("pay-sheet")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("pay-sheet")).toBeHidden();
+  // Polled: if Escape lands while the claim is still resolving, the island hands focus to the bar once it settles.
+  await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest("[data-sticky-bar]"))).toBe(true);
+});

@@ -26,14 +26,15 @@ test("host opens, buyers claim and pay, host draws, result verifies", async ({ b
   await alice.getByTestId("cell-2").click();
   await expect(alice.getByTestId("bar-summary")).toHaveText("Lines 1, 2, $10");
   await alice.getByTestId("claim-submit").click();
-  await expect(alice.getByTestId("owed")).toContainText("$10");
-  await alice.getByTestId("bar-sent").click();
+  await expect(alice.getByTestId("pay-outcome")).toHaveText("You have lines 1 and 2.");
+  await expect(alice.getByTestId("pay-amount")).toContainText("$10");
+  await alice.getByTestId("pay-sent").click();
   await expect(alice.getByTestId("sent-note")).toBeVisible();
 
   const bob = await newContext(browser, `bob${run}@e2e.test`);
   await bob.goto(url);
   await bob.getByTestId("claim-rest").click();
-  await expect(bob.getByTestId("owed")).toContainText("$5");
+  await expect(bob.getByTestId("pay-amount")).toContainText("$5");
 
   await host.reload(); // pick up claims made in the other contexts
   await expect(host.locator("[data-testid=ledger-row][data-status=sent]")).toHaveCount(1);

@@ -9,10 +9,10 @@ import { claim, claimNextAction, claimRandomAction, claimRest, sent } from "@/ap
 import { Grid } from "@/components/grid/grid";
 import { nextFocusIndex } from "@/components/grid/layout";
 import { SegmentedControl } from "@/components/segmented-control";
-import { Banner } from "@/components/banner";
 import { clampStep } from "@/components/stepper-math";
 import { ClaimBar } from "./claim-bar";
 import { LineList } from "./line-list";
+import { PaySheet } from "./pay-sheet";
 import { barShown, claimBar, failureNote, limitText } from "./claim-bar-state";
 import { cellNote, isSelectable, loginHref, onboardingHref, outcomeText, reconcileSelection, selectionAnnouncement, takenAnnouncement, toggleSelection } from "./selection";
 import { useAutoRefresh } from "./use-auto-refresh";
@@ -37,6 +37,9 @@ export type BreakInteractiveProps = {
   owe: Owe | null;
   hostName: string;
   payee: string;
+  handles: { venmo?: string; paypal?: string };
+  instructions: string;
+  commitment: string | null;
   closedDaysAgo: number | null;
   initialPick: number[];
   children?: React.ReactNode;
@@ -64,6 +67,9 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const [note, setNote] = useState<string | null>(initial.note);
   const [tapNote, setTapNote] = useState<TapNote | null>(null);
   const [outcome, setOutcome] = useState<{ got: number[]; taken: number[] } | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // The claim can resolve before the refreshed props arrive: the sheet shows a provisional amount until they do.
+  const [pendingOwe, setPendingOwe] = useState<Owe | null>(null);
   const [justSent, setJustSent] = useState(false);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [count, setCount] = useState(1);
@@ -101,6 +107,10 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     if (said.length > 0) setAnnounce((a) => ({ text: said.join(" "), n: a.n + 1 }));
   }, [freshCells, allowance]);
 
+  // Fresh server props carry the real amount and deadline; drop the provisional one.
+  useEffect(() => { setPendingOwe(null); }, [p.owe]);
+  const owe = p.owe ?? pendingOwe;
+
   // The taken-cell popover closes on the next tap anywhere or on Escape.
   useEffect(() => {
     if (!tapNote) return;
@@ -120,11 +130,25 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     status: p.status, signedIn: p.signedIn, claimMode: p.claimMode, selected, priceCents: p.priceCents, openCount: p.counts.open,
     allowance: p.allowance, owe: p.owe, justSent, hostName: p.hostName, payee: p.payee, closedDaysAgo: p.closedDaysAgo,
   });
+  // Closing the sheet hands focus back to the bar. The Sheet does it itself, but if the claim is still resolving it
+  // may aim at the claim button that is about to be replaced; once the refresh has landed, look again.
+  const restoreFocus = useRef(false);
+  const closeSheet = () => { restoreFocus.current = true; setSheetOpen(false); };
+  const barKind = bar.kind;
+  useEffect(() => {
+    if (sheetOpen || pending || !restoreFocus.current) return;
+    restoreFocus.current = false;
+    const a = document.activeElement;
+    if (a && a !== document.body && a.isConnected && !a.hasAttribute("disabled")) return;
+    document.querySelector<HTMLElement>("[data-sticky-bar] button:not([disabled]), [data-sticky-bar] a")?.focus();
+  }, [sheetOpen, pending, barKind]);
+
   const stepMax = bar.kind === "idle" && bar.stepper ? bar.stepper.max : 1;
   const stepCount = clampStep(count, 1, stepMax);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const struckSet = useMemo(() => new Set(struck), [struck]);
   const canPick = p.status === "open" && p.claimMode !== "straight";
+  const retryMax = p.status === "open" && p.claimMode === "pick_or_random" ? Math.min(p.counts.open, p.allowance.remaining) : 0;
 
   /** "Line 7: @mike, paid" in a small popover under the tapped cell, and in the polite live region. */
   const showCellNote = (c: GridCell) => {
@@ -170,6 +194,15 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       setStruck(taken);
       setOutcome({ got: r.data.got, taken });
       say(outcomeText(r.data.got, taken));
+      if (r.data.got.length > 0) {
+        setPendingOwe({
+          numbers: [...(p.owe?.numbers ?? []), ...r.data.got].sort((x, y) => x - y),
+          cents: (p.owe?.cents ?? 0) + r.data.got.length * p.priceCents,
+          payByIso: p.owe?.payByIso ?? null,
+          payByFallback: p.owe?.payByFallback ?? null,
+        });
+      }
+      setSheetOpen(true); // the claim is committed; now the pay step
       return;
     }
     if (r.code === "NOT_SIGNED_IN") { router.push(loginHref(p.breakId, requested)); return; }
@@ -206,14 +239,16 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     const open = cells.filter((c) => c.state === "open" && !c.bonus).map((c) => c.number);
     runClaim(open, () => claimRest(p.breakId, batchId));
   };
+  const onRetry = (n: number) => runClaim([], () => claimRandomAction(p.breakId, n, batchId));
   const onSent = () => {
-    if (!p.owe) return;
-    const numbers = p.owe.numbers;
+    if (!owe) return;
+    const numbers = owe.numbers;
     startTransition(async () => {
       const r = await sent(p.breakId, numbers);
       if (r.ok) {
         setJustSent(true);
         setOutcome(null);
+        closeSheet();
         say(`Sent. ${p.hostName} will tick you off when it arrives.`);
       } else {
         setNote(r.message);
@@ -246,7 +281,6 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       </div>
       {/* Only when the bar renders: an idle host with nothing to do gets no bar, and the link would go nowhere. */}
       {barShown(bar) && <a href="#claim-bar" className="sr-only focus:not-sr-only focus:inline-flex focus:min-h-11 focus:items-center focus:px-2 focus:text-small focus:underline">Skip to claim bar</a>}
-      {outcome && <div className="mt-3" data-testid="claim-outcome"><Banner tone="success">{outcomeText(outcome.got, outcome.taken)}</Banner></div>}
       <div ref={gridWrap} className="relative mt-3">
         {view === "grid" ? (
           <Grid
@@ -284,7 +318,24 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         onStep={onStep}
         onLast={onLast}
         onSent={onSent}
+        onOweTap={() => { setOutcome(null); setSheetOpen(true); }}
         resultHref={`/b/${p.breakId}/result`}
+      />
+      <PaySheet
+        open={sheetOpen}
+        onClose={closeSheet}
+        breakId={p.breakId}
+        outcome={outcome}
+        owe={owe}
+        payee={p.payee}
+        handles={p.handles}
+        instructions={p.instructions}
+        hostName={p.hostName}
+        commitment={p.commitment}
+        retryMax={retryMax}
+        onRetry={onRetry}
+        onSent={onSent}
+        pending={pending}
       />
     </>
   );
