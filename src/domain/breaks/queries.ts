@@ -7,7 +7,7 @@ export type BreakPage = {
   host: { id: string; handle: string | null; displayName: string | null; paymentHandles: { venmo?: string; paypal?: string } };
   items: (typeof breakItems.$inferSelect)[];
   prizes: (typeof prizes.$inferSelect)[];
-  lines: { number: number; ownerId: string | null; ownerHandle: string | null; claimedAt: Date | null; sentAt: Date | null; paidAt: Date | null; reservedForMiniId: string | null; isBonus: boolean }[];
+  lines: { number: number; ownerId: string | null; ownerHandle: string | null; claimedAt: Date | null; sentAt: Date | null; paidAt: Date | null; priceCents: number | null; reservedForMiniId: string | null; isBonus: boolean }[];
 };
 
 export async function getBreakPage(tx: Tx, breakId: string): Promise<BreakPage | null> {
@@ -19,7 +19,7 @@ export async function getBreakPage(tx: Tx, breakId: string): Promise<BreakPage |
   const prizeRows = await tx.select().from(prizes).where(eq(prizes.breakId, breakId)).orderBy(asc(prizes.rank));
   const lineRows = await tx.select({
     number: lines.number, ownerId: lines.ownerId, ownerHandle: users.handle, claimedAt: lines.claimedAt, sentAt: lines.sentAt,
-    paidAt: lines.paidAt, reservedForMiniId: lines.reservedForMiniId, isBonus: lines.isBonus,
+    paidAt: lines.paidAt, priceCents: lines.priceCents, reservedForMiniId: lines.reservedForMiniId, isBonus: lines.isBonus,
   }).from(lines).leftJoin(users, eq(users.id, lines.ownerId)).where(eq(lines.breakId, breakId)).orderBy(asc(lines.number));
   return { break: b, host: { ...host, paymentHandles: host.paymentHandles ?? {} }, items, prizes: prizeRows, lines: lineRows };
 }

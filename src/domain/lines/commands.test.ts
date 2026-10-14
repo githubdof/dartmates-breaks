@@ -5,7 +5,7 @@ import { withTx } from "../../../tests/helpers/db";
 import { makeUser, openBreakWithLines, lineRows } from "../../../tests/helpers/fixtures";
 import { claimLines, claimRandom, claimAllOpen, claimNext, markSent, markPaid, unmarkPaid, releaseLine, recomputeFill } from "./commands";
 import { isOverdue } from "./rules";
-import { unpaidByBuyer } from "./queries";
+import { unpaidByBuyer, globalUnpaidCount } from "./queries";
 import { breaks, lines, events } from "@/db/schema";
 import { CapExceeded, InvalidInput, LineTaken, NotAuthorized, NotOpen, OwnerChanged } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
@@ -340,6 +340,19 @@ describe("picking modes", () => {
       await tx.update(breaks).set({ maxLinesPerUser: 2 }).where(sql`${breaks.id} = ${b.id}`);
       await expect(claimNext(tx, c(a), { breakId: b.id, count: 3, batchId: randomUUID() })).rejects.toBeInstanceOf(CapExceeded);
       expect((await lineRows(tx, b.id)).filter((l) => l.ownerId).length).toBe(0);
+    });
+  });
+});
+
+describe("globalUnpaidCount", () => {
+  it("counts a buyer's unpaid lines across breaks", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b1 = await openBreakWithLines(tx, { hostId: host.id }); const b2 = await openBreakWithLines(tx, { hostId: host.id });
+      await claimLines(tx, c(a), { breakId: b1.id, numbers: [1, 2], batchId: randomUUID() });
+      await claimLines(tx, c(a), { breakId: b2.id, numbers: [3], batchId: randomUUID() });
+      await markPaid(tx, c(host, "host"), { breakId: b1.id, number: 1, expectedOwnerId: a.id });
+      expect(await globalUnpaidCount(tx, a.id)).toBe(2);
     });
   });
 });

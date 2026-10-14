@@ -2,10 +2,10 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/db/client";
 import { getBreakPage } from "@/domain/breaks/queries";
-import { unpaidByBuyer } from "@/domain/lines/queries";
+import { shapeGrid, canViewBreak, isHostView } from "@/domain/breaks/grid";
+import { unpaidByBuyer, globalUnpaidCount } from "@/domain/lines/queries";
 import { getCaller } from "@/auth/session";
 import { formatCents } from "@/lib/money";
-import { isOverdue } from "@/domain/lines/rules";
 import { isUuid } from "@/lib/is-uuid";
 import { Grid, type GridLine } from "./grid";
 import { ClaimPanel } from "./claim-panel";
@@ -17,20 +17,21 @@ export default async function BreakPage({ params }: { params: Promise<{ id: stri
   const page = await db.transaction((tx) => getBreakPage(tx, id));
   if (!page) notFound();
   const caller = await getCaller();
-  const isHost = !!caller && (caller.id === page.host.id || caller.role === "admin");
-  const participant = !!caller && page.lines.some((l) => l.ownerId === caller.id);
-  const numbered = page.lines.filter((l) => l.number <= page.break.lineCount);
-  const openNumbers = numbered.filter((l) => !l.ownerId && !l.reservedForMiniId).map((l) => l.number);
-  const paid = numbered.filter((l) => l.paidAt).length;
+  // Drafts 404 for everyone but their host (and admins) before any further query.
+  if (!canViewBreak(page.break.status, isHostView(page.break.hostId, caller))) notFound();
+  const now = new Date();
+  const globalUnpaid = caller ? await db.transaction((tx) => globalUnpaidCount(tx, caller.id)) : 0;
+  const grid = shapeGrid(page, caller ? { id: caller.id, role: caller.role, globalUnpaid } : null, now);
+  const isHost = grid.hostView;
+  const openNumbers = grid.cells.filter((c) => c.state === "open" && !c.bonus).map((c) => c.number);
+  const paid = grid.counts.paid;
   const mine = caller ? page.lines.filter((l) => l.ownerId === caller.id) : [];
-  const showHandles = isHost || participant;
-  const gridLines: GridLine[] = page.lines.map((l) => ({
-    number: l.number,
-    isBonus: l.isBonus,
-    mine: !!caller && l.ownerId === caller.id,
-    label: showHandles && l.ownerId ? l.ownerHandle ?? "?" : null,
-    state: l.reservedForMiniId ? "reserved" : !l.ownerId ? "open" : l.paidAt ? "paid"
-      : isOverdue(l, { paymentWindowHours: page.break.paymentWindowHours }) ? "overdue" : l.sentAt ? "sent" : "claimed",
+  const gridLines: GridLine[] = grid.cells.map((c) => ({
+    number: c.number,
+    isBonus: c.bonus,
+    mine: c.mine,
+    label: c.holder,
+    state: c.overdue ? "overdue" : c.state === "taken" ? "claimed" : c.state,
   }));
   const unpaid = isHost ? await db.transaction((tx) => unpaidByBuyer(tx, id)) : [];
 

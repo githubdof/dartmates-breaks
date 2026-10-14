@@ -31,3 +31,9 @@ export async function unpaidByBuyer(tx: Tx, breakId: string) {
     where l.break_id = ${breakId} and l.paid_at is null and l.owner_id is not null
     group by l.owner_id, u.handle order by min(l.claimed_at)`);
 }
+
+/** Unpaid lines a buyer holds across every break (the platform-wide cap counts these). */
+export async function globalUnpaidCount(tx: Tx, userId: string): Promise<number> {
+  const [r] = await tx.select({ n: sql<number>`count(*)::int` }).from(lines).where(sql`${lines.ownerId} = ${userId} and ${lines.paidAt} is null`);
+  return r.n;
+}
