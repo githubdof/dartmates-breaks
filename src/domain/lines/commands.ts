@@ -1,6 +1,6 @@
 import { sql, inArray } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { breaks, lines } from "@/db/schema";
+import { breaks, events, lines } from "@/db/schema";
 import { lockBreak, assertHostOf, assertOnboarded } from "@/auth/authz";
 import { appendEvent } from "@/domain/events";
 import { CapExceeded, InvalidInput, LineTaken, NotAuthorized, NotOpen, OwnerChanged } from "@/domain/errors";
@@ -185,6 +185,7 @@ export async function markSent(tx: Tx, caller: Caller, p: { breakId: string; num
 }
 
 export async function markPaid(tx: Tx, caller: Caller, p: { breakId: string; number: number; expectedOwnerId: string }): Promise<{ filled: boolean }> {
+  assertOnboarded(caller);
   const b = await assertHostOf(tx, caller, p.breakId);
   if (b.status !== "open" && b.status !== "filled") throw new NotOpen(b.status);
   const [cur] = await tx.select().from(lines).where(sql`${lines.breakId} = ${b.id} and ${lines.number} = ${p.number}`);
@@ -196,6 +197,7 @@ export async function markPaid(tx: Tx, caller: Caller, p: { breakId: string; num
 }
 
 export async function unmarkPaid(tx: Tx, caller: Caller, p: { breakId: string; number: number }): Promise<void> {
+  assertOnboarded(caller);
   const b = await assertHostOf(tx, caller, p.breakId);
   if (b.status !== "open" && b.status !== "filled") throw new NotOpen(b.status);
   // Bonus lines are free and always paid: never un-mark them (they would count toward the buyer's unpaid cap).
@@ -274,13 +276,12 @@ export async function addBonusLine(tx: Tx, caller: Caller, p: { breakId: string;
   const [held] = await tx.select({ n: sql<number>`count(*)::int` }).from(lines)
     .where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} = ${p.ownerId} and ${lines.number} <= ${b.lineCount}`);
   if (held.n === 0) throw new InvalidInput("A bonus line goes to someone who holds a line in this break");
-  const [agg] = await tx.select({
-    used: sql<number>`(count(*) filter (where ${lines.isBonus}))::int`,
-    top: sql<number>`coalesce(max(${lines.number}), 0)::int`,
-  }).from(lines).where(sql`${lines.breakId} = ${b.id}`);
+  const [agg] = await tx.select({ used: sql<number>`(count(*) filter (where ${lines.isBonus}))::int` }).from(lines).where(sql`${lines.breakId} = ${b.id}`);
   const max = bonusAllowance(b.lineCount);
   if (agg.used >= max) throw new CapExceeded("bonus lines", max);
-  const number = Math.max(agg.top, b.lineCount) + 1;
+  // Numbered from every bonus line ever added, not the highest one left: a removed bonus line's number is never given again.
+  const [added] = await tx.select({ n: sql<number>`count(*)::int` }).from(events).where(sql`${events.breakId} = ${b.id} and ${events.type} = 'line.bonus_added'`);
+  const number = b.lineCount + added.n + 1;
   const now = new Date();
   await tx.insert(lines).values({ breakId: b.id, number, ownerId: p.ownerId, claimedAt: now, paidAt: now, priceCents: 0, isBonus: true });
   await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.bonus_added", payload: { number, ownerId: p.ownerId } });
@@ -295,5 +296,6 @@ export async function giveBackLines(tx: Tx, caller: Caller, p: { breakId: string
 
 /** The host un-marks paid lines (the ledger's Undo and per-line un-mark); each logs `line.unpaid`. All or nothing, as above. */
 export async function unmarkPaidLines(tx: Tx, caller: Caller, p: { breakId: string; numbers: number[] }): Promise<void> {
+  assertOnboarded(caller);
   for (const number of p.numbers) await unmarkPaid(tx, caller, { breakId: p.breakId, number });
 }

@@ -190,6 +190,21 @@ describe("updateDraft", () => {
       expect(ev.payload).toMatchObject({ lineCount: 12, linePriceCents: 2000 });
     });
   });
+  it("logs host.payment_handles_changed with from and to only when the handles change", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, paymentHandles: { venmo: "Jim" } });
+      await updateDraft(tx, asHost(host), breakId, { ...input, paymentHandles: { venmo: "Jim" } }); // same: no event
+      await updateDraft(tx, asHost(host), breakId, { ...input, paymentHandles: { venmo: "Jim2", paypal: "JimR" } });
+      const evs = await tx.select().from(events).where(sql`${events.actorId} = ${host.id} and ${events.type} = 'host.payment_handles_changed'`);
+      // One transaction shares one now(): compare as a set, with the count pinning "no event for the same handles".
+      expect(evs).toHaveLength(2);
+      expect(evs.map((e) => e.payload)).toEqual(expect.arrayContaining([
+        { from: {}, to: { venmo: "@Jim" } },
+        { from: { venmo: "@Jim" }, to: { venmo: "@Jim2", paypal: "JimR" } },
+      ]));
+    });
+  });
   it("validates like createDraft", async () => {
     await withTx(async (tx) => {
       const host = await makeUser(tx, { role: "host" });

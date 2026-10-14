@@ -34,7 +34,10 @@ export function defaultPaymentInstructions(h: Handles): string {
   return parts.length ? [...parts, "Leave the note blank."].join(" ") : "";
 }
 
-/** Upserts host_profiles.payment_handles; bumps payment_handles_changed_at only when the handles actually changed. */
+/**
+ * Upserts host_profiles.payment_handles; when the handles actually changed, bumps payment_handles_changed_at and logs
+ * `host.payment_handles_changed` (a trust signal, spec §11). Only ever called for the caller's own profile.
+ */
 async function savePaymentHandles(tx: Tx, userId: string, h: Handles): Promise<void> {
   const [cur] = await tx.select({ paymentHandles: hostProfiles.paymentHandles }).from(hostProfiles).where(eq(hostProfiles.userId, userId)).for("update");
   const prev: Handles = cur?.paymentHandles ?? {};
@@ -42,6 +45,7 @@ async function savePaymentHandles(tx: Tx, userId: string, h: Handles): Promise<v
   if (same) return;
   await tx.insert(hostProfiles).values({ userId, paymentHandles: h, paymentHandlesChangedAt: new Date() })
     .onConflictDoUpdate({ target: hostProfiles.userId, set: { paymentHandles: h, paymentHandlesChangedAt: new Date() } });
+  await appendEvent(tx, { actorId: userId, type: "host.payment_handles_changed", payload: { from: prev, to: h } });
 }
 
 /** Rank-1 items (several make a choice) and rank-2 items (blank names skipped), each with its prize row. */
