@@ -22,7 +22,7 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const viewer = await getSessionViewer();
   return (
-    <html lang="en" className={`${barlow.variable} ${barlowCondensed.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${barlow.variable} ${barlowCondensed.variable}`}>
       <body className="min-h-dvh bg-paper font-sans text-body text-ink antialiased">
         <a href="#content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:rounded-input focus:bg-card focus:px-4 focus:py-3 focus:text-ink">
           Skip to content

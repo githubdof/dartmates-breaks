@@ -1,5 +1,5 @@
 import { it, expect } from "vitest";
-import { dealDelays, dealGateScript, DEAL_MS, placeLabel, seenKey, topSpotText } from "./reveal-plan";
+import { dealDelays, dealGateScript, liftDelay, DEAL_MS, placeLabel, seenKey, topSpotText } from "./reveal-plan";
 
 it("deals the order worst first so the top spot lands last, within about 1.5 s", () => {
   expect(dealDelays(3)).toEqual([240, 120, 0]);
@@ -8,6 +8,11 @@ it("deals the order worst first so the top spot lands last, within about 1.5 s",
   expect(fifty[49]).toBe(0);
   expect(fifty[0]).toBeLessThanOrEqual(DEAL_MS);
   expect(dealDelays(1)).toEqual([0]);
+});
+
+it("lifts the top spot after its own deal-in", () => {
+  expect(liftDelay(3)).toBe(480);
+  expect(liftDelay(1)).toBe(240);
 });
 
 it("names places and keys the once-per-viewer flag by break", () => {

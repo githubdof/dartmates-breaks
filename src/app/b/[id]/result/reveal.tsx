@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/button";
-import { dealDelays, DEAL_MS, placeLabel, seenKey, topSpotText } from "./reveal-plan";
+import { dealDelays, liftDelay, placeLabel, seenKey, topSpotText } from "./reveal-plan";
 
 type Award = { rank: number; winnerHandle: string | null; itemName: string | null };
 
@@ -15,8 +15,11 @@ export function Reveal({ breakId, ranking, handleOf, awards }: { breakId: string
   const [canReplay, setCanReplay] = useState(false);
   const [ready, setReady] = useState(false);
   const top = ranking[0];
+  const replayRef = useRef<HTMLDivElement>(null);
+  const skipped = useRef(false);
 
-  useEffect(() => {
+  // Before paint, so a client-side navigation never shows the result before the deal layer (the gate script only covers hard loads).
+  useLayoutEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let seen = true;
     try {
@@ -31,16 +34,20 @@ export function Reveal({ breakId, ranking, handleOf, awards }: { breakId: string
   }, [breakId]);
 
   // The deal layer (if any) is committed now: lift the pre-paint hide set by dealGateScript.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (ready) delete document.documentElement.dataset.deal;
   }, [ready]);
 
   useEffect(() => {
     if (!dealing) return;
     setLifted(false);
-    const lift = window.setTimeout(() => setLifted(true), DEAL_MS);
-    const end = window.setTimeout(() => setDealing(false), DEAL_MS + 700);
+    const lift = window.setTimeout(() => setLifted(true), liftDelay(ranking.length));
+    const end = window.setTimeout(() => setDealing(false), liftDelay(ranking.length) + 700);
     return () => { window.clearTimeout(lift); window.clearTimeout(end); };
+  }, [dealing, ranking.length]);
+
+  useEffect(() => {
+    if (!dealing && skipped.current) { skipped.current = false; replayRef.current?.querySelector("button")?.focus(); }
   }, [dealing]);
 
   const delays = dealDelays(ranking.length);
@@ -50,10 +57,10 @@ export function Reveal({ breakId, ranking, handleOf, awards }: { breakId: string
 
   return (
     <section aria-labelledby="top-spot" className="relative mt-2">
-      <div className="relative z-20 flex min-h-11 justify-end">
+      <div ref={replayRef} className="relative z-20 flex min-h-11 justify-end">
         {dealing
-          ? <Button variant="text" onClick={() => setDealing(false)} data-testid="reveal-skip">Skip</Button>
-          : canReplay && <Button variant="text" onClick={() => setDealing(true)} data-testid="reveal-replay">Replay the draw</Button>}
+          ? <Button variant="text" onClick={() => { skipped.current = true; setDealing(false); }} data-testid="reveal-skip">Skip</Button>
+          : canReplay && <Button variant="text" onClick={() => { setLifted(false); setDealing(true); }} data-testid="reveal-replay">Replay the draw</Button>}
       </div>
       <div data-reveal-final>
       <h1 id="top-spot" data-testid="winner" className="font-condensed text-display font-semibold">{topSpotText(top)}</h1>

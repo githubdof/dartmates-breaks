@@ -10,9 +10,9 @@ import { isUuid } from "@/lib/is-uuid";
 import { formatDateTime } from "@/lib/time";
 import { viewerZone } from "@/lib/zone";
 import { shareText } from "@/lib/share-text";
-import { CopyButton } from "@/components/copy-button";
 import { LocalTime } from "@/components/local-time";
 import { dealGateScript } from "./reveal-plan";
+import { ShareButton } from "./share-button";
 import { Reveal } from "./reveal";
 import { Verify } from "./verify";
 
@@ -63,7 +63,7 @@ export default async function ResultPage({ params }: Props) {
         Ran {when(res.draw.createdAt)}. Requested by {res.hostHandle ? `@${res.hostHandle}` : "the host"}
         {res.request.onBehalfNote ? `, run by an admin: ${res.request.onBehalfNote}` : ""}.
       </p>
-      <div className="mt-4"><CopyButton value={share} label="Share" copiedLabel="Copied" testId="share" /></div>
+      <ShareButton value={share} />
       <Verify inputs={publicInputs} seed={res.draw.seed} relayUrl={relayUrl} />
       <details className="mt-3 rounded-card border border-wire bg-card">
         <summary className="flex min-h-11 cursor-pointer items-center px-4 font-semibold">Entries</summary>

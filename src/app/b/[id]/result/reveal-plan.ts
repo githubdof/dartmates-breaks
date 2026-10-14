@@ -9,6 +9,9 @@ export function dealDelays(count: number, total = DEAL_MS): number[] {
   return Array.from({ length: count }, (_, i) => Math.round((count - 1 - i) * step));
 }
 
+/** When the top spot lifts: after its own deal-in has finished. */
+export const liftDelay = (count: number) => dealDelays(count)[0] + 240;
+
 export const seenKey = (breakId: string) => `breaks.reveal.${breakId}`;
 export const topSpotText = (line: number) => `Top spot: line ${line}`;
 export const placeLabel = (rank: number) => (rank === 1 ? "Top spot" : ordinal(rank));
