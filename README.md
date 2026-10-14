@@ -33,9 +33,22 @@ Environment variables:
 | `BEACON` | `fake` swaps the public randomness beacon for a deterministic one. Local, CI and e2e only; never set on Vercel (the app refuses to boot when `VERCEL_ENV` is set) |
 | `E2E_SECRET` | Enables the `/test/login` helper route used by e2e. Local and CI only; never set on Vercel (the route 404s and the app refuses to boot when `VERCEL_ENV` is set) |
 
-`.env.test` and `.env.local` point at the same local database, so `ENV_FILE=.env.local pnpm db:migrate` serves both.
+### Test database
 
-Then migrate and run:
+The tests get their own database. Never point `.env.test` at the dev database: the concurrency suite truncates every table in the database it runs against, users included.
+
+```bash
+psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -c 'create database breaks_test'
+psql postgresql://postgres:postgres@127.0.0.1:54322/breaks_test -f supabase/ci-auth-stub.sql
+```
+
+Set `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/breaks_test` in `.env.test`, then migrate it:
+
+```bash
+ENV_FILE=.env.test pnpm db:migrate
+```
+
+Then migrate the dev database and run:
 
 ```bash
 ENV_FILE=.env.local pnpm db:migrate
