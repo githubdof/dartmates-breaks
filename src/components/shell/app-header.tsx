@@ -14,10 +14,10 @@ export function AppHeader({ viewer }: { viewer: Pick<Viewer, "handle" | "display
         {showHeaderNav(role) && <nav aria-label="Main" className="hidden sm:block"><NavLinks role={role} variant="header" /></nav>}
         <div className="ml-auto">
           {viewer ? (
-            <span className="inline-flex min-h-11 items-center">
+            <Link href="/account" data-testid="account-link" className="inline-flex min-h-11 min-w-11 items-center justify-center">
               <Avatar name={viewer.displayName ?? viewer.handle} />
-              <span className="sr-only">Signed in as {viewer.handle ? `@${viewer.handle}` : "a new account"}</span>
-            </span>
+              <span className="sr-only">Your account, signed in as {viewer.handle ? `@${viewer.handle}` : "a new account"}</span>
+            </Link>
           ) : (
             <SignInLink />
           )}
