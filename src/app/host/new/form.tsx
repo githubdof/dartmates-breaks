@@ -23,7 +23,7 @@ export function ComposerForm({ handles }: { handles: { venmo?: string; paypal?: 
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="allowRandomClaims" defaultChecked /> Allow &quot;give me N random lines&quot;</label>
       <label className="block text-sm">Description<textarea name="description" rows={3} className={field} /></label>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="openNow" defaultChecked /> Open for claims now</label>
-      <button disabled={pending} className="w-full rounded bg-black p-3 text-white">{pending ? "Saving…" : "Post break"}</button>
+      <button data-testid="composer-open" disabled={pending} className="w-full rounded bg-black p-3 text-white">{pending ? "Saving…" : "Post break"}</button>
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
     </form>
   );

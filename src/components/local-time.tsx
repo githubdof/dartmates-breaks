@@ -1,0 +1,17 @@
+"use client";
+import { useEffect, useState } from "react";
+import { formatDateTime, formatDeadline } from "@/lib/time";
+
+/**
+ * Renders the server's fallback on the first pass (hydration matches byte for byte), then reformats in
+ * the browser's own zone, with the browser's own "now" deciding today and tomorrow. No JS: the fallback stays.
+ */
+export function LocalTime({ iso, fallback, kind }: { iso: string; fallback: string; kind: "deadline" | "datetime" }) {
+  const [text, setText] = useState(fallback);
+  useEffect(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!tz) return;
+    setText(kind === "deadline" ? formatDeadline(new Date(iso), new Date(), tz) : formatDateTime(new Date(iso), tz));
+  }, [iso, kind]);
+  return <time dateTime={iso}>{text}</time>;
+}

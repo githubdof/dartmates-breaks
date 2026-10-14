@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { claim, claimRandomAction, claimRest, sent } from "./actions";
-import { formatCents } from "@/lib/money";
+import { formatMoney } from "@/lib/money";
 import { payLinks } from "@/lib/pay-links";
 import type { ActionResult } from "@/lib/action";
 
@@ -41,22 +41,22 @@ export function ClaimPanel(p: { breakId: string; openNumbers: number[]; allowRan
   return (
     <section className="mt-4 space-y-3 rounded border p-3">
       <h2 className="font-medium">Claim lines</h2>
-      <div className="flex flex-wrap gap-1">{p.openNumbers.map((n) => <button key={n} onClick={() => toggle(n)} className={`rounded border px-2 py-1 text-sm ${picked.includes(n) ? "bg-black text-white" : ""}`}>{n}</button>)}</div>
+      <div className="flex flex-wrap gap-1">{p.openNumbers.map((n) => <button key={n} data-testid={`cell-${n}`} onClick={() => toggle(n)} className={`rounded border px-2 py-1 text-sm ${picked.includes(n) ? "bg-black text-white" : ""}`}>{n}</button>)}</div>
       <div className="flex gap-2">
-        <button disabled={pending || picked.length === 0} onClick={() => runClaim(() => claim(p.breakId, picked, batchId))} className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-40">Claim {picked.length || ""}</button>
+        <button data-testid="claim-submit" disabled={pending || picked.length === 0} onClick={() => runClaim(() => claim(p.breakId, picked, batchId))} className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-40">Claim {picked.length || ""}</button>
         {p.allowRandom && <>
           <input type="number" min={1} max={50} value={count} onChange={(e) => setCount(Math.min(50, Math.max(1, Math.floor(+e.target.value || 1))))} className="w-16 rounded border p-1 text-sm" />
           <button disabled={pending || p.openNumbers.length === 0} onClick={() => runClaim(() => claimRandomAction(p.breakId, count, batchId))} className="rounded border px-3 py-2 text-sm">Random</button>
         </>}
-        <button disabled={pending || p.openNumbers.length === 0} onClick={() => runClaim(() => claimRest(p.breakId, batchId))} className="rounded border px-3 py-2 text-sm">Take the rest</button>
+        <button data-testid="claim-rest" disabled={pending || p.openNumbers.length === 0} onClick={() => runClaim(() => claimRest(p.breakId, batchId))} className="rounded border px-3 py-2 text-sm">Take the rest</button>
       </div>
       {msg && <p className="text-sm">{msg}</p>}
       {sentMine.length > 0 && (
-        <p className="rounded bg-blue-50 p-3 text-sm">Sent — awaiting host confirmation: lines {sentMine.map((m) => m.number).join(", ")}.</p>
+        <p data-testid="sent-note" className="rounded bg-blue-50 p-3 text-sm">Sent — awaiting host confirmation: lines {sentMine.map((m) => m.number).join(", ")}.</p>
       )}
       {unsentMine.length > 0 && (
         <div className="rounded bg-neutral-50 p-3 text-sm">
-          <p>You owe <b>{formatCents(owed)}</b> for lines {unsentMine.map((m) => m.number).join(", ")}.</p>
+          <p>You owe <b data-testid="owed">{formatMoney(owed)}</b> for lines {unsentMine.map((m) => m.number).join(", ")}.</p>
           <p className="whitespace-pre-line text-neutral-700">{p.paymentInstructions}</p>
           <p className="text-xs text-neutral-600">Leave the payment note blank.</p>
           <div className="mt-2 flex gap-2">
@@ -64,7 +64,7 @@ export function ClaimPanel(p: { breakId: string; openNumbers: number[]; allowRan
             {links.paypal && <a href={links.paypal} target="_blank" rel="noreferrer" className="rounded bg-yellow-500 px-3 py-2">Open PayPal</a>}
             {p.paymentHandles.venmo && <button onClick={() => navigator.clipboard.writeText(p.paymentHandles.venmo!)} className="rounded border px-3 py-2">Copy handle</button>}
           </div>
-          <button disabled={pending} onClick={() => runSent(unsentMine.map((m) => m.number))} className="mt-2 w-full rounded bg-green-700 p-2 text-white">I&apos;ve sent payment</button>
+          <button data-testid="mark-sent" disabled={pending} onClick={() => runSent(unsentMine.map((m) => m.number))} className="mt-2 w-full rounded bg-green-700 p-2 text-white">I&apos;ve sent payment</button>
         </div>
       )}
     </section>

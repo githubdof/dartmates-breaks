@@ -8,7 +8,7 @@ export function Verify({ inputs }: { inputs: PublicInputs }) {
   return (
     <div className="mt-3 rounded border p-3 text-sm">
       <div data-testid="verify-status">🔒 Locked before opening · {state ? (state.ok ? "Checked ✓" : "Check failed") : "checking…"}</div>
-      <button onClick={() => setState(verifyInputs(inputs))} className="mt-2 rounded border px-3 py-1">Check it yourself</button>
+      <button data-testid="verify-run" onClick={() => setState(verifyInputs(inputs))} className="mt-2 rounded border px-3 py-1">Check it yourself</button>
       {state && !state.ok && (
         <ul className="mt-2 list-disc pl-5 text-red-700">{state.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
       )}

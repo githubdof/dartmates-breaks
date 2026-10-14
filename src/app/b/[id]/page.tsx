@@ -5,7 +5,7 @@ import { getBreakPage } from "@/domain/breaks/queries";
 import { shapeGrid, canViewBreak, isHostView } from "@/domain/breaks/grid";
 import { ledgerByBuyer, globalUnpaidCount } from "@/domain/lines/queries";
 import { getCaller } from "@/auth/session";
-import { formatCents } from "@/lib/money";
+import { formatMoney } from "@/lib/money";
 import { isUuid } from "@/lib/is-uuid";
 import { Grid, type GridLine } from "./grid";
 import { ClaimPanel } from "./claim-panel";
@@ -38,13 +38,13 @@ export default async function BreakPage({ params }: { params: Promise<{ id: stri
   return (
     <main className="mx-auto max-w-md p-4">
       <h1 className="text-xl font-semibold">{page.break.title}</h1>
-      <p className="text-sm text-neutral-600">{openNumbers.length} of {page.break.lineCount} open · {formatCents(page.break.linePriceCents)}/line · {paid} paid</p>
+      <p className="text-sm text-neutral-600">{openNumbers.length} of {page.break.lineCount} open · {formatMoney(page.break.linePriceCents)} a line · <span data-testid="paid-count">{paid} of {page.break.lineCount} paid</span></p>
       <p className="text-sm">Host: {page.host.handle
         ? <Link href={`/h/${page.host.handle}`} className="underline">{page.host.displayName ?? page.host.handle}</Link>
         : <span>{page.host.displayName ?? "unknown"}</span>}</p>
       <ul className="mt-2 text-sm">{page.items.map((i) => <li key={i.id}>• {i.name}</li>)}</ul>
       {page.items.length > 1 && <p className="text-xs text-neutral-600">Winner picks one.</p>}
-      {page.break.status === "drawn" && <Link href={`/b/${id}/result`} className="mt-3 block rounded bg-green-700 p-3 text-center text-white">See the result</Link>}
+      {page.break.status === "drawn" && <Link data-testid="see-result" href={`/b/${id}/result`} className="mt-3 block rounded bg-green-700 p-3 text-center text-white">See the result</Link>}
       {page.break.status === "drawing" && <p className="mt-3 rounded bg-amber-100 p-3 text-sm">Draw requested — waiting for the public beacon.</p>}
 
       <Grid lines={gridLines} lineCount={page.break.lineCount} />

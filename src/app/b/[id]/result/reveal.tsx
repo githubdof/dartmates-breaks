@@ -15,7 +15,7 @@ export function Reveal({ ranking, handleOf, awards }: { ranking: number[]; handl
   return (
     <div className="mt-3">
       {done && ranking.length > 0 && (
-        <div className="rounded bg-green-700 p-4 text-white">
+        <div data-testid="winner" className="rounded bg-green-700 p-4 text-white">
           <div className="text-sm">Winner</div>
           <div className="text-2xl font-bold">{handleOf[ranking[0]]} — line {ranking[0]}</div>
           {awards.filter((a) => a.rank > 1).map((a) => (

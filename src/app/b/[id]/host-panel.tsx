@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { paidForBuyer, releaseBuyer } from "./actions";
-import { formatCents } from "@/lib/money";
+import { formatMoney } from "@/lib/money";
 import { requestDrawAction, finaliseDrawAction } from "./draw-actions";
 import { openBreakAction } from "./host-actions";
 import { releasePrompt } from "./release-prompt";
@@ -31,16 +31,16 @@ export function HostPanel({ breakId, status, rows }: { breakId: string; status: 
       )}
       {status === "open" && unpaid.length === 0 && <p className="text-sm text-neutral-600">No unpaid claims.</p>}
       {unpaid.map((u) => (
-        <div key={u.ownerId} className="flex items-center justify-between rounded bg-neutral-50 p-2 text-sm">
-          <div><b>{u.handle ?? "?"}</b> · lines {u.unpaid.join(", ")} · {formatCents(u.owedCents)} {u.status === "sent" && <span className="text-blue-700">· sent</span>}</div>
+        <div key={u.ownerId} data-testid="ledger-row" data-status={u.status} className="flex items-center justify-between rounded bg-neutral-50 p-2 text-sm">
+          <div><b>{u.handle ?? "?"}</b> · lines {u.unpaid.join(", ")} · {formatMoney(u.owedCents)} {u.status === "sent" && <span className="text-blue-700">· sent</span>}</div>
           <div className="flex gap-1">
-            <button disabled={pending} onClick={() => run(() => paidForBuyer(breakId, u.ownerId, u.unpaid))} className="rounded bg-green-700 px-2 py-1 text-white">Paid</button>
+            <button data-testid="ledger-paid" disabled={pending} onClick={() => run(() => paidForBuyer(breakId, u.ownerId, u.unpaid))} className="rounded bg-green-700 px-2 py-1 text-white">Paid</button>
             <button disabled={pending} onClick={() => confirmRelease(u)} className="rounded border px-2 py-1">Release</button>
           </div>
         </div>
       ))}
-      {status === "filled" && <button disabled={pending} onClick={() => run(() => requestDrawAction(breakId))} className="w-full rounded bg-black p-3 text-white">Run draw</button>}
-      {status === "drawing" && <button disabled={pending} onClick={() => run(() => finaliseDrawAction(breakId))} className="w-full rounded bg-black p-3 text-white">Finish draw (beacon ready?)</button>}
+      {status === "filled" && <button data-testid="run-draw" disabled={pending} onClick={() => run(() => requestDrawAction(breakId))} className="w-full rounded bg-black p-3 text-white">Run draw</button>}
+      {status === "drawing" && <button data-testid="finish-draw" disabled={pending} onClick={() => run(() => finaliseDrawAction(breakId))} className="w-full rounded bg-black p-3 text-white">Finish draw (beacon ready?)</button>}
       {msg && <p className="text-sm text-red-600">{msg}</p>}
     </section>
   );
