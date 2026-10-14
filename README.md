@@ -35,7 +35,13 @@ Environment variables:
 
 ### Test database
 
-The tests get their own database. Never point `.env.test` at the dev database: the concurrency suite truncates every table in the database it runs against, users included.
+The tests get their own database. Never point `.env.test` at the dev database: the concurrency suite truncates every table in the database it runs against, users included. Create it with the repo's own `postgres` package (no `psql` needed; it also applies the CI auth stub):
+
+```bash
+pnpm exec tsx scripts/create-db.ts breaks_test
+```
+
+With `psql` installed, the same by hand:
 
 ```bash
 psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -c 'create database breaks_test'
@@ -57,7 +63,13 @@ pnpm exec tsx scripts/create-db.ts breaks_e2e
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/breaks_e2e pnpm db:migrate
 ```
 
-Without the script, the stack's own container has `psql`: `docker exec supabase_db_plan-1-tracer-bullet psql -U postgres -c 'create database breaks_e2e'`, then `docker exec -i supabase_db_plan-1-tracer-bullet psql -U postgres -d breaks_e2e < supabase/ci-auth-stub.sql`. The same script creates the test database: `pnpm exec tsx scripts/create-db.ts breaks_test`.
+Without the script, the stack's own container has `psql`: `docker exec supabase_db_plan-1-tracer-bullet psql -U postgres -c 'create database breaks_e2e'`, then `docker exec -i supabase_db_plan-1-tracer-bullet psql -U postgres -d breaks_e2e < supabase/ci-auth-stub.sql`.
+
+The e2e builds and starts the app on port 3000 itself, so nothing may listen there first. Stop only a listener (a plain `lsof -ti tcp:3000` also matches browsers that merely hold a connection to it):
+
+```bash
+/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs kill
+```
 
 Set `E2E_DATABASE_URL` to use another server; the database must still be called `breaks_e2e`. Sign-in for e2e users still goes through the local Supabase Auth, so their auth rows stay in the stack's own database.
 
