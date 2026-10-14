@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { makeUser, openBreakWithLines, assertInvariants } from "../helpers/fixtures";
 import { claimLines, claimNext, claimRandom } from "@/domain/lines/commands";
-import { CapExceeded } from "@/domain/errors";
+import { CapExceeded, LineTaken } from "@/domain/errors";
 import { GLOBAL_UNPAID_CAP } from "@/domain/breaks/rules";
 import { lines } from "@/db/schema";
 import type { Caller } from "@/domain/types";
@@ -54,6 +54,11 @@ describe("concurrent claims", () => {
     const results = await Promise.allSettled(buyers.map((u) => db.transaction((tx) => claimNext(tx, c(u.id), { breakId: b.id, count: 2, batchId: randomUUID() }))));
     const won = results.flatMap((r) => (r.status === "fulfilled" ? [r.value.got] : []));
     expect(won).toHaveLength(5); // 10 lines, 2 each
+    // The sixth buyer is refused because every line is gone, not by some other failure.
+    const refused = results.flatMap((r) => (r.status === "rejected" ? [r.reason as unknown] : []));
+    expect(refused).toHaveLength(1);
+    expect(refused[0]).toBeInstanceOf(LineTaken);
+    expect((refused[0] as LineTaken).message).toBe("Every line is taken.");
     expect(won.flat().sort((x, y) => x - y)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     for (const got of won) expect(got[1] - got[0]).toBe(1); // the break row lock serialises callers
     await db.transaction((tx) => assertInvariants(tx));

@@ -4,6 +4,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { GridCell } from "@/domain/breaks/grid";
 import type { LedgerRowView } from "@/components/ledger/ledger-view";
 import { LedgerRow } from "@/components/ledger/ledger-row";
+import { LedgerSheet } from "@/components/ledger/ledger-sheet";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { Cell } from "./cell";
 import { Grid } from "./grid";
 
@@ -115,6 +117,23 @@ describe("LedgerRow: state as a word, the late time in red, one Paid button with
     expect(h).not.toContain("aria-expanded");
     expect(h).toContain("Chronos break");
     expect(h).toContain("Alice");
-    expect(html(createElement(LedgerRow, props(alice)))).toContain("aria-expanded");
+    // No button wraps the name: every button's content is free of it (the Paid button names Alice only in its label).
+    const buttons = [...h.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map((m) => m[1]);
+    expect(buttons.some((b) => b.includes(">Alice<"))).toBe(false);
+    expect(h).toContain('<span class="truncate font-semibold">Alice</span>');
+    const toggled = html(createElement(LedgerRow, props(alice)));
+    expect(toggled).toContain("aria-expanded");
+    expect([...toggled.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].some((m) => m[1].includes(">Alice<"))).toBe(true);
+  });
+  it("the ledger's column header sits outside the Buyers list and is hidden from screen readers", () => {
+    const router = { refresh: noop, push: noop, replace: noop, back: noop, forward: noop, prefetch: noop };
+    const h = html(createElement(AppRouterContext.Provider, { value: router },
+      createElement(LedgerSheet, { open: true, onClose: noop, breakId: "b", status: "open", rows: [alice], counts: { paid: 0, taken: 1, total: 4 }, bonus: { used: 0, max: 1 }, hostName: "@jim" })));
+    const header = h.match(/<div([^>]*)><span>Buyer<\/span><span>Lines<\/span>/);
+    expect(header).not.toBeNull();
+    expect(header![1]).toContain('aria-hidden="true"');
+    const listStart = h.indexOf('<ul aria-label="Buyers"');
+    expect(listStart).toBeGreaterThan(h.indexOf(header![0]));
+    expect(h.slice(listStart, h.indexOf("</ul>", listStart))).not.toContain("<span>Buyer</span>");
   });
 });

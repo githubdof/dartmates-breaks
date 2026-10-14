@@ -7,7 +7,7 @@ import { breaks } from "@/db/schema";
 
 describe("migration 0001 backfill", () => {
   it("turns breaks that refused random claims into pick-only and leaves the rest", async () => {
-    const text = readFileSync("src/db/migrations/0001_claim_mode.sql", "utf8");
+    const text = readFileSync(new URL("./migrations/0001_claim_mode.sql", import.meta.url), "utf8");
     const statement = text.split("--> statement-breakpoint").map((s) => s.replace(/^--.*$/gm, "").trim())
       .find((s) => s.startsWith("update breaks set claim_mode"));
     expect(statement).toBe("update breaks set claim_mode = 'pick_only' where allow_random_claims = false;");
