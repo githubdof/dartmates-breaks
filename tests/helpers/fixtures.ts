@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { users, breaks, breakItems, prizes, lines } from "@/db/schema";
 import { commitment } from "@/crypto/commit";
+import type { ClaimMode } from "@/domain/breaks/rules";
 
 // Random, not Date.now(): parallel vitest workers would collide on the same millisecond.
 const uniq = () => randomBytes(6).toString("hex");
@@ -17,10 +18,12 @@ export async function makeUser(tx: Tx, opts: { role?: "member" | "host" | "admin
   return { id, handle };
 }
 
-export async function makeBreak(tx: Tx, opts: { hostId: string; lineCount?: number; linePriceCents?: number; status?: string; kind?: string }) {
+export async function makeBreak(tx: Tx, opts: { hostId: string; lineCount?: number; linePriceCents?: number; status?: string; kind?: string; claimMode?: ClaimMode }) {
+  const claimMode = opts.claimMode ?? "pick_or_random";
   const [b] = await tx.insert(breaks).values({
     hostId: opts.hostId, title: `Break ${uniq()}`, lineCount: opts.lineCount ?? 12,
     linePriceCents: opts.linePriceCents ?? 2000, status: opts.status ?? "draft", kind: opts.kind ?? "main",
+    claimMode, allowRandomClaims: claimMode === "pick_or_random",
   }).returning();
   const [item] = await tx.insert(breakItems).values({ breakId: b.id, name: "Darts" }).returning();
   await tx.insert(prizes).values({ breakId: b.id, rank: 1, itemId: item.id });
@@ -28,7 +31,7 @@ export async function makeBreak(tx: Tx, opts: { hostId: string; lineCount?: numb
 }
 
 /** Shortcut for tests that need an open break with lines but don't test `breaks.open` itself. */
-export async function openBreakWithLines(tx: Tx, opts: { hostId: string; lineCount?: number; linePriceCents?: number }) {
+export async function openBreakWithLines(tx: Tx, opts: { hostId: string; lineCount?: number; linePriceCents?: number; claimMode?: ClaimMode }) {
   const b = await makeBreak(tx, { ...opts, status: "draft" });
   const secret = randomBytes(32);
   await tx.update(breaks).set({ status: "open", openedAt: new Date(), seedCommitment: commitment(secret) }).where(sql`${breaks.id} = ${b.id}`);

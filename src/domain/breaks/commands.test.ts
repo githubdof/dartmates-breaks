@@ -43,7 +43,7 @@ describe("createDraft", () => {
       const { breakId } = await createDraft(tx, asHost(host), { ...input, paymentHandles: { venmo: "@Jim-R", paypal: "JimR" } });
       const page = (await getBreakPage(tx, breakId))!;
       expect(page.host.paymentHandles).toEqual({ venmo: "@Jim-R", paypal: "JimR" });
-      expect(page.break.paymentInstructions).toBe("Venmo @Jim-R · PayPal paypal.me/JimR · leave the note blank");
+      expect(page.break.paymentInstructions).toBe("Venmo @Jim-R. PayPal paypal.me/JimR. Leave the note blank.");
       const [p1] = await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${host.id}`);
       expect(p1.paymentHandlesChangedAt).not.toBeNull();
       // same handles again: changedAt is untouched; explicit instructions win
@@ -51,6 +51,29 @@ describe("createDraft", () => {
       const [p2] = await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${host.id}`);
       expect(p2.paymentHandlesChangedAt).toEqual(p1.paymentHandlesChangedAt);
       expect((await getBreakPage(tx, b2))!.break.paymentInstructions).toBe("Cash at the club");
+    });
+  });
+  it("stores the picking mode, defaulting to pick or random, and keeps allow_random_claims in step", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const a = await createDraft(tx, asHost(host), input);
+      const b = await createDraft(tx, asHost(host), { ...input, claimMode: "straight" });
+      const pa = (await getBreakPage(tx, a.breakId))!.break;
+      const pb = (await getBreakPage(tx, b.breakId))!.break;
+      expect(pa.claimMode).toBe("pick_or_random");
+      expect(pa.allowRandomClaims).toBe(true);
+      expect(pb.claimMode).toBe("straight");
+      expect(pb.allowRandomClaims).toBe(false);
+      await expect(createDraft(tx, asHost(host), { ...input, claimMode: "random_only" as never })).rejects.toBeInstanceOf(InvalidInput);
+    });
+  });
+  it("adds 2nd-place items as rank-2 prizes", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, items: [{ name: "Chronos 22g" }], secondPlace: [{ name: "Flight pack" }, { name: "  " }] });
+      const page = (await getBreakPage(tx, breakId))!;
+      expect(page.prizes.map((p) => p.rank)).toEqual([1, 2]);
+      expect(page.items.map((i) => i.name).sort()).toEqual(["Chronos 22g", "Flight pack"]);
     });
   });
 });

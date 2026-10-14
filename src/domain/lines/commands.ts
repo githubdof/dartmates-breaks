@@ -12,6 +12,13 @@ type BreakRow = typeof breaks.$inferSelect;
 /** postgres-js can't bind a JS array to `any(...)` inside a raw template with prepare:false; pass a Postgres array literal. */
 const intArray = (ns: number[]) => sql`${`{${ns.join(",")}}`}::int[]`;
 
+/** "Only 1 line is open." / "Only 3 lines are open." — no partial random or straight-fill claims. */
+function onlyOpen(n: number): LineTaken {
+  const e = new LineTaken([]);
+  e.message = `Only ${n} ${n === 1 ? "line is" : "lines are"} open.`;
+  return e;
+}
+
 /** Claims are main-break only in Plan 1; minis and free draws arrive in Plan 2. */
 function assertClaimable(b: BreakRow): void {
   if (b.status !== "open") throw new NotOpen(b.status);
@@ -51,6 +58,7 @@ export async function claimLines(tx: Tx, caller: Caller, p: { breakId: string; n
   const b = await lockBreak(tx, p.breakId);
   await lockUser(tx, caller.id); // lock order: break row -> user (advisory xact lock) -> lines
   assertClaimable(b);
+  if (b.claimMode === "straight") throw new InvalidInput("This break fills in order. Say how many lines you want.");
   const numbers = validateNumbers(p.numbers, b.lineCount);
   const mine = (await tx.select({ number: lines.number }).from(lines)
     .where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} = ${caller.id} and ${inArray(lines.number, numbers)}`)).map((r) => r.number);
@@ -73,15 +81,34 @@ export async function claimRandom(tx: Tx, caller: Caller, p: { breakId: string; 
   const b = await lockBreak(tx, p.breakId);
   await lockUser(tx, caller.id); // lock order: break row -> user (advisory xact lock) -> lines
   assertClaimable(b);
-  if (!b.allowRandomClaims) throw new InvalidInput("This break doesn't allow random lines");
+  if (b.claimMode !== "pick_or_random") throw new InvalidInput("This break doesn't allow random lines");
   if (!Number.isInteger(p.count) || p.count < 1) throw new InvalidInput("Ask for at least one line");
   const isHost = caller.id === b.hostId;
   assertCaps({ requested: p.count, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaid(tx, caller.id) });
   const picked = await tx.execute<{ number: number }>(sql`
     select number from lines where break_id = ${b.id} and owner_id is null and reserved_for_mini_id is null and number <= ${b.lineCount}
     order by random() limit ${p.count} for update skip locked`);
-  if (picked.length < p.count) { const e = new LineTaken([]); e.message = `Only ${picked.length} open`; throw e; }
+  if (picked.length < p.count) throw onlyOpen(picked.length);
   const got = await assign(tx, b, caller, picked.map((r) => r.number), p.batchId);
+  await finishClaim(tx, b, caller, got, p.batchId, p.ipHash);
+  return { got };
+}
+
+/** Straight fill: the caller gets the lowest open numbers, all or nothing. The break row lock serialises callers. */
+export async function claimNext(tx: Tx, caller: Caller, p: { breakId: string; count: number; batchId: string; ipHash?: string }): Promise<{ got: number[] }> {
+  assertOnboarded(caller);
+  const b = await lockBreak(tx, p.breakId);
+  await lockUser(tx, caller.id); // lock order: break row -> user (advisory xact lock) -> lines
+  assertClaimable(b);
+  if (b.claimMode !== "straight") throw new InvalidInput("This break lets you pick your lines");
+  if (!Number.isInteger(p.count) || p.count < 1) throw new InvalidInput("Ask for at least one line");
+  const isHost = caller.id === b.hostId;
+  assertCaps({ requested: p.count, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaid(tx, caller.id) });
+  const next = (await tx.select({ number: lines.number }).from(lines)
+    .where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} is null and ${lines.reservedForMiniId} is null and ${lines.number} <= ${b.lineCount}`)
+    .orderBy(lines.number).limit(p.count)).map((r) => r.number);
+  if (next.length < p.count) throw onlyOpen(next.length);
+  const got = await assign(tx, b, caller, next, p.batchId);
   await finishClaim(tx, b, caller, got, p.batchId, p.ipHash);
   return { got };
 }

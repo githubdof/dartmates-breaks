@@ -59,6 +59,20 @@ describe("schema constraints", () => {
     await expect(sql`update breaks set status = 'draft' where id = ${breakId}`).rejects.toThrow(/draft/);
   });
 
+  it("rejects an unknown claim mode", async () => {
+    await expect(sql`insert into breaks (host_id, title, line_count, line_price_cents, claim_mode) values (${hostId}, 'm', 4, 500, 'random_only')`).rejects.toThrow(/breaks_claim_mode_chk/);
+  });
+
+  it("defaults the claim mode and lets a draft change it", async () => {
+    const [d] = await sql`insert into breaks (host_id, title, line_count, line_price_cents) values (${hostId}, 'd', 4, 500) returning id, claim_mode`;
+    expect(d.claim_mode).toBe("pick_or_random");
+    await expect(sql`update breaks set claim_mode = 'pick_only' where id = ${d.id}`).resolves.toBeDefined();
+  });
+
+  it("freezes claim_mode after open", async () => {
+    await expect(sql`update breaks set claim_mode = 'straight' where id = ${breakId}`).rejects.toThrow(/claim_mode is frozen/);
+  });
+
   // A fresh drawing break with one pending request, so the guards are reached via an otherwise-legal update.
   const freshRequest = async () => {
     const [b] = await sql`insert into breaks (host_id, title, line_count, line_price_cents, status, seed_commitment)

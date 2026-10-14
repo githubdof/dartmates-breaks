@@ -49,7 +49,7 @@ export default async function BreakPage({ params }: { params: Promise<{ id: stri
       <Grid lines={gridLines} lineCount={page.break.lineCount} />
 
       {caller && page.break.status === "open" && (
-        <ClaimPanel breakId={id} openNumbers={openNumbers} allowRandom={page.break.allowRandomClaims}
+        <ClaimPanel breakId={id} openNumbers={openNumbers} allowRandom={page.break.claimMode === "pick_or_random"}
           mine={mine.map((l) => ({ number: l.number, sentAt: l.sentAt, paidAt: l.paidAt }))} priceCents={page.break.linePriceCents}
           paymentHandles={page.host.paymentHandles} paymentInstructions={page.break.paymentInstructions} seedCommitment={page.break.seedCommitment} />
       )}

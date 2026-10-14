@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { action } from "@/lib/action";
 import { hashIp } from "@/lib/ip-hash";
 import { parseInput } from "@/lib/parse-input";
-import { claimLines, claimRandom, claimAllOpen, markSent, markPaid, releaseLine } from "@/domain/lines/commands";
+import { claimLines, claimRandom, claimAllOpen, claimNext, markSent, markPaid, releaseLine } from "@/domain/lines/commands";
 
 const uuid = z.string().uuid();
 const nums = z.array(z.number().int().min(1).max(1100)).min(1).max(200);
@@ -32,6 +32,15 @@ export async function claimRandomAction(breakId: string, count: number, batchId:
   const p = v.data;
   const hash = await ipHash();
   const r = await action((tx, c) => claimRandom(tx, c, { ...p, ipHash: hash }));
+  if (r.ok) done(breakId);
+  return r;
+}
+export async function claimNextAction(breakId: string, count: number, batchId: string) {
+  const v = parseInput(z.object({ breakId: uuid, count: z.number().int().min(1).max(50), batchId: uuid }), { breakId, count, batchId });
+  if (!v.ok) return v;
+  const p = v.data;
+  const hash = await ipHash();
+  const r = await action((tx, c) => claimNext(tx, c, { ...p, ipHash: hash }));
   if (r.ok) done(breakId);
   return r;
 }

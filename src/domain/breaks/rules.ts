@@ -20,3 +20,8 @@ export function validateDraftForOpen(b: { status: string; lineCount: number }, r
 export const SELF_CLAIM_SHARE = 0.1;
 export const BONUS_SHARE = 0.1;
 export const GLOBAL_UNPAID_CAP = 30;
+
+export const CLAIM_MODES = ["pick_or_random", "pick_only", "straight"] as const;
+/** pick_or_random: buyers pick or ask for randoms. pick_only: picks only. straight: lines go out in order (claimNext). */
+export type ClaimMode = (typeof CLAIM_MODES)[number];
+export const isClaimMode = (v: unknown): v is ClaimMode => typeof v === "string" && (CLAIM_MODES as readonly string[]).includes(v);

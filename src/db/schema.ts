@@ -42,7 +42,9 @@ export const breaks = pgTable("breaks", {
   description: text("description").notNull().default(""),
   lineCount: integer("line_count").notNull(),
   linePriceCents: integer("line_price_cents").notNull(),
+  // Superseded by claim_mode (migration 0001). createDraft keeps it equal to claim_mode = 'pick_or_random'; drop it in a later migration.
   allowRandomClaims: boolean("allow_random_claims").notNull().default(true),
+  claimMode: text("claim_mode").$type<"pick_or_random" | "pick_only" | "straight">().notNull().default("pick_or_random"),
   paymentWindowHours: integer("payment_window_hours").notNull().default(24),
   maxLinesPerUser: integer("max_lines_per_user"),
   entryRule: jsonb("entry_rule").$type<{ bought_from_host_days: number } | null>(),
@@ -62,6 +64,7 @@ export const breaks = pgTable("breaks", {
   check("breaks_status_chk", sql`${t.status} in ('draft','open','filled','drawing','drawn','cancelled')`),
   check("breaks_price_chk", sql`(${t.kind} = 'free' and ${t.linePriceCents} = 0) or (${t.kind} <> 'free' and ${t.linePriceCents} > 0)`),
   check("breaks_count_chk", sql`${t.lineCount} >= 2`),
+  check("breaks_claim_mode_chk", sql`${t.claimMode} in ('pick_or_random','pick_only','straight')`),
   index("breaks_host_active_idx").on(t.hostId).where(sql`${t.status} in ('open','filled','drawing')`),
 ]);
 

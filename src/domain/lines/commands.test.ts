@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, openBreakWithLines, lineRows } from "../../../tests/helpers/fixtures";
-import { claimLines, claimRandom, claimAllOpen, markSent, markPaid, unmarkPaid, releaseLine, recomputeFill } from "./commands";
+import { claimLines, claimRandom, claimAllOpen, claimNext, markSent, markPaid, unmarkPaid, releaseLine, recomputeFill } from "./commands";
 import { isOverdue } from "./rules";
 import { unpaidByBuyer } from "./queries";
 import { breaks, lines, events } from "@/db/schema";
@@ -305,5 +305,41 @@ describe("isOverdue", () => {
     expect(isOverdue({ claimedAt: new Date("2026-10-12T11:00:00Z"), sentAt: null, paidAt: null, ownerId: "x" }, b, now)).toBe(true);
     expect(isOverdue({ claimedAt: new Date("2026-10-12T11:00:00Z"), sentAt: new Date(), paidAt: null, ownerId: "x" }, b, now)).toBe(false);
     expect(isOverdue({ claimedAt: new Date("2026-10-13T11:00:00Z"), sentAt: null, paidAt: null, ownerId: "x" }, b, now)).toBe(false);
+  });
+});
+
+describe("picking modes", () => {
+  it("straight fill rejects picks and randoms; claimNext hands out the lowest open numbers", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx); const bb = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 6, claimMode: "straight" });
+      await expect(claimLines(tx, c(a), { breakId: b.id, numbers: [3], batchId: randomUUID() })).rejects.toThrow(/fills in order/);
+      await expect(claimRandom(tx, c(a), { breakId: b.id, count: 1, batchId: randomUUID() })).rejects.toThrow(/random/);
+      expect(await claimNext(tx, c(a), { breakId: b.id, count: 2, batchId: randomUUID() })).toEqual({ got: [1, 2] });
+      expect(await claimNext(tx, c(bb), { breakId: b.id, count: 3, batchId: randomUUID() })).toEqual({ got: [3, 4, 5] });
+      await expect(claimNext(tx, c(a), { breakId: b.id, count: 2, batchId: randomUUID() })).rejects.toThrow(/Only 1 line is open/);
+      expect((await claimAllOpen(tx, c(a), { breakId: b.id, batchId: randomUUID() })).got).toEqual([6]);
+      const evs = await tx.select().from(events).where(sql`${events.breakId} = ${b.id} and ${events.type} = 'line.claimed'`);
+      expect(evs).toHaveLength(3);
+    });
+  });
+  it("pick only rejects randoms and claimNext but allows picks and take-the-rest", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4, claimMode: "pick_only" });
+      await expect(claimRandom(tx, c(a), { breakId: b.id, count: 1, batchId: randomUUID() })).rejects.toBeInstanceOf(InvalidInput);
+      await expect(claimNext(tx, c(a), { breakId: b.id, count: 1, batchId: randomUUID() })).rejects.toBeInstanceOf(InvalidInput);
+      expect(await claimLines(tx, c(a), { breakId: b.id, numbers: [2], batchId: randomUUID() })).toEqual({ got: [2], taken: [] });
+      expect((await claimAllOpen(tx, c(a), { breakId: b.id, batchId: randomUUID() })).got).toEqual([1, 3, 4]);
+    });
+  });
+  it("claimNext respects the per-person cap", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 6, claimMode: "straight" });
+      await tx.update(breaks).set({ maxLinesPerUser: 2 }).where(sql`${breaks.id} = ${b.id}`);
+      await expect(claimNext(tx, c(a), { breakId: b.id, count: 3, batchId: randomUUID() })).rejects.toBeInstanceOf(CapExceeded);
+      expect((await lineRows(tx, b.id)).filter((l) => l.ownerId).length).toBe(0);
+    });
   });
 });

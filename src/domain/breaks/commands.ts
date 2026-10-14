@@ -3,17 +3,20 @@ import type { Tx } from "@/db/client";
 import { breaks, breakItems, prizes, breakSecrets, users, hostProfiles } from "@/db/schema";
 import { assertHostOf, assertOnboarded } from "@/auth/authz";
 import { appendEvent } from "@/domain/events";
-import { NotAuthorized, NotOpen } from "@/domain/errors";
+import { InvalidInput, NotAuthorized, NotOpen } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
 import { commitment } from "@/crypto/commit";
 import { newSecret, encryptSecret } from "@/crypto/secrets";
-import { validateDraftInput, validateDraftForOpen } from "./rules";
+import { validateDraftInput, validateDraftForOpen, isClaimMode, type ClaimMode } from "./rules";
 
 export type CreateDraftInput = {
   title: string; description?: string; lineCount: number; linePriceCents: number;
-  paymentWindowHours?: number; maxLinesPerUser?: number | null; allowRandomClaims?: boolean; paymentInstructions?: string;
+  paymentWindowHours?: number; maxLinesPerUser?: number | null; claimMode?: ClaimMode; paymentInstructions?: string;
   paymentHandles?: { venmo?: string; paypal?: string };
+  /** Rank-1 prize items; several items mean the winner picks one. */
   items: { name: string; variantSchema?: Record<string, string[]> | null; expectedShipAt?: Date | null }[];
+  /** Rank-2 prize items (blank names are skipped). */
+  secondPlace?: { name: string }[];
 };
 
 type Handles = { venmo?: string; paypal?: string };
@@ -25,9 +28,9 @@ const cleanHandles = (h: Handles): Handles => {
 };
 export function defaultPaymentInstructions(h: Handles): string {
   const parts: string[] = [];
-  if (h.venmo) parts.push(`Venmo ${h.venmo}`);
-  if (h.paypal) parts.push(`PayPal paypal.me/${h.paypal}`);
-  return parts.length ? [...parts, "leave the note blank"].join(" · ") : "";
+  if (h.venmo) parts.push(`Venmo ${h.venmo}.`);
+  if (h.paypal) parts.push(`PayPal paypal.me/${h.paypal}.`);
+  return parts.length ? [...parts, "Leave the note blank."].join(" ") : "";
 }
 
 /** Upserts host_profiles.payment_handles; bumps payment_handles_changed_at only when the handles actually changed. */
@@ -44,6 +47,8 @@ export async function createDraft(tx: Tx, caller: Caller, input: CreateDraftInpu
   assertOnboarded(caller);
   if (caller.role !== "host" && caller.role !== "admin") throw new NotAuthorized("Only hosts can list a break");
   validateDraftInput(input);
+  const claimMode = input.claimMode ?? "pick_or_random";
+  if (!isClaimMode(claimMode)) throw new InvalidInput("Choose how buyers get lines");
   let paymentInstructions = input.paymentInstructions?.trim() ?? "";
   if (input.paymentHandles) {
     const handles = cleanHandles(input.paymentHandles);
@@ -54,7 +59,7 @@ export async function createDraft(tx: Tx, caller: Caller, input: CreateDraftInpu
     hostId: caller.id, kind: "main", title: input.title.trim(), description: input.description ?? "",
     lineCount: input.lineCount, linePriceCents: input.linePriceCents,
     paymentWindowHours: input.paymentWindowHours ?? 24, maxLinesPerUser: input.maxLinesPerUser ?? null,
-    allowRandomClaims: input.allowRandomClaims ?? true, paymentInstructions,
+    claimMode, allowRandomClaims: claimMode === "pick_or_random", paymentInstructions,
   }).returning({ id: breaks.id });
   for (const item of input.items) {
     const [it] = await tx.insert(breakItems).values({
@@ -62,7 +67,12 @@ export async function createDraft(tx: Tx, caller: Caller, input: CreateDraftInpu
     }).returning({ id: breakItems.id });
     await tx.insert(prizes).values({ breakId: b.id, rank: 1, itemId: it.id });
   }
-  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.created" });
+  for (const item of input.secondPlace ?? []) {
+    if (!item.name.trim()) continue;
+    const [it] = await tx.insert(breakItems).values({ breakId: b.id, name: item.name.trim() }).returning({ id: breakItems.id });
+    await tx.insert(prizes).values({ breakId: b.id, rank: 2, itemId: it.id });
+  }
+  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.created", payload: { claimMode } });
   return { breakId: b.id };
 }
 

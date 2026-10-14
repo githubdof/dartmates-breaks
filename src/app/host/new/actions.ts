@@ -39,7 +39,7 @@ export async function createAndOpen(_: ComposerState, form: FormData): Promise<C
       linePriceCents: Math.round(p.data.linePrice * 100),
       paymentWindowHours: p.data.paymentWindowHours,
       maxLinesPerUser: p.data.maxLinesPerUser ?? null,
-      allowRandomClaims: p.data.allowRandomClaims === "on",
+      claimMode: p.data.allowRandomClaims === "on" ? "pick_or_random" : "pick_only",
       paymentInstructions: p.data.paymentInstructions,
       paymentHandles: venmo || paypal ? { venmo, paypal } : undefined,
       items,
