@@ -195,3 +195,17 @@ test("/host groups breaks by state; the waiting strip marks sent lines paid in p
   await sheet.getByRole("button", { name: "Close" }).click();
   await expect(host.getByTestId("waiting-strip")).toContainText("1 sent, waiting for you");
 });
+
+test("every visible break has a link-preview image; a draft's 404s even for its host", async ({ browser }) => {
+  const host = await as(browser, `oh${run}@e2e.test`, "host");
+  const url = await composeBreak(host, { title: `Preview ${run}` });
+  const draft = await composeBreak(host, { title: `Preview draft ${run}`, intent: "draft" });
+  const visitor = await (await browser.newContext()).newPage();
+  await visitor.goto(url);
+  await expect(visitor.locator('meta[property="og:image"]')).toHaveAttribute("content", `${url}/og`);
+  await expect(visitor.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+  const img = await visitor.request.get(`${url}/og`);
+  expect(img.status()).toBe(200);
+  expect(img.headers()["content-type"]).toBe("image/png");
+  expect((await host.request.get(`${draft}/og`)).status()).toBe(404);
+});

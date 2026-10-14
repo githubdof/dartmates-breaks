@@ -32,7 +32,15 @@ export async function generateMetadata({ params }: Pick<Props, "params">): Promi
   const { view } = await loadBreak(id);
   if (!view || view.page.break.status === "draft") return {};
   const b = view.page.break;
-  return { title: b.title, description: `${b.lineCount} lines at ${formatMoney(b.linePriceCents)}.` };
+  const description = `${b.lineCount} lines at ${formatMoney(b.linePriceCents)}.`;
+  const url = `${env().APP_URL}/b/${id}`;
+  const image = { url: `${url}/og`, width: 1200, height: 630, alt: `${b.title}, the board as it stands` };
+  return {
+    title: b.title,
+    description,
+    openGraph: { title: b.title, description, url, type: "website", siteName: "Breaks", images: [image] },
+    twitter: { card: "summary_large_image", title: b.title, description, images: [image.url] },
+  };
 }
 
 export default async function BreakPage({ params, searchParams }: Props) {
