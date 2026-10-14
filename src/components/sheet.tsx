@@ -57,7 +57,9 @@ export function Sheet({ open, onClose, title, children, full = false, testId, hi
       aria-labelledby={titleId}
       data-testid={testId}
       onCancel={(e) => { e.preventDefault(); if (open) onClose(); }}
-      onClose={() => { if (open) onClose(); }}
+      // A close event is queued as a later task, so one from a close we started ourselves can arrive after the
+      // sheet has already been reopened; ignore it while the element is open again.
+      onClose={() => { if (open && !ref.current?.open) onClose(); }}
       onClick={(e) => { if (e.target === e.currentTarget && open) onClose(); }}
       className={`${shape} overscroll-contain p-0 text-ink`}
     >
