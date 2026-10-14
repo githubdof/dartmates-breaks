@@ -118,6 +118,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
         instructions={b.paymentInstructions}
         commitment={commitmentShort(b.seedCommitment)}
         closedDaysAgo={status === "filled" && b.filledAt ? daysSince(b.filledAt, now) : null}
+        viewerIsHost={!!caller && caller.id === b.hostId}
         initialPick={initialPick}
       >
         <div className="mt-3"><Legend /></div>
@@ -136,6 +137,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
               counts={{ paid: grid.counts.paid, taken: grid.counts.taken + grid.counts.sent, total: b.lineCount }}
               bonus={{ used: grid.cells.filter((c) => c.bonus).length, max: bonusAllowance(b.lineCount) }}
               hostName={hostName}
+              selfIsHost={!!caller && caller.id === b.hostId}
             />
           )}
         </div>

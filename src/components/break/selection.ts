@@ -87,3 +87,8 @@ export function cellNote(c: GridCell): string {
 const breakPath = (breakId: string, pick: readonly number[]) => (pick.length ? `/b/${breakId}?pick=${pick.join(",")}` : `/b/${breakId}`);
 export const loginHref = (breakId: string, pick: readonly number[]) => `/login?next=${encodeURIComponent(breakPath(breakId, pick))}`;
 export const onboardingHref = (breakId: string, pick: readonly number[]) => `/onboarding?next=${encodeURIComponent(breakPath(breakId, pick))}`;
+
+/** The same words said again within 3 s (a refused claim's cap note, then the refresh that trims the selection): skip the second. */
+export function isRepeat(last: { text: string; at: number } | null, text: string, now: number): boolean {
+  return last !== null && last.text === text && now - last.at < 3000;
+}

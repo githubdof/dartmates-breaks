@@ -44,5 +44,8 @@ describe("previewText", () => {
     expect(previewText(50, "5")).toBe("50 lines at $5 = $250");
     expect(previewText(12, "20.5")).toBe("12 lines at $20.50 = $246");
     expect(previewText(12, "")).toBe("");
+    expect(previewText(50, "0.25")).toBe("50 lines at $0.25 = $12.50");
+    expect(previewText(3, ".5")).toBe("3 lines at $0.50 = $1.50");
+    expect(previewText(4, "0.01")).toBe("4 lines at $0.01 = $0.04");
   });
 });

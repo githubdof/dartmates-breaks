@@ -25,6 +25,8 @@ export type LedgerSheetProps = {
   bonus: { used: number; max: number };
   /** Who started the draw, for the running-draw wait (design §5.4). */
   hostName: string;
+  /** The viewer is the host (an admin is not): "You started the draw." */
+  selfIsHost?: boolean;
 };
 
 const UNDO_MS = 8000;
@@ -180,7 +182,7 @@ export function LedgerSheet(p: LedgerSheetProps) {
           {p.status === "filled" && <Button full onClick={() => run(() => requestDrawAction(p.breakId))} disabled={pending} data-testid="run-draw">Run draw</Button>}
           {p.status === "drawing" && (
             <>
-              <p className="text-small">{drawingText(p.hostName)}</p>
+              <p className="text-small">{drawingText(p.hostName, p.selfIsHost)}</p>
               <Button variant="secondary" full onClick={() => run(() => finaliseDrawAction(p.breakId))} disabled={pending} data-testid="finish-draw">Check for the result</Button>
             </>
           )}

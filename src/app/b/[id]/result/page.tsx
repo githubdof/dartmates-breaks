@@ -11,6 +11,7 @@ import { formatDateTime } from "@/lib/time";
 import { viewerZone } from "@/lib/zone";
 import { shareText } from "@/lib/share-text";
 import { LocalTime } from "@/components/local-time";
+import { CopyField } from "@/components/copy-field";
 import { dealGateScript } from "./reveal-plan";
 import { ShareButton } from "./share-button";
 import { Reveal } from "./reveal";
@@ -65,6 +66,13 @@ export default async function ResultPage({ params }: Props) {
       </p>
       <ShareButton value={share} />
       <Verify inputs={publicInputs} seed={res.draw.seed} relayUrl={relayUrl} />
+      <details className="mt-3 rounded-card border border-wire bg-card" data-testid="technical-details">
+        <summary className="flex min-h-11 cursor-pointer items-center px-4 font-semibold">Technical details</summary>
+        <div className="space-y-3 px-4 pb-4">
+          <CopyField label="Result hash" value={res.draw.resultHash} />
+          <p className="text-small text-ink-2">Algorithm version {res.draw.algorithmVersion}.</p>
+        </div>
+      </details>
       <details className="mt-3 rounded-card border border-wire bg-card">
         <summary className="flex min-h-11 cursor-pointer items-center px-4 font-semibold">Entries</summary>
         <ol className="space-y-1 px-4 pb-4 text-small">

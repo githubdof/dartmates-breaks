@@ -39,6 +39,10 @@ describe("copy audit (design §6, §7)", () => {
     const ui = sources.filter((s) => /^src\/(components|app)\//.test(s.path));
     expect(hits(/["'`](Filled|Drawing|Drawn)\b/, ui)).toEqual([]);
   });
+  it("never shows Filled, Drawing or Drawn as JSX text either", () => {
+    const ui = tsx.filter((s) => /^src\/(components|app)\//.test(s.path));
+    expect(hits(/>\s*(Filled|Drawing|Drawn)\b/, ui)).toEqual([]);
+  });
   it("has no bullet characters", () => expect(hits(/•/)).toEqual([]));
   it("has no exclamation marks in string literals (.ts and .tsx)", () => {
     expect(hits(/["'`][^"'`\n]*[A-Za-z]![\s"'`]/)).toEqual([]);

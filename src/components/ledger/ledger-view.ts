@@ -110,7 +110,8 @@ export function rowCells(r: LedgerRowView): CellData[] {
 }
 
 /** The running-draw wait in the ledger's bottom action (design §5.4). */
-export const drawingText = (hostName: string) => `${hostName} started the draw. The result is in about a minute.`;
+export const drawingText = (hostName: string, self = false) =>
+  `${self ? "You" : hostName} started the draw. The result is in about a minute.`;
 
 /** One row of the merged "waiting on you" ledger (design §5.5): a buyer's sent lines in one break, with its title. */
 export type WaitingView = { key: string; breakId: string; breakTitle: string; row: LedgerRowView };

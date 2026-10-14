@@ -20,6 +20,8 @@ export type BarInput = {
   hostName: string;
   payee: string;
   closedDaysAgo: number | null;
+  /** The host is looking at their own break: the bar says what to do next instead of naming them. */
+  viewerIsHost: boolean;
 };
 
 export type Bar =
@@ -67,9 +69,12 @@ export const lastLabel = (n: number) => (n === 1 ? "Take the last line" : `Take 
 export function claimBar(i: BarInput): Bar {
   switch (i.status) {
     case "draft": return { kind: "none" };
-    case "filled":
-      return { kind: "message", text: i.closedDaysAgo !== null && i.closedDaysAgo >= 3 ? `Closed ${i.closedDaysAgo} days ago, not drawn yet.` : `Closed. Every line is paid. Waiting for ${i.hostName} to run the draw.` };
-    case "drawing": return { kind: "message", text: `${i.hostName} started the draw. The result is in about a minute.` };
+    case "filled": {
+      const stale = i.closedDaysAgo !== null && i.closedDaysAgo >= 3;
+      if (i.viewerIsHost) return { kind: "message", text: stale ? `Closed ${i.closedDaysAgo} days ago, not drawn yet. Run the draw from Host tools.` : "Closed. Every line is paid. Run the draw from Host tools." };
+      return { kind: "message", text: stale ? `Closed ${i.closedDaysAgo} days ago, not drawn yet.` : `Closed. Every line is paid. Waiting for ${i.hostName} to run the draw.` };
+    }
+    case "drawing": return { kind: "message", text: i.viewerIsHost ? "You started the draw. The result is in about a minute." : `${i.hostName} started the draw. The result is in about a minute.` };
     case "drawn": return { kind: "result" };
     case "cancelled": return { kind: "message", text: `Cancelled by ${i.hostName}. Your refund comes from ${i.hostName}, not Breaks.` };
     case "open": break;

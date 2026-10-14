@@ -17,7 +17,7 @@ import { LineList } from "./line-list";
 import { PaySheet } from "./pay-sheet";
 import { nextPendingOwe } from "./pay-copy";
 import { barShown, claimBar, failureNote, limitText, sentNote } from "./claim-bar-state";
-import { cellNote, isSelectable, loginHref, onboardingHref, outcomeText, reconcileSelection, selectionAnnouncement, takenAnnouncement, toggleSelection } from "./selection";
+import { cellNote, isRepeat, isSelectable, loginHref, onboardingHref, outcomeText, reconcileSelection, selectionAnnouncement, takenAnnouncement, toggleSelection } from "./selection";
 import { useAutoRefresh } from "./use-auto-refresh";
 import { usePaySheet, type Owe } from "./use-pay-sheet";
 import { useClaim, type ClaimData } from "./use-claim";
@@ -47,6 +47,8 @@ export type BreakInteractiveProps = {
   instructions: string;
   commitment: string | null;
   closedDaysAgo: number | null;
+  /** The viewer is this break's host (an admin is not). */
+  viewerIsHost: boolean;
   initialPick: number[];
   children?: React.ReactNode;
 };
@@ -68,7 +70,13 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const [struck, setStruck] = useState<number[]>([]);
   // The live region: `n` re-keys the message so the same words twice (one taken cell tapped twice) are announced twice.
   const [announce, setAnnounce] = useState({ text: initial.note ?? "", n: 0 });
-  const say = (text: string) => setAnnounce((a) => ({ text, n: a.n + 1 }));
+  // What was said last and when: the refresh after a refused claim would repeat its cap note (isRepeat).
+  // `say` always speaks (a deliberate second tap is announced again); only the reconcile path below skips a repeat.
+  const lastSaid = useRef<{ text: string; at: number } | null>(null);
+  const say = (text: string) => {
+    lastSaid.current = { text, at: Date.now() };
+    setAnnounce((a) => ({ text, n: a.n + 1 }));
+  };
   const [note, setNote] = useState<string | null>(initial.note);
   const [tapNote, setTapNote] = useState<TapNote | null>(null);
   const [outcome, setOutcome] = useState<{ got: number[]; taken: number[] } | null>(null);
@@ -157,7 +165,11 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       const text = limitText(allowance);
       setNote((cur) => (cur === text ? null : cur));
     }
-    if (said.length > 0) setAnnounce((a) => ({ text: said.join(" "), n: a.n + 1 }));
+    const text = said.join(" ");
+    if (said.length > 0 && !isRepeat(lastSaid.current, text, Date.now())) {
+      lastSaid.current = { text, at: Date.now() };
+      setAnnounce((a) => ({ text, n: a.n + 1 }));
+    }
   }, [freshCells, allowance]);
 
   // The taken-cell popover closes on the next tap anywhere or on Escape.
@@ -178,6 +190,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const bar = claimBar({
     status: p.status, signedIn: p.signedIn, claimMode: p.claimMode, selected, priceCents: p.priceCents, openCount: p.counts.open,
     allowance: p.allowance, owe: p.owe, justSent, hostName: p.hostName, payee: p.payee, closedDaysAgo: p.closedDaysAgo,
+    viewerIsHost: p.viewerIsHost,
   });
   // Closing the sheet hands focus back to the bar. The Sheet does it itself, but if the claim is still resolving it
   // may aim at the claim button that is about to be replaced; once the refresh has landed, look again.

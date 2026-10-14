@@ -93,6 +93,7 @@ describe("row copy", () => {
   });
   it("says who started the draw (design §5.4)", () => {
     expect(drawingText("Dave")).toBe("Dave started the draw. The result is in about a minute.");
+    expect(drawingText("Dave", true)).toBe("You started the draw. The result is in about a minute.");
   });
   it("shows the bonus allowance and the row state word", () => {
     expect(bonusText(2, 5)).toBe("3 of 5 bonus lines left");
