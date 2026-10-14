@@ -3,7 +3,8 @@ import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../tests/helpers/fixtures";
 import { breaks } from "@/db/schema";
-import { hostProfile, hostTrust, lastBreakDefaults, listHostBreaks } from "./queries";
+import { draftForEdit, hostProfile, hostTrust, isGeneratedInstructions, lastBreakDefaults, listHostBreaks } from "./queries";
+import { createDraft } from "./commands";
 import { randomUUID } from "node:crypto";
 import { claimLines, markPaid, addBonusLine } from "@/domain/lines/commands";
 import type { Caller } from "@/domain/types";
@@ -128,5 +129,26 @@ describe("hostProfile", () => {
       // A host with nothing listed yet still has a profile page.
       expect(await hostProfile(tx, newHost.handle)).toMatchObject({ id: newHost.id, breaksRun: 0, pastCount: 0 });
     });
+  });
+});
+
+describe("draftForEdit", () => {
+  it("reads a draft's settings and its prize names by rank", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asCaller(host, "host"), {
+        title: "Edit me", lineCount: 10, linePriceCents: 500, claimMode: "straight",
+        items: [{ name: "22g" }, { name: "24g" }], secondPlace: [{ name: "Flights" }],
+      });
+      const d = await draftForEdit(tx, breakId);
+      expect(d).toMatchObject({ id: breakId, hostId: host.id, status: "draft", title: "Edit me", lineCount: 10, linePriceCents: 500, claimMode: "straight", maxLinesPerUser: null, secondPlace: ["Flights"] });
+      expect([...d!.topSpot].sort()).toEqual(["22g", "24g"]);
+      expect(await draftForEdit(tx, randomUUID())).toBeNull();
+    });
+  });
+  it("knows instructions built from handles", () => {
+    expect(isGeneratedInstructions("Venmo @Jim. PayPal paypal.me/Jim. Leave the note blank.")).toBe(true);
+    expect(isGeneratedInstructions("Leave the note blank.")).toBe(true);
+    expect(isGeneratedInstructions("Zelle only. Leave the note blank.")).toBe(false);
   });
 });

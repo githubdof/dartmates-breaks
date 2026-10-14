@@ -43,6 +43,21 @@ async function savePaymentHandles(tx: Tx, userId: string, h: Handles): Promise<v
     .onConflictDoUpdate({ target: hostProfiles.userId, set: { paymentHandles: h, paymentHandlesChangedAt: new Date() } });
 }
 
+/** Rank-1 items (several make a choice) and rank-2 items (blank names skipped), each with its prize row. */
+async function insertPrizes(tx: Tx, breakId: string, input: Pick<CreateDraftInput, "items" | "secondPlace">): Promise<void> {
+  for (const item of input.items) {
+    const [it] = await tx.insert(breakItems).values({
+      breakId, name: item.name.trim(), variantSchema: item.variantSchema ?? null, expectedShipAt: item.expectedShipAt ?? null,
+    }).returning({ id: breakItems.id });
+    await tx.insert(prizes).values({ breakId, rank: 1, itemId: it.id });
+  }
+  for (const item of input.secondPlace ?? []) {
+    if (!item.name.trim()) continue;
+    const [it] = await tx.insert(breakItems).values({ breakId, name: item.name.trim() }).returning({ id: breakItems.id });
+    await tx.insert(prizes).values({ breakId, rank: 2, itemId: it.id });
+  }
+}
+
 export async function createDraft(tx: Tx, caller: Caller, input: CreateDraftInput): Promise<{ breakId: string }> {
   assertOnboarded(caller);
   if (caller.role !== "host" && caller.role !== "admin") throw new NotAuthorized("Only hosts can list a break");
@@ -61,18 +76,38 @@ export async function createDraft(tx: Tx, caller: Caller, input: CreateDraftInpu
     paymentWindowHours: input.paymentWindowHours ?? 24, maxLinesPerUser: input.maxLinesPerUser ?? null,
     claimMode, allowRandomClaims: claimMode === "pick_or_random", paymentInstructions,
   }).returning({ id: breaks.id });
-  for (const item of input.items) {
-    const [it] = await tx.insert(breakItems).values({
-      breakId: b.id, name: item.name.trim(), variantSchema: item.variantSchema ?? null, expectedShipAt: item.expectedShipAt ?? null,
-    }).returning({ id: breakItems.id });
-    await tx.insert(prizes).values({ breakId: b.id, rank: 1, itemId: it.id });
-  }
-  for (const item of input.secondPlace ?? []) {
-    if (!item.name.trim()) continue;
-    const [it] = await tx.insert(breakItems).values({ breakId: b.id, name: item.name.trim() }).returning({ id: breakItems.id });
-    await tx.insert(prizes).values({ breakId: b.id, rank: 2, itemId: it.id });
-  }
+  await insertPrizes(tx, b.id, input);
   await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.created", payload: { claimMode } });
+  return { breakId: b.id };
+}
+
+/**
+ * Design §5.6: drafts can be edited, by their host (or an admin) only. Replaces the settings and every prize in one
+ * transaction; payment handles go to the break's host's profile, as createDraft does for the caller.
+ */
+export async function updateDraft(tx: Tx, caller: Caller, breakId: string, input: CreateDraftInput): Promise<{ breakId: string }> {
+  assertOnboarded(caller);
+  const b = await assertHostOf(tx, caller, breakId); // locks the break row first
+  if (b.status !== "draft") throw new NotOpen(b.status);
+  validateDraftInput(input);
+  const claimMode = input.claimMode ?? "pick_or_random";
+  if (!isClaimMode(claimMode)) throw new InvalidInput("Choose how buyers get lines");
+  let paymentInstructions = input.paymentInstructions?.trim() ?? "";
+  if (input.paymentHandles) {
+    const handles = cleanHandles(input.paymentHandles);
+    await savePaymentHandles(tx, b.hostId, handles);
+    if (!paymentInstructions) paymentInstructions = defaultPaymentInstructions(handles);
+  }
+  await tx.update(breaks).set({
+    title: input.title.trim(), description: input.description ?? "", lineCount: input.lineCount, linePriceCents: input.linePriceCents,
+    paymentWindowHours: input.paymentWindowHours ?? 24, maxLinesPerUser: input.maxLinesPerUser ?? null,
+    claimMode, allowRandomClaims: claimMode === "pick_or_random", paymentInstructions,
+  }).where(eq(breaks.id, b.id));
+  // Prizes reference items: delete them first. A draft has no paid line, so the items guard allows both.
+  await tx.delete(prizes).where(eq(prizes.breakId, b.id));
+  await tx.delete(breakItems).where(eq(breakItems.breakId, b.id));
+  await insertPrizes(tx, b.id, input);
+  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.updated", payload: { claimMode } });
   return { breakId: b.id };
 }
 

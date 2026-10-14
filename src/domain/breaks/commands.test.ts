@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, lineRows } from "../../../tests/helpers/fixtures";
-import { createDraft, openBreak } from "./commands";
+import { createDraft, openBreak, updateDraft } from "./commands";
 import { getBreakPage } from "./queries";
 import { breaks, breakSecrets, events, hostProfiles } from "@/db/schema";
 import { InvalidInput, NotAuthorized, NotOpen } from "@/domain/errors";
@@ -116,6 +116,54 @@ describe("openBreak", () => {
       const { breakId } = await createDraft(tx, asHost(host), input);
       await tx.execute(sql`update users set listing_paused_at = now() where id = ${host.id}`);
       await expect(openBreak(tx, asHost(host), breakId)).rejects.toBeInstanceOf(NotAuthorized);
+    });
+  });
+});
+
+describe("updateDraft", () => {
+  it("replaces a draft's settings and prizes and logs break.updated", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, secondPlace: [{ name: "Flight pack" }] });
+      await updateDraft(tx, asHost(host), breakId, {
+        title: "Target Chronos v2", lineCount: 20, linePriceCents: 500, claimMode: "straight",
+        items: [{ name: "Chronos 26g" }], secondPlace: [], paymentHandles: { venmo: "Jim-R" },
+      });
+      const page = (await getBreakPage(tx, breakId))!;
+      expect(page.break).toMatchObject({
+        title: "Target Chronos v2", lineCount: 20, linePriceCents: 500, claimMode: "straight", allowRandomClaims: false,
+        status: "draft", paymentInstructions: "Venmo @Jim-R. Leave the note blank.",
+      });
+      expect(page.items.map((i) => i.name)).toEqual(["Chronos 26g"]);
+      expect(page.prizes.map((p) => p.rank)).toEqual([1]);
+      const evs = await tx.select().from(events).where(sql`${events.breakId} = ${breakId} and ${events.type} = 'break.updated'`);
+      expect(evs).toHaveLength(1);
+    });
+  });
+  it("refuses anyone but the host and changes nothing", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const otherHost = await makeUser(tx, { role: "host" }); const member = await makeUser(tx);
+      const { breakId } = await createDraft(tx, asHost(host), input);
+      await expect(updateDraft(tx, asMember(member), breakId, { ...input, title: "Hijacked" })).rejects.toBeInstanceOf(NotAuthorized);
+      await expect(updateDraft(tx, asHost(otherHost), breakId, { ...input, title: "Hijacked" })).rejects.toBeInstanceOf(NotAuthorized);
+      expect((await getBreakPage(tx, breakId))!.break.title).toBe("Target Chronos");
+    });
+  });
+  it("refuses a break that is already open and leaves its prizes alone", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), input);
+      await openBreak(tx, asHost(host), breakId);
+      await expect(updateDraft(tx, asHost(host), breakId, { ...input, items: [{ name: "Other" }] })).rejects.toBeInstanceOf(NotOpen);
+      expect((await getBreakPage(tx, breakId))!.items.map((i) => i.name).sort()).toEqual(["Chronos 22g", "Chronos 24g"]);
+    });
+  });
+  it("validates like createDraft", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), input);
+      await expect(updateDraft(tx, asHost(host), breakId, { ...input, lineCount: 51 })).rejects.toBeInstanceOf(InvalidInput);
+      await expect(updateDraft(tx, asHost(host), breakId, { ...input, claimMode: "random_only" as never })).rejects.toBeInstanceOf(InvalidInput);
     });
   });
 });

@@ -35,6 +35,9 @@ export async function hostTrust(tx: Tx, hostId: string): Promise<{ breaksRun: nu
   return { breaksRun: r?.breaksRun ?? 0, since: r?.since ?? new Date(0) };
 }
 
+/** Instructions built from handles ("Venmo @x. Leave the note blank.") go stale when a handle changes: forms carry only typed ones. */
+export const isGeneratedInstructions = (s: string): boolean => /^(Venmo \S+\. )?(PayPal paypal\.me\/\S+\. )?Leave the note blank\.$/.test(s.trim());
+
 export type LastBreakDefaults = {
   lineCount: number; linePriceCents: number; paymentWindowHours: number; maxLinesPerUser: number | null;
   claimMode: ClaimMode; paymentInstructions: string;
@@ -47,9 +50,7 @@ export async function lastBreakDefaults(tx: Tx, hostId: string): Promise<LastBre
     maxLinesPerUser: breaks.maxLinesPerUser, claimMode: breaks.claimMode, paymentInstructions: breaks.paymentInstructions,
   }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"))).orderBy(desc(breaks.createdAt), desc(breaks.id)).limit(1);
   if (!r) return null;
-  // Instructions built from handles ("Venmo @x. Leave the note blank.") go stale when a handle changes: carry only typed ones.
-  const generated = /^(Venmo \S+\. )?(PayPal paypal\.me\/\S+\. )?Leave the note blank\.$/.test(r.paymentInstructions.trim());
-  return { ...r, paymentInstructions: generated ? "" : r.paymentInstructions };
+  return { ...r, paymentInstructions: isGeneratedInstructions(r.paymentInstructions) ? "" : r.paymentInstructions };
 }
 
 export async function hostPaymentHandles(tx: Tx, hostId: string): Promise<{ venmo?: string; paypal?: string }> {
@@ -88,4 +89,24 @@ export async function hostProfile(tx: Tx, handle: string): Promise<HostProfile |
   }).from(users).where(eq(users.id, u.id));
   if (c.listed === 0 && u.role !== "host") return null;
   return { id: u.id, handle: u.handle, displayName: u.displayName, since: u.since, breaksRun: c.breaksRun, pastCount: c.pastCount };
+}
+
+export type DraftForEdit = {
+  id: string; hostId: string; status: string; title: string; description: string; lineCount: number; linePriceCents: number;
+  paymentWindowHours: number; maxLinesPerUser: number | null; claimMode: ClaimMode; paymentInstructions: string;
+  topSpot: string[]; secondPlace: string[];
+};
+
+/** A break's editable fields and prize names by rank. The caller decides who may see it (drafts: the host and admins). */
+export async function draftForEdit(tx: Tx, breakId: string): Promise<DraftForEdit | null> {
+  const page = await getBreakPage(tx, breakId);
+  if (!page) return null;
+  const nameOf = new Map(page.items.map((i) => [i.id, i.name]));
+  const names = (rank: number) => page.prizes.flatMap((p) => (p.rank === rank && p.itemId && nameOf.has(p.itemId) ? [nameOf.get(p.itemId)!] : []));
+  const b = page.break;
+  return {
+    id: b.id, hostId: b.hostId, status: b.status, title: b.title, description: b.description, lineCount: b.lineCount, linePriceCents: b.linePriceCents,
+    paymentWindowHours: b.paymentWindowHours, maxLinesPerUser: b.maxLinesPerUser, claimMode: b.claimMode, paymentInstructions: b.paymentInstructions,
+    topSpot: names(1), secondPlace: names(2),
+  };
 }
