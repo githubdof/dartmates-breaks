@@ -1,27 +1,28 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useOptimistic, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Allowance, GridCell, GridCounts } from "@/domain/breaks/grid";
 import type { ClaimMode } from "@/domain/breaks/rules";
 import type { ActionResult } from "@/lib/action";
 import type { BreakStatus } from "@/components/status-word";
-import { claim, claimNextAction, claimRandomAction, claimRest, sent } from "@/app/b/[id]/actions";
+import { claim, claimNextAction, claimRandomAction, claimRest } from "@/app/b/[id]/actions";
 import { Grid } from "@/components/grid/grid";
 import { nextFocusIndex } from "@/components/grid/layout";
 import { SegmentedControl } from "@/components/segmented-control";
 import { clampStep } from "@/components/stepper-math";
+import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
 import { ClaimBar } from "./claim-bar";
 import { LineList } from "./line-list";
 import { PaySheet } from "./pay-sheet";
 import { nextPendingOwe } from "./pay-copy";
 import { barShown, claimBar, failureNote, limitText, sentNote } from "./claim-bar-state";
-import { NETWORK_NOTE } from "@/lib/network-note";
 import { cellNote, isSelectable, loginHref, onboardingHref, outcomeText, reconcileSelection, selectionAnnouncement, takenAnnouncement, toggleSelection } from "./selection";
 import { useAutoRefresh } from "./use-auto-refresh";
+import { usePaySheet, type Owe } from "./use-pay-sheet";
+import { useClaim, type ClaimData } from "./use-claim";
 
-/** What the viewer owes for unsent lines. The deadline travels as ISO plus the server's fallback text (LocalTime). */
-export type Owe = { numbers: number[]; cents: number; payByIso: string | null; payByFallback: string | null };
+export type { Owe } from "./use-pay-sheet";
 
 export type BreakInteractiveProps = {
   breakId: string;
@@ -50,7 +51,6 @@ export type BreakInteractiveProps = {
   children?: React.ReactNode;
 };
 
-type ClaimData = { got: number[]; taken?: number[] };
 type TapNote = { text: string; top: number; left: number };
 
 export function BreakInteractive(p: BreakInteractiveProps) {
@@ -72,21 +72,61 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const [note, setNote] = useState<string | null>(initial.note);
   const [tapNote, setTapNote] = useState<TapNote | null>(null);
   const [outcome, setOutcome] = useState<{ got: number[]; taken: number[] } | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  // The claim can resolve before the refreshed props arrive: the sheet shows a provisional amount until they do.
-  // Failures while the sheet is open show inside it: the page behind a modal dialog is inert.
-  const [sheetError, setSheetError] = useState<{ for: "sent" | "retry"; text: string } | null>(null);
-  const sheetOpenRef = useRef(false);
-  sheetOpenRef.current = sheetOpen;
-  const [pendingOwe, setPendingOwe] = useState<Owe | null>(null);
   const [justSent, setJustSent] = useState(false);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [count, setCount] = useState(1);
-  const [batchId, setBatchId] = useState(() => crypto.randomUUID());
-  const [pending, startTransition] = useTransition();
   const gridWrap = useRef<HTMLDivElement>(null);
   // The grid's single roving tab stop; null lets the grid choose (first selected, then first open).
   const [focusNumber, setFocusNumber] = useState<number | null>(null);
+  // Closing the sheet hands focus back to the bar (effect below).
+  const restoreFocus = useRef(false);
+
+  const pay = usePaySheet({
+    breakId: p.breakId,
+    owe: p.owe,
+    onNote: setNote,
+    say,
+    onSentOk: () => { setJustSent(true); setOutcome(null); say(sentNote(p.hostName)); },
+    onClosed: () => { restoreFocus.current = true; },
+  });
+
+  const finish = (r: ActionResult<ClaimData>, requested: number[]) => {
+    if (r.ok) {
+      const taken = r.data.taken ?? [];
+      setSelected([]);
+      setJustSent(false);
+      setNote(null);
+      setStruck(taken);
+      setOutcome({ got: r.data.got, taken });
+      say(outcomeText(r.data.got, taken));
+      // Built on what is already shown (a retry adds to the first claim's provisional amount); none got, none provisional.
+      pay.setPendingOwe((prev) => nextPendingOwe(p.owe ?? prev, r.data.got, p.priceCents));
+      pay.show(); // the claim is committed; now the pay step
+      return;
+    }
+    if (r.code === "NOT_SIGNED_IN") { router.push(loginHref(p.breakId, requested)); return; }
+    if (r.code === "NOT_ONBOARDED") { router.push(onboardingHref(p.breakId, requested)); return; }
+    const taken = r.details?.taken ?? [];
+    if (taken.length > 0) {
+      setSelected((cur) => cur.filter((n) => !taken.includes(n)));
+      setStruck(taken);
+    }
+    // The actions revalidate only on success: refresh so the grid and the allowance catch up with the server
+    // (struck lines turn taken, a lowered allowance disables the claim) instead of waiting for the 20 s refresh.
+    // Called inside the claim's transition, so the optimistic marks hold until the fresh props land.
+    router.refresh();
+    pay.fail("retry", failureNote(r));
+  };
+
+  const claimer = useClaim({
+    markClaimed,
+    onDone: finish,
+    // The claim may have committed: refresh the props (unless offline) and say so where the buyer is looking.
+    onUnreachable: () => {
+      if (canRefresh()) { router.refresh(); pay.fail("retry", NETWORK_NOTE); } else pay.fail("retry", OFFLINE_NOTE);
+    },
+  });
+  const pending = claimer.pending || pay.pending;
 
   // Open: claims move. Closed: the host may start the draw. Running draw: the result lands. Keep all three fresh.
   useAutoRefresh(p.status === "open" || p.status === "filled" || p.status === "drawing");
@@ -120,10 +160,6 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     if (said.length > 0) setAnnounce((a) => ({ text: said.join(" "), n: a.n + 1 }));
   }, [freshCells, allowance]);
 
-  // Fresh server props carry the real amount and deadline; drop the provisional one.
-  useEffect(() => { setPendingOwe(null); }, [p.owe]);
-  const owe = p.owe ?? pendingOwe;
-
   // The taken-cell popover closes on the next tap anywhere or on Escape.
   useEffect(() => {
     if (!tapNote) return;
@@ -145,16 +181,14 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   });
   // Closing the sheet hands focus back to the bar. The Sheet does it itself, but if the claim is still resolving it
   // may aim at the claim button that is about to be replaced; once the refresh has landed, look again.
-  const restoreFocus = useRef(false);
-  const closeSheet = () => { restoreFocus.current = true; setSheetError(null); setSheetOpen(false); };
   const barKind = bar.kind;
   useEffect(() => {
-    if (sheetOpen || pending || !restoreFocus.current) return;
+    if (pay.open || pending || !restoreFocus.current) return;
     restoreFocus.current = false;
     const a = document.activeElement;
     if (a && a !== document.body && a.isConnected && !a.hasAttribute("disabled")) return;
     document.querySelector<HTMLElement>("[data-sticky-bar] button:not([disabled]), [data-sticky-bar] a")?.focus();
-  }, [sheetOpen, pending, barKind]);
+  }, [pay.open, pending, barKind]);
 
   const stepMax = bar.kind === "idle" && bar.stepper ? bar.stepper.max : 1;
   const stepCount = clampStep(count, 1, stepMax);
@@ -162,7 +196,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const struckSet = useMemo(() => new Set(struck), [struck]);
   const canPick = p.status === "open" && p.claimMode !== "straight";
   // Until the refreshed props land, the lines just got still count as open and unspent in them.
-  const justGot = pendingOwe && outcome ? outcome.got.length : 0;
+  const justGot = pay.pendingOwe && outcome ? outcome.got.length : 0;
   const retryMax = p.status === "open" && p.claimMode === "pick_or_random" ? Math.max(0, Math.min(p.counts.open, p.allowance.remaining) - justGot) : 0;
 
   /** "Line 7: @mike, paid" in a small popover under the tapped cell, and in the polite live region. */
@@ -197,108 +231,22 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     setOutcome(null);
     setSelected(r.next);
     // A changed request is a new batch: the kept id only ever retries the same request after a thrown action.
-    setBatchId(crypto.randomUUID());
+    claimer.newBatch();
     say(selectionAnnouncement(r.next.length, p.priceCents));
   };
 
-  const finish = (r: ActionResult<ClaimData>, requested: number[]) => {
-    if (r.ok) {
-      const taken = r.data.taken ?? [];
-      setSelected([]);
-      setBatchId(crypto.randomUUID());
-      setJustSent(false);
-      setNote(null);
-      setStruck(taken);
-      setOutcome({ got: r.data.got, taken });
-      say(outcomeText(r.data.got, taken));
-      setSheetError(null);
-      // Built on what is already shown (a retry adds to the first claim's provisional amount); none got, none provisional.
-      setPendingOwe((prev) => nextPendingOwe(p.owe ?? prev, r.data.got, p.priceCents));
-      setSheetOpen(true); // the claim is committed; now the pay step
-      return;
-    }
-    if (r.code === "NOT_SIGNED_IN") { router.push(loginHref(p.breakId, requested)); return; }
-    if (r.code === "NOT_ONBOARDED") { router.push(onboardingHref(p.breakId, requested)); return; }
-    const taken = r.details?.taken ?? [];
-    if (taken.length > 0) {
-      setSelected((cur) => cur.filter((n) => !taken.includes(n)));
-      setStruck(taken);
-    }
-    // The actions revalidate only on success: refresh so the grid and the allowance catch up with the server
-    // (struck lines turn taken, a lowered allowance disables the claim) instead of waiting for the 20 s refresh.
-    // Called inside the claim's transition, so the optimistic marks hold until the fresh props land.
-    router.refresh();
-    const text = failureNote(r);
-    if (sheetOpenRef.current) setSheetError({ for: "retry", text });
-    else setNote(text);
-    say(text);
-  };
-
-  /**
-   * A thrown action (dropped connection, 5xx) never reaches `finish`. The claim may have committed, so refresh the
-   * props and say so where the buyer is looking. The batch id is kept: a retry returns the same lines, not new ones.
-   */
-  const unreachable = (inSheet: "sent" | "retry") => {
-    router.refresh();
-    if (sheetOpenRef.current) setSheetError({ for: inSheet, text: NETWORK_NOTE });
-    else setNote(NETWORK_NOTE);
-    say(NETWORK_NOTE);
-  };
-
-  const runClaim = (optimistic: number[], call: () => Promise<ActionResult<ClaimData>>) => {
-    startTransition(async () => {
-      if (optimistic.length > 0) markClaimed(optimistic);
-      let r: ActionResult<ClaimData>;
-      try {
-        r = await call();
-      } catch {
-        unreachable("retry");
-        return;
-      }
-      finish(r, optimistic);
-    });
-  };
-
-  const onClaim = () => { const numbers = selected; runClaim(numbers, () => claim(p.breakId, numbers, batchId)); };
+  const onClaim = () => { const numbers = selected; claimer.run(numbers, (id) => claim(p.breakId, numbers, id)); };
   const onStep = () => {
     if (bar.kind !== "idle" || !bar.stepper) return;
     const action = bar.stepper.action;
     const n = stepCount;
-    runClaim([], () => (action === "next" ? claimNextAction(p.breakId, n, batchId) : claimRandomAction(p.breakId, n, batchId)));
+    claimer.run([], (id) => (action === "next" ? claimNextAction(p.breakId, n, id) : claimRandomAction(p.breakId, n, id)));
   };
   const onLast = () => {
     const open = cells.filter((c) => c.state === "open" && !c.bonus).map((c) => c.number);
-    runClaim(open, () => claimRest(p.breakId, batchId));
+    claimer.run(open, (id) => claimRest(p.breakId, id));
   };
-  const onRetry = (n: number) => { setSheetError(null); runClaim([], () => claimRandomAction(p.breakId, n, batchId)); };
-  const onSent = (done?: () => void) => {
-    if (!owe) return;
-    setSheetError(null);
-    const numbers = owe.numbers;
-    startTransition(async () => {
-      let r: Awaited<ReturnType<typeof sent>>;
-      try {
-        r = await sent(p.breakId, numbers);
-      } catch {
-        unreachable("sent");
-        return;
-      }
-      if (r.ok) {
-        done?.();
-        setJustSent(true);
-        setOutcome(null);
-        setPendingOwe(null);
-        closeSheet();
-        say(sentNote(p.hostName));
-      } else {
-        // Same rule as a refused claim: the owe or the lines changed under us, so catch the props up now.
-        router.refresh();
-        if (sheetOpenRef.current) setSheetError({ for: "sent", text: r.message });
-        else setNote(r.message);
-        say(r.message);
-      }
-    });
-  };
+  const onRetry = (n: number) => { pay.setError(null); claimer.run([], (id) => claimRandomAction(p.breakId, n, id)); };
 
   const onGridKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-cell]"));
@@ -357,21 +305,21 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         bar={bar}
         pending={pending}
         count={stepCount}
-        onCount={(n) => { setCount(n); setBatchId(crypto.randomUUID()); }}
+        onCount={(n) => { setCount(n); claimer.newBatch(); }}
         onClaim={onClaim}
         signInHref={loginHref(p.breakId, selected)}
         onStep={onStep}
         onLast={onLast}
-        onSent={() => onSent()}
-        onOweTap={() => { setOutcome(null); setSheetError(null); setSheetOpen(true); }}
+        onSent={() => pay.markSent()}
+        onOweTap={() => { setOutcome(null); pay.show(); }}
         resultHref={`/b/${p.breakId}/result`}
       />
       <PaySheet
-        open={sheetOpen}
-        onClose={closeSheet}
+        open={pay.open}
+        onClose={pay.close}
         breakId={p.breakId}
         outcome={outcome}
-        owe={owe}
+        owe={pay.owe}
         payee={p.payee}
         handles={p.handles}
         instructions={p.instructions}
@@ -379,9 +327,9 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         commitment={p.commitment}
         retryMax={retryMax}
         onRetry={onRetry}
-        onSent={onSent}
-        onGaveBack={() => setPendingOwe(null)}
-        error={sheetError}
+        onSent={pay.markSent}
+        onGaveBack={() => pay.setPendingOwe(null)}
+        error={pay.error}
         pending={pending}
       />
     </>

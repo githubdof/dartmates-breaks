@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { NETWORK_NOTE } from "@/lib/network-note";
+import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
 import { Sheet } from "@/components/sheet";
 import { Button, buttonClass } from "@/components/button";
 import { CopyButton } from "@/components/copy-button";
@@ -11,8 +11,8 @@ import { LocalTime } from "@/components/local-time";
 import { payLinks, type PayLink } from "@/lib/pay-links";
 import { giveBack } from "@/app/b/[id]/actions";
 import { outcomeText } from "./selection";
-import { giveBackPrompt, payHeadline, releaseText, retryRandomLabel, SENT_HINT, SENT_HINT_KEY } from "./pay-copy";
-import type { Owe } from "./break-interactive";
+import { giveBackPrompt, lateReleaseText, payHeadline, releaseText, retryRandomLabel, SENT_HINT, SENT_HINT_KEY } from "./pay-copy";
+import type { Owe } from "./use-pay-sheet";
 
 type Props = {
   open: boolean;
@@ -86,7 +86,10 @@ export function PaySheet(p: Props) {
         if (r.ok) { setConfirming(false); p.onGaveBack(); p.onClose(); return; }
         setError(r.message);
       } catch {
-        setError(NETWORK_NOTE); // the give-back may have gone through: the refresh shows what the server holds
+        // The give-back may have gone through: the refresh shows what the server holds. Offline, a refresh would
+        // fall back to a hard navigation, so keep the note instead.
+        if (!canRefresh()) { setError(OFFLINE_NOTE); return; }
+        setError(NETWORK_NOTE);
       }
       // Actions revalidate only on success: catch the owe and the board up with the server now.
       router.refresh();
@@ -141,7 +144,11 @@ export function PaySheet(p: Props) {
               {showHint && <p className="text-small text-ink-2">{SENT_HINT}</p>}
               {p.owe.payByIso && p.owe.payByFallback && (
                 <p className="text-small" data-testid="pay-by">
-                  Pay by <LocalTime iso={p.owe.payByIso} fallback={p.owe.payByFallback} kind="deadline" /> {releaseText(p.hostName)}
+                  {p.owe.late ? (
+                    <>Payment was due <LocalTime iso={p.owe.payByIso} fallback={p.owe.payByFallback} kind="deadline" />. {lateReleaseText(p.hostName)}</>
+                  ) : (
+                    <>Pay by <LocalTime iso={p.owe.payByIso} fallback={p.owe.payByFallback} kind="deadline" /> {releaseText(p.hostName)}</>
+                  )}
                 </p>
               )}
               <Button variant="text" full onClick={p.onClose}>I&apos;ll pay later</Button>

@@ -64,6 +64,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
         numbers: grid.viewer.unsent, cents: grid.viewer.owedCents,
         payByIso: payBy ? payBy.toISOString() : null,
         payByFallback: payBy ? formatDeadline(payBy, now, zone.tz, zone.labelled) : null,
+        late: payBy !== null && payBy.getTime() < now.getTime(),
       }
     : null;
   const youHave = grid.viewer ? youHaveText(grid.viewer.held) : null;
