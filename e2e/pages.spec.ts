@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { loginAs } from "./helpers";
+import { composeBreak, loginAs } from "./helpers";
 
 // One test per page Plan B adds. Each test makes its own users and breaks; `run` keeps them unique per run.
 const run = Date.now();
@@ -22,4 +22,20 @@ test("a member edits their display name and payment name in /account", async ({ 
   await page.reload();
   await expect(page.getByLabel("Display name")).toHaveValue("Acct Person");
   await expect(page.getByLabel("Name on your payments")).toHaveValue("Jon Payer");
+});
+
+test("a host saves a draft and edits it; nobody else can see either page", async ({ browser }) => {
+  const host = await as(browser, `dh${run}@e2e.test`, "host");
+  const url = await composeBreak(host, { title: `Draft ${run}`, intent: "draft" });
+  const id = url.split("/b/")[1];
+  await host.getByTestId("edit-draft").click();
+  await host.waitForURL(new RegExp(`/host/${id}/edit$`));
+  await expect(host.locator("input[name=title]")).toHaveValue(`Draft ${run}`);
+  await host.fill("input[name=title]", `Edited ${run}`);
+  await host.getByTestId("composer-draft").click();
+  await host.waitForURL(url);
+  await expect(host.getByRole("heading", { level: 1 })).toHaveText(`Edited ${run}`);
+  const stranger = await as(browser, `ds${run}@e2e.test`);
+  expect((await stranger.goto(url))?.status()).toBe(404);
+  expect((await stranger.goto(`/host/${id}/edit`))?.status()).toBe(404);
 });

@@ -13,6 +13,7 @@ import { GridPreview } from "@/components/grid/grid-preview";
 import { Legend } from "@/components/legend";
 import { StatusPill } from "@/components/status-pill";
 import { CopyButton } from "@/components/copy-button";
+import { ButtonLink } from "@/components/button";
 import type { BreakStatus } from "@/components/status-word";
 import { DetailsFold } from "@/components/break/details-fold";
 import { BreakInteractive } from "@/components/break/break-interactive";
@@ -116,6 +117,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
         )}
         <div className="mt-4 flex flex-wrap gap-2">
           {share && <CopyButton value={share} label="Share" copiedLabel="Copied" testId="share" />}
+          {grid.hostView && status === "draft" && <ButtonLink href={`/host/${id}/edit`} variant="secondary" data-testid="edit-draft">Edit draft</ButtonLink>}
           {grid.hostView && (
             <HostTools
               breakId={id}
