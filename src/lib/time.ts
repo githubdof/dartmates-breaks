@@ -11,7 +11,15 @@ export function isTimeZone(v: unknown): v is string {
   if (typeof v !== "string" || v.length === 0 || v.length > 64) return false;
   if (v === "UTC") return true;
   known ??= new Set(Intl.supportedValuesOf("timeZone"));
-  return known.has(v);
+  if (known.has(v)) return true;
+  // V8 lists legacy ICU names (Europe/Kiev), while Firefox and Safari report current ones (Europe/Kyiv) and
+  // Linux browsers often send Etc/UTC. Accept any name the formatter itself accepts.
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: v });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** The server's fallback zone: the viewer's own (from the tz cookie), unlabelled; else the default, labelled. */

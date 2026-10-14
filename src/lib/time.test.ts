@@ -67,6 +67,12 @@ describe("the server fallback zone", () => {
     expect(resolveZone("x".repeat(200))).toEqual({ tz: DEFAULT_TZ, labelled: true });
     expect(isTimeZone(42)).toBe(false);
   });
+  it("accepts zone names the formatter knows even when supportedValuesOf lists only the legacy alias", () => {
+    expect(isTimeZone("Europe/Kyiv")).toBe(true);
+    expect(isTimeZone("Asia/Kolkata")).toBe(true);
+    expect(isTimeZone("Etc/UTC")).toBe(true);
+    expect(isTimeZone("Etc/Unknown")).toBe(false);
+  });
 });
 
 describe("relative times and dates", () => {
