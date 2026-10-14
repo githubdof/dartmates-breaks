@@ -3,7 +3,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { action } from "@/lib/action";
-import { hashIp } from "@/lib/ip-hash";
+import { requestIpHash } from "@/lib/request-ip";
 import { parseInput } from "@/lib/parse-input";
 import {
   claimLines, claimRandom, claimAllOpen, claimNext, markSent, markPaid, releaseForBuyer, addBonusLine, giveBackLines, unmarkPaidLines,
@@ -12,11 +12,7 @@ import {
 const uuid = z.string().uuid();
 const nums = z.array(z.number().int().min(1).max(1100)).min(1).max(200);
 
-async function ipHash() {
-  const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
-  return ip ? hashIp(ip) : undefined;
-}
+const ipHash = async () => requestIpHash(await headers());
 /** A buyer's lines changed: the break page and /me both show them. */
 const done = (breakId: string) => { revalidatePath(`/b/${breakId}`); revalidatePath("/me"); };
 

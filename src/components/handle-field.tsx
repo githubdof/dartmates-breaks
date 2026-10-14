@@ -10,7 +10,8 @@ export function HandleField({ defaultValue }: { defaultValue: string }) {
 
   useEffect(() => {
     const v = value.trim();
-    if (!looksLikeHandle(v)) { setCheck({ state: "idle" }); return; } // the help text already gives the shape
+    // The help text already gives the shape. Bump seq so a reply still in flight cannot land after the field went idle.
+    if (!looksLikeHandle(v)) { seq.current++; setCheck({ state: "idle" }); return; }
     const n = ++seq.current;
     const ctrl = new AbortController();
     setCheck({ state: "checking" });

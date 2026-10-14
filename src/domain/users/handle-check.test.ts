@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser } from "../../../tests/helpers/fixtures";
-import { checkHandle, HANDLE_CHECKS_PER_MINUTE, HANDLE_CHECKS_PER_USER_PER_MINUTE } from "./handle-check";
+import { checkHandle, hitHandleLimit, HANDLE_CHECKS_PER_MINUTE, HANDLE_CHECKS_PER_USER_PER_MINUTE } from "./handle-check";
 
 const fullwidth = (s: string) => [...s].map((ch) => String.fromCharCode(ch.charCodeAt(0) + 0xfee0)).join("");
 
@@ -46,6 +46,19 @@ describe("checkHandle (Review Focus 3)", () => {
         expect((await checkHandle(tx, { raw: `rot_${i}_x`, callerId: me.id, ipHash: `ip-${randomUUID()}`, now })).state).not.toBe("limited");
       }
       expect(await checkHandle(tx, { raw: "one_more", callerId: me.id, ipHash: `ip-${randomUUID()}`, now })).toEqual({ state: "limited", retryAfter: 60 });
+    });
+  });
+
+  it("counts onboarding attempts on the same buckets: the 61st in a minute is refused", async () => {
+    await withTx(async (tx) => {
+      const me = await makeUser(tx);
+      const now = new Date("2026-10-14T12:00:00Z");
+      for (let i = 0; i < HANDLE_CHECKS_PER_USER_PER_MINUTE; i++) {
+        expect(await hitHandleLimit(tx, { callerId: me.id, ipHash: `ip-${randomUUID()}`, now })).toBeNull();
+      }
+      expect(await hitHandleLimit(tx, { callerId: me.id, ipHash: `ip-${randomUUID()}`, now })).toEqual({ retryAfter: 60 });
+      // The live check shares the bucket, so attempts on either path add up.
+      expect(await checkHandle(tx, { raw: "one_more", callerId: me.id, ipHash: null, now })).toEqual({ state: "limited", retryAfter: 60 });
     });
   });
 });
