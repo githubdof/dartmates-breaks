@@ -17,7 +17,7 @@ import { ButtonLink } from "@/components/button";
 import type { BreakStatus } from "@/components/status-word";
 import { DetailsFold } from "@/components/break/details-fold";
 import { BreakInteractive } from "@/components/break/break-interactive";
-import { bonusGoesWith, commitmentShort } from "@/components/break/pay-copy";
+import { bonusGoesWith, commitmentShort, payeeFor } from "@/components/break/pay-copy";
 import { onboardingHref, parsePick } from "@/components/break/selection";
 import { closesText, hostLabel, leftText, perPersonText, pickingText, prizeLines, smallLineText, trustText, youHaveText } from "@/components/break/frame-copy";
 import { HostTools } from "@/components/ledger/host-tools";
@@ -62,7 +62,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
   const hostName = hostLabel(page.host);
   const hostRef = page.host.handle ? `@${page.host.handle}` : hostName;
   const handles = page.host.paymentHandles;
-  const payee = handles.venmo ?? (handles.paypal ? `paypal.me/${handles.paypal}` : hostName);
+  const payee = payeeFor(handles, hostName);
   const url = `${env().APP_URL}/b/${id}`;
   const share = pageShare({ status, title: b.title, url, lineCount: b.lineCount, priceCents: b.linePriceCents, openCount: grid.counts.open, top });
   // The deadline goes down as ISO plus a fallback in the viewer's zone (tz cookie) or labelled New York time.
