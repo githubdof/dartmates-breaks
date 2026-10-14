@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  applyOrder, applyView, bonusText, drawingText, freezeView, chipCounts, freezeOrder, markPaidLabel, matchesFilter, matchesQuery, paidToast, releaseConfirm, releaseReason, rowCells, rowStateWord, type LedgerRowView,
+  applyOrder, applyView, bonusText, drawingText, freezeView, chipCounts, freezeOrder, markedPaid, markPaidLabel, matchesFilter, matchesQuery, paidToast, releaseConfirm, releaseReason, rowCells, rowStateWord, type LedgerRowView,
 } from "./ledger-view";
 
 const row = (o: Partial<LedgerRowView> & { ownerId: string }): LedgerRowView => ({
@@ -107,5 +107,12 @@ describe("row copy", () => {
       { number: 12, state: "taken", mine: false, overdue: true, bonus: false },
     ]);
     expect(rowCells(bob)[1]).toEqual({ number: 13, state: "paid", mine: false, overdue: false, bonus: true });
+  });
+});
+
+describe("markedPaid", () => {
+  it("is the row once its unpaid lines are paid: no owe, no lateness, bonus and paid lines kept", () => {
+    expect(markedPaid(erin)).toEqual({ ...erin, unpaid: [], sent: [], overdue: [], paid: [10, 11, 12], owedCents: 0, status: "paid", lateText: null });
+    expect(markedPaid(alice)).toMatchObject({ unpaid: [], sent: [], paid: [2, 5], owedCents: 0, status: "paid" });
   });
 });

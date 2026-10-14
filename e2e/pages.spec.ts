@@ -157,3 +157,41 @@ test("My lines shows what a buyer holds, reopens the pay block, and gives lines 
   await expect(card.getByTestId("my-note")).toHaveText("Gave back line 5.");
   await expect(card.getByTestId("my-owed")).toHaveCount(0);
 });
+
+test("/host groups breaks by state; the waiting strip marks sent lines paid in place, with Undo, without moving rows", async ({ browser }) => {
+  const host = await as(browser, `wh${run}@e2e.test`, "host");
+  const first = await composeBreak(host, { title: `Wait A ${run}` });
+  const second = await composeBreak(host, { title: `Wait B ${run}` });
+  await composeBreak(host, { title: `Wait draft ${run}`, intent: "draft" });
+  const buyer = await as(browser, `wb${run}@e2e.test`);
+  for (const url of [first, second]) {
+    await buyer.goto(url);
+    await buyer.getByTestId("cell-1").click();
+    await buyer.getByTestId("claim-submit").click();
+    await buyer.getByTestId("pay-sent").click();
+    await expect(buyer.getByTestId("pay-sheet")).toBeHidden();
+  }
+  await host.goto("/host");
+  await expect(host.getByTestId("group-open")).toContainText(`Wait A ${run}`);
+  await expect(host.getByTestId("group-draft")).toContainText(`Wait draft ${run}`);
+  await expect(host.getByTestId("waiting-strip")).toContainText("2 sent, waiting for you, across 2 breaks");
+  await expect(host.getByTestId("waiting-strip")).toContainText("Review");
+  await host.getByTestId("waiting-strip").click();
+  const sheet = host.getByTestId("waiting-sheet");
+  const rows = sheet.getByTestId("ledger-row");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText(`Wait A ${run}`); // oldest sent first
+  // Paid, then Undo: the row comes back to Paid, in the same place.
+  await sheet.getByTestId("ledger-paid").first().click();
+  await expect(sheet.getByTestId("ledger-undo")).toBeVisible();
+  await expect(sheet.getByRole("status").filter({ hasText: `Marked @wb${run} paid (1 line, $5).` })).toBeVisible();
+  await sheet.getByTestId("ledger-undo").click();
+  await expect(sheet.getByTestId("ledger-paid")).toHaveCount(2);
+  // Paid for real: the row stays put, showing Paid.
+  await sheet.getByTestId("ledger-paid").first().click();
+  await expect(sheet.getByTestId("ledger-paid")).toHaveCount(1);
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText(`Wait A ${run}`);
+  await sheet.getByRole("button", { name: "Close" }).click();
+  await expect(host.getByTestId("waiting-strip")).toContainText("1 sent, waiting for you");
+});

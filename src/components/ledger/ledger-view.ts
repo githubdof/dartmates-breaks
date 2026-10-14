@@ -111,3 +111,13 @@ export function rowCells(r: LedgerRowView): CellData[] {
 
 /** The running-draw wait in the ledger's bottom action (design §5.4). */
 export const drawingText = (hostName: string) => `${hostName} started the draw. The result is in about a minute.`;
+
+/** One row of the merged "waiting on you" ledger (design §5.5): a buyer's sent lines in one break, with its title. */
+export type WaitingView = { key: string; breakId: string; breakTitle: string; row: LedgerRowView };
+
+/** The row as it reads once its unpaid lines are marked paid: kept in place, shown "Paid" (rows never move). */
+export function markedPaid(r: LedgerRowView): LedgerRowView {
+  return {
+    ...r, unpaid: [], sent: [], overdue: [], paid: [...r.paid, ...r.unpaid].sort((a, b) => a - b), owedCents: 0, status: "paid", lateText: null,
+  };
+}
