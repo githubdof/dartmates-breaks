@@ -94,8 +94,12 @@ test("Escape closes the pay sheet and focus lands on the claim bar (D§7)", asyn
 test("a failed 'I've sent it' reports inside the pay sheet, not behind it", async ({ browser }) => {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
+  // Fake timers, paused once the break page is up: the 20 s auto-refresh must not land mid-test and
+  // replace the owe this test is about to make stale.
+  await page.clock.install();
   await loginAs(page, `lg${run}@e2e.test`);
   await page.goto(url);
+  await page.clock.pauseAt(new Date(Date.now() + 1000));
   await page.getByTestId("cell-21").click();
   await page.getByTestId("claim-submit").click();
   await expect(page.getByTestId("pay-sheet")).toBeVisible();
@@ -108,6 +112,19 @@ test("a failed 'I've sent it' reports inside the pay sheet, not behind it", asyn
   await expect(other.getByTestId("pay-sheet")).toBeHidden();
   await page.getByTestId("pay-sent").click();
   await expect(page.getByTestId("pay-sheet").getByRole("alert")).toBeVisible();
+});
+
+test("a claim whose request never arrives keeps the buyer on the board with a note (I2)", async ({ browser }) => {
+  const page = await signedIn(browser, `ln${run}@e2e.test`);
+  await page.goto(url);
+  // Drop server-action POSTs (they carry a Next-Action header); the refresh that follows is a GET and goes through.
+  await page.route("**/*", (route) =>
+    route.request().method() === "POST" && route.request().headers()["next-action"] ? route.abort("internetdisconnected") : route.continue());
+  await page.getByTestId("cell-25").click();
+  await page.getByTestId("claim-submit").click();
+  await expect(page.getByTestId("bar-note")).toHaveText("Couldn't reach Breaks. Check your connection; the board is refreshed.");
+  await expect(page.getByTestId("cell-1")).toBeVisible(); // still the break, not an error page
+  await expect(page.getByText("Application error")).toHaveCount(0);
 });
 
 test("focusing the ledger search hides the claim bar (D§5.1)", async ({ browser }) => {
