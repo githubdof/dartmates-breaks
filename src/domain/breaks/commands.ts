@@ -88,7 +88,9 @@ export async function createDraft(tx: Tx, caller: Caller, input: CreateDraftInpu
 
 /**
  * Design §5.6: drafts can be edited, by their host (or an admin) only. Replaces the settings and every prize in one
- * transaction; payment handles go to the break's host's profile, as createDraft does for the caller.
+ * transaction and logs `break.updated`. When the host edits, supplied payment handles are saved to their profile, as
+ * createDraft does. An admin never writes the host's profile: blank instructions are built from the handles supplied,
+ * or from the host's stored ones when the form left them blank.
  */
 export async function updateDraft(tx: Tx, caller: Caller, breakId: string, input: CreateDraftInput): Promise<{ breakId: string }> {
   assertOnboarded(caller);

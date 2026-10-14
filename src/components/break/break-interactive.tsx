@@ -32,7 +32,7 @@ export type BreakInteractiveProps = {
   lineCount: number;
   title: string;
   shareUrl: string;
-  /** "Pay within 24 hours. Hosted by @jim, new host." It shares one row with the Grid | List toggle (pixel budget). */
+  /** smallLineText: "Pay within 24 hours. Hosted by @jim. New host." (the pay window only while open). It shares one row with the Grid | List toggle (pixel budget). */
   smallLine: string;
   /** The host's profile (/h/handle): the whole small line links there (design §5.4). Null when the host has no handle. */
   hostHref: string | null;
