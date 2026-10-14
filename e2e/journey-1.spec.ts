@@ -24,9 +24,10 @@ test("host opens, buyers claim and pay, host draws, result verifies", async ({ b
   await alice.goto(url);
   await alice.getByTestId("cell-1").click();
   await alice.getByTestId("cell-2").click();
+  await expect(alice.getByTestId("bar-summary")).toHaveText("Lines 1, 2, $10");
   await alice.getByTestId("claim-submit").click();
   await expect(alice.getByTestId("owed")).toContainText("$10");
-  await alice.getByTestId("mark-sent").click();
+  await alice.getByTestId("bar-sent").click();
   await expect(alice.getByTestId("sent-note")).toBeVisible();
 
   const bob = await newContext(browser, `bob${run}@e2e.test`);
@@ -45,7 +46,7 @@ test("host opens, buyers claim and pay, host draws, result verifies", async ({ b
   await expect(host.getByTestId("paid-count")).toContainText("3 of 3 paid");
   await host.getByTestId("run-draw").click();
   await host.getByTestId("finish-draw").click();
-  await host.getByTestId("see-result").click();
+  await host.getByTestId("bar-result").click(); // "See the result" now lives in the claim bar
   await expect(host.getByTestId("winner")).toBeVisible({ timeout: 15_000 });
   await expect(host.getByTestId("verify-status")).toContainText("Checked"); // runs on load
   await host.getByTestId("verify-run").click();
