@@ -218,3 +218,12 @@ export const idempotencyKeys = pgTable("idempotency_keys", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: createdAt(),
 });
+
+/** Fixed-window counters for rate limits (handle checks). Buckets carry an IP hash or a user id, never a raw address. */
+export const rateLimits = pgTable("rate_limits", {
+  id: id(),
+  bucket: text("bucket").notNull(),
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+  hits: integer("hits").notNull().default(0),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("rate_limits_bucket_window_uq").on(t.bucket, t.windowStart)]);

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db, type Tx } from "@/db/client";
 import { finalisePendingDraws } from "./finalise-draws";
+import { pruneRateLimits } from "@/domain/rate-limit";
 import { beaconFromEnv, type BeaconSource } from "@/crypto/beacon";
 
 /** Runs fn inside the transaction that holds the job's advisory xact lock, so the lock covers the work. */
@@ -17,5 +18,6 @@ export async function runTick(deps: { beacon?: BeaconSource; now?: Date } = {}) 
   const now = deps.now ?? new Date();
   const round = beacon.roundAt(now);
   const draws = await withJobLock("finalise-draws", (tx) => finalisePendingDraws(tx, beacon, round));
-  return { draws };
+  const pruned = await withJobLock("prune-rate-limits", (tx) => pruneRateLimits(tx, now));
+  return { draws, pruned };
 }
