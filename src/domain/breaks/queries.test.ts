@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../tests/helpers/fixtures";
 import { breaks } from "@/db/schema";
-import { hostTrust, lastBreakDefaults, listHostBreaks } from "./queries";
+import { hostProfile, hostTrust, lastBreakDefaults, listHostBreaks } from "./queries";
 import { randomUUID } from "node:crypto";
 import { claimLines, markPaid, addBonusLine } from "@/domain/lines/commands";
 import type { Caller } from "@/domain/types";
@@ -95,6 +95,38 @@ describe("hostTrust scope", () => {
       await drawnBreak(tx, { hostId: other.id, buyerIds: [buyer.id] });
       expect((await hostTrust(tx, host.id)).breaksRun).toBe(0);
       expect((await hostTrust(tx, other.id)).breaksRun).toBe(1);
+    });
+  });
+});
+
+describe("hostProfile", () => {
+  it("shows a host's public figures by handle, ignoring case, and nothing private", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
+      await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      await makeBreak(tx, { hostId: host.id }); // a draft: neither run nor past
+      const cancelled = await makeBreak(tx, { hostId: host.id });
+      await tx.update(breaks).set({ status: "cancelled" }).where(sql`${breaks.id} = ${cancelled.id}`);
+      await tx.execute(sql`update users set payment_name = 'Secret Name' where id = ${host.id}`);
+      const p = await hostProfile(tx, host.handle.toUpperCase());
+      // Non-zero counts prove the subqueries see this host's breaks (a bare "id" inside `from breaks b` would mean b.id).
+      expect(p).toMatchObject({ id: host.id, handle: host.handle, displayName: host.handle, breaksRun: 1, pastCount: 2 });
+      expect(p!.breaksRun).toBeGreaterThan(0);
+      expect(p!.since).toBeInstanceOf(Date);
+      expect(Object.keys(p!).sort()).toEqual(["breaksRun", "displayName", "handle", "id", "pastCount", "since"]);
+      expect(JSON.stringify(p)).not.toMatch(/example\.com|Secret Name/);
+    });
+  });
+  it("is null for an unknown handle, the SYSTEM user, and anyone not a host who never listed a break", async () => {
+    await withTx(async (tx) => {
+      const member = await makeUser(tx); const admin = await makeUser(tx, { role: "admin" }); const newHost = await makeUser(tx, { role: "host" });
+      expect(await hostProfile(tx, member.handle)).toBeNull();
+      expect(await hostProfile(tx, admin.handle)).toBeNull();
+      expect(await hostProfile(tx, "system")).toBeNull();
+      expect(await hostProfile(tx, "nobody_here_x")).toBeNull();
+      // A host with nothing listed yet still has a profile page.
+      expect(await hostProfile(tx, newHost.handle)).toMatchObject({ id: newHost.id, breaksRun: 0, pastCount: 0 });
     });
   });
 });

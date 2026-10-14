@@ -2,6 +2,7 @@ import { sql, eq, asc, desc, and } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { breaks, breakItems, prizes, lines, users, hostProfiles } from "@/db/schema";
 import type { ClaimMode } from "./rules";
+import { SYSTEM } from "@/domain/types";
 
 export type BreakPage = {
   break: typeof breaks.$inferSelect;
@@ -65,4 +66,26 @@ export async function listHostBreaks(tx: Tx, hostId: string): Promise<HostBreakR
     paid: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.paid_at is not null and l.number <= ${breaks.lineCount})`,
     taken: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.owner_id is not null and l.paid_at is null and l.number <= ${breaks.lineCount})`,
   }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"))).orderBy(desc(breaks.createdAt), desc(breaks.id));
+}
+
+export type HostProfile = { id: string; handle: string; displayName: string | null; since: Date; breaksRun: number; pastCount: number };
+
+/**
+ * /h/{handle} (design §5.9): public figures only. Never email, payment name or payment handles. Null for an unknown
+ * handle, for the SYSTEM user, and for anyone who is not a host and never listed a break (a buyer's or an admin's
+ * handle is not a host profile).
+ */
+export async function hostProfile(tx: Tx, handle: string): Promise<HostProfile | null> {
+  const [u] = await tx.select({ id: users.id, handle: users.handle, displayName: users.displayName, since: users.createdAt, role: users.role })
+    .from(users).where(sql`lower(${users.handle}) = lower(${handle})`);
+  if (!u || !u.handle || u.id === SYSTEM.id) return null;
+  // The id is bound as a parameter, as hostTrust does. Drizzle writes a single-table select's columns unqualified,
+  // so `${users.id}` inside `from breaks b` would render as a bare "id" and Postgres would read it as b.id.
+  const [c] = await tx.select({
+    breaksRun: sql<number>`(select count(*)::int from breaks b where b.host_id = ${u.id}::uuid and b.status = 'drawn')`,
+    pastCount: sql<number>`(select count(*)::int from breaks b where b.host_id = ${u.id}::uuid and b.kind = 'main' and b.status in ('drawn','cancelled'))`,
+    listed: sql<number>`(select count(*)::int from breaks b where b.host_id = ${u.id}::uuid and b.status <> 'draft')`,
+  }).from(users).where(eq(users.id, u.id));
+  if (c.listed === 0 && u.role !== "host") return null;
+  return { id: u.id, handle: u.handle, displayName: u.displayName, since: u.since, breaksRun: c.breaksRun, pastCount: c.pastCount };
 }
