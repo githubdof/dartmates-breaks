@@ -57,3 +57,43 @@ describe("syncUser", () => {
     });
   });
 });
+
+describe("syncUser throttling", () => {
+  const lastSeenIsNow = async (tx: Tx, id: string) =>
+    (await tx.execute<{ fresh: boolean }>(sql`select last_seen_at = now() as fresh from users where id = ${id}`))[0].fresh;
+
+  it("writes last_seen_at at most every five minutes and still returns the row", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      const email = `${u.handle}@example.com`;
+      await tx.execute(sql`update users set email = ${email}, last_seen_at = now() - interval '2 minutes' where id = ${u.id}`);
+      const row = await syncUser(tx, u.id, email, false);
+      expect(row).toMatchObject({ id: u.id, handle: u.handle, email, role: "member" });
+      expect(await lastSeenIsNow(tx, u.id)).toBe(false); // two minutes old: left alone
+      await tx.execute(sql`update users set last_seen_at = now() - interval '10 minutes' where id = ${u.id}`);
+      await syncUser(tx, u.id, email, false);
+      expect(await lastSeenIsNow(tx, u.id)).toBe(true);
+    });
+  });
+
+  it("writes at once when the email changes or a promotion is due", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      await tx.execute(sql`update users set last_seen_at = now() where id = ${u.id}`);
+      expect((await syncUser(tx, u.id, `new-${u.handle}@example.com`, false)).email).toBe(`new-${u.handle}@example.com`);
+      expect((await syncUser(tx, u.id, `new-${u.handle}@example.com`, true)).role).toBe("admin");
+      expect(await roleEventsOf(tx, u.id)).toHaveLength(1);
+    });
+  });
+
+  it("stamps last_seen_at when it creates a user", async () => {
+    await withTx(async (tx) => {
+      const id = randomUUID();
+      await syncUser(tx, id, `${id}@example.com`, false);
+      expect(await lastSeenIsNow(tx, id)).toBe(true);
+    });
+  });
+});
+
+const roleEventsOf = (tx: Tx, id: string) =>
+  tx.select({ payload: events.payload }).from(events).where(sql`${events.actorId} = ${id} and ${events.type} = 'user.role_changed'`);
