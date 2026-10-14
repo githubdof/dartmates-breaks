@@ -1,24 +1,24 @@
 "use client";
 import { useState, useTransition } from "react";
-import { paidForBuyer, release } from "./actions";
+import { paidForBuyer, releaseBuyer } from "./actions";
 import { formatCents } from "@/lib/money";
 import { requestDrawAction, finaliseDrawAction } from "./draw-actions";
 import { openBreakAction } from "./host-actions";
 import { releasePrompt } from "./release-prompt";
 import type { ActionResult } from "@/lib/action";
+import type { BuyerStatus } from "@/domain/lines/ledger";
 
-type U = { ownerId: string; handle: string | null; numbers: number[]; sent: boolean; sentNumbers: number[]; amountCents: number };
+export type HostRow = { ownerId: string; handle: string | null; unpaid: number[]; sent: number[]; overdue: number[]; owedCents: number; status: BuyerStatus };
 
-export function HostPanel({ breakId, status, unpaid }: { breakId: string; status: string; unpaid: U[] }) {
+export function HostPanel({ breakId, status, rows }: { breakId: string; status: string; rows: HostRow[] }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const run = (fn: () => Promise<ActionResult<unknown>>) => start(async () => { const r = await fn(); setMsg(r.ok ? null : r.message); });
-  const releaseAll = async (numbers: number[]): Promise<ActionResult<unknown>> => {
-    for (const n of numbers) { const r = await release(breakId, n, "host_dropped"); if (!r.ok) return r; }
-    return { ok: true, data: null };
-  };
-  const confirmRelease = (u: U) => {
-    if (window.confirm(releasePrompt(u))) run(() => releaseAll(u.numbers));
+  const unpaid = rows.filter((u) => u.status !== "paid");
+  const confirmRelease = (u: HostRow) => {
+    if (!window.confirm(releasePrompt({ handle: u.handle, numbers: u.unpaid, sentNumbers: u.sent }))) return;
+    const reason = u.overdue.length > 0 && u.overdue.length === u.unpaid.length ? "overdue" : "host_dropped";
+    run(() => releaseBuyer(breakId, u.ownerId, u.unpaid, reason));
   };
   return (
     <section className="mt-4 space-y-2 rounded border border-black p-3">
@@ -32,9 +32,9 @@ export function HostPanel({ breakId, status, unpaid }: { breakId: string; status
       {status === "open" && unpaid.length === 0 && <p className="text-sm text-neutral-600">No unpaid claims.</p>}
       {unpaid.map((u) => (
         <div key={u.ownerId} className="flex items-center justify-between rounded bg-neutral-50 p-2 text-sm">
-          <div><b>{u.handle ?? "?"}</b> · lines {u.numbers.join(", ")} · {formatCents(u.amountCents)} {u.sent && <span className="text-blue-700">· sent</span>}</div>
+          <div><b>{u.handle ?? "?"}</b> · lines {u.unpaid.join(", ")} · {formatCents(u.owedCents)} {u.status === "sent" && <span className="text-blue-700">· sent</span>}</div>
           <div className="flex gap-1">
-            <button disabled={pending} onClick={() => run(() => paidForBuyer(breakId, u.ownerId, u.numbers))} className="rounded bg-green-700 px-2 py-1 text-white">Paid</button>
+            <button disabled={pending} onClick={() => run(() => paidForBuyer(breakId, u.ownerId, u.unpaid))} className="rounded bg-green-700 px-2 py-1 text-white">Paid</button>
             <button disabled={pending} onClick={() => confirmRelease(u)} className="rounded border px-2 py-1">Release</button>
           </div>
         </div>

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { db } from "@/db/client";
 import { getBreakPage } from "@/domain/breaks/queries";
 import { shapeGrid, canViewBreak, isHostView } from "@/domain/breaks/grid";
-import { unpaidByBuyer, globalUnpaidCount } from "@/domain/lines/queries";
+import { ledgerByBuyer, globalUnpaidCount } from "@/domain/lines/queries";
 import { getCaller } from "@/auth/session";
 import { formatCents } from "@/lib/money";
 import { isUuid } from "@/lib/is-uuid";
@@ -33,7 +33,7 @@ export default async function BreakPage({ params }: { params: Promise<{ id: stri
     label: c.holder,
     state: c.overdue ? "overdue" : c.state === "taken" ? "claimed" : c.state,
   }));
-  const unpaid = isHost ? await db.transaction((tx) => unpaidByBuyer(tx, id)) : [];
+  const ledger = isHost ? await db.transaction((tx) => ledgerByBuyer(tx, id, now)) : [];
 
   return (
     <main className="mx-auto max-w-md p-4">
@@ -55,7 +55,7 @@ export default async function BreakPage({ params }: { params: Promise<{ id: stri
           paymentHandles={page.host.paymentHandles} paymentInstructions={page.break.paymentInstructions} seedCommitment={page.break.seedCommitment} />
       )}
       {!caller && page.break.status === "open" && <Link href={`/login?next=/b/${id}`} className="mt-4 block rounded bg-black p-3 text-center text-white">Sign in to claim lines</Link>}
-      {isHost && <HostPanel breakId={id} status={page.break.status} unpaid={unpaid.map((u) => ({ ownerId: u.owner_id, handle: u.handle, numbers: u.numbers, sent: u.sent, sentNumbers: u.sent_numbers, amountCents: u.amount_cents }))} />}
+      {isHost && <HostPanel breakId={id} status={page.break.status} rows={ledger.map((u) => ({ ownerId: u.ownerId, handle: u.handle, unpaid: u.unpaid, sent: u.sent, overdue: u.overdue, owedCents: u.owedCents, status: u.status }))} />}
       {page.break.seedCommitment && <p className="mt-6 text-xs text-neutral-500">Draw locked before opening: <code>{page.break.seedCommitment.slice(0, 16)}…</code></p>}
     </main>
   );

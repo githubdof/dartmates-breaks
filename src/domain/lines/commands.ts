@@ -3,8 +3,9 @@ import type { Tx } from "@/db/client";
 import { breaks, lines } from "@/db/schema";
 import { lockBreak, assertHostOf, assertOnboarded } from "@/auth/authz";
 import { appendEvent } from "@/domain/events";
-import { InvalidInput, LineTaken, NotAuthorized, NotOpen, OwnerChanged } from "@/domain/errors";
+import { CapExceeded, InvalidInput, LineTaken, NotAuthorized, NotOpen, OwnerChanged } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
+import { bonusAllowance } from "@/domain/breaks/rules";
 import { assertCaps, isOverdue, validateNumbers } from "./rules";
 
 type BreakRow = typeof breaks.$inferSelect;
@@ -160,7 +161,8 @@ export async function markPaid(tx: Tx, caller: Caller, p: { breakId: string; num
 export async function unmarkPaid(tx: Tx, caller: Caller, p: { breakId: string; number: number }): Promise<void> {
   const b = await assertHostOf(tx, caller, p.breakId);
   if (b.status !== "open" && b.status !== "filled") throw new NotOpen(b.status);
-  const rows = await tx.execute<{ owner_id: string }>(sql`update lines set paid_at = null where break_id = ${b.id} and number = ${p.number} and paid_at is not null and award_id is null returning owner_id`);
+  // Bonus lines are free and always paid: never un-mark them (they would count toward the buyer's unpaid cap).
+  const rows = await tx.execute<{ owner_id: string }>(sql`update lines set paid_at = null where break_id = ${b.id} and number = ${p.number} and paid_at is not null and award_id is null and is_bonus = false returning owner_id`);
   if (rows.length === 0) throw new InvalidInput("That line is not marked paid");
   await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.unpaid", payload: { number: p.number, ownerId: rows[0].owner_id } });
   await recomputeFill(tx, b.id, caller.id);
@@ -199,4 +201,47 @@ export async function recomputeFill(tx: Tx, breakId: string, actorId?: string): 
     return false;
   }
   return b.status === "filled";
+}
+
+/** Host releases several of one buyer's unpaid lines in one transaction: all of them or none. */
+export async function releaseForBuyer(tx: Tx, caller: Caller, p: { breakId: string; ownerId: string; numbers: number[]; reason: "overdue" | "host_dropped" }): Promise<{ released: number[] }> {
+  assertOnboarded(caller);
+  const b = await assertHostOf(tx, caller, p.breakId); // locks the break row first
+  if (b.status !== "open" && b.status !== "filled") throw new NotOpen(b.status);
+  const numbers = validateNumbers(p.numbers, b.lineCount);
+  const current = await tx.select().from(lines).where(sql`${lines.breakId} = ${b.id} and ${inArray(lines.number, numbers)}`).for("update");
+  for (const n of numbers) {
+    const l = current.find((r) => r.number === n);
+    if (!l || l.ownerId !== p.ownerId) throw new OwnerChanged();
+    if (l.paidAt) throw new InvalidInput(`Line ${n} is paid. Un-mark it first.`);
+    if (p.reason === "overdue" && !isOverdue(l, b)) throw new InvalidInput(`Line ${n} is not overdue yet`);
+  }
+  await tx.update(lines).set({ ownerId: null, claimedAt: null, sentAt: null, priceCents: null, claimBatchId: null })
+    .where(sql`${lines.breakId} = ${b.id} and ${inArray(lines.number, numbers)} and ${lines.ownerId} = ${p.ownerId} and ${lines.paidAt} is null`);
+  for (const n of numbers) {
+    await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.released", payload: { number: n, reason: p.reason } });
+  }
+  return { released: numbers };
+}
+
+/** Host gives a participant a free, already-paid line numbered above N (spec §7 bonus). */
+export async function addBonusLine(tx: Tx, caller: Caller, p: { breakId: string; ownerId: string }): Promise<{ number: number }> {
+  assertOnboarded(caller);
+  const b = await assertHostOf(tx, caller, p.breakId); // locks the break row first
+  if (b.status !== "open" && b.status !== "filled") throw new NotOpen(b.status);
+  if (b.kind !== "main") throw new InvalidInput("Bonus lines are for main breaks only");
+  const [held] = await tx.select({ n: sql<number>`count(*)::int` }).from(lines)
+    .where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} = ${p.ownerId} and ${lines.number} <= ${b.lineCount}`);
+  if (held.n === 0) throw new InvalidInput("A bonus line goes to someone who holds a line in this break");
+  const [agg] = await tx.select({
+    used: sql<number>`(count(*) filter (where ${lines.isBonus}))::int`,
+    top: sql<number>`coalesce(max(${lines.number}), 0)::int`,
+  }).from(lines).where(sql`${lines.breakId} = ${b.id}`);
+  const max = bonusAllowance(b.lineCount);
+  if (agg.used >= max) throw new CapExceeded("bonus lines", max);
+  const number = Math.max(agg.top, b.lineCount) + 1;
+  const now = new Date();
+  await tx.insert(lines).values({ breakId: b.id, number, ownerId: p.ownerId, claimedAt: now, paidAt: now, priceCents: 0, isBonus: true });
+  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.bonus_added", payload: { number, ownerId: p.ownerId } });
+  return { number };
 }

@@ -25,3 +25,6 @@ export const CLAIM_MODES = ["pick_or_random", "pick_only", "straight"] as const;
 /** pick_or_random: buyers pick or ask for randoms. pick_only: picks only. straight: lines go out in order (claimNext). */
 export type ClaimMode = (typeof CLAIM_MODES)[number];
 export const isClaimMode = (v: unknown): v is ClaimMode => typeof v === "string" && (CLAIM_MODES as readonly string[]).includes(v);
+
+/** Bonus lines a host may add: 10% of N, at least one (spec §7). */
+export const bonusAllowance = (lineCount: number): number => Math.max(1, Math.floor(lineCount * BONUS_SHARE));

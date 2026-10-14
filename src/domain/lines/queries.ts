@@ -1,6 +1,8 @@
-import { sql, eq, desc } from "drizzle-orm";
+import { sql, eq, desc, asc } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { breaks, lines, users, hostProfiles } from "@/db/schema";
+import { isOverdue } from "./rules";
+import { buyerStatus, compareLedger, type BuyerStatus } from "./ledger";
 
 /** Lines a user holds across breaks, grouped per break for /me with amount owed. */
 export async function myLines(tx: Tx, userId: string) {
@@ -21,15 +23,46 @@ export async function myLines(tx: Tx, userId: string) {
   return [...byBreak.values()];
 }
 
-/** Host view: unpaid lines grouped per buyer for one-tap Paid. `oldest_claim` is an ISO-8601 UTC string (raw execute returns timestamps as non-ISO text). */
-export async function unpaidByBuyer(tx: Tx, breakId: string) {
-  return tx.execute<{ owner_id: string; handle: string | null; numbers: number[]; sent: boolean; sent_numbers: number[]; amount_cents: number; oldest_claim: string }>(sql`
-    select l.owner_id, u.handle, array_agg(l.number order by l.number) as numbers, bool_and(l.sent_at is not null) as sent,
-           coalesce(array_agg(l.number order by l.number) filter (where l.sent_at is not null), '{}') as sent_numbers,
-           sum(l.price_cents)::int as amount_cents, to_char(min(l.claimed_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as oldest_claim
-    from lines l join users u on u.id = l.owner_id
-    where l.break_id = ${breakId} and l.paid_at is null and l.owner_id is not null
-    group by l.owner_id, u.handle order by min(l.claimed_at)`);
+export type LedgerBuyer = {
+  ownerId: string; handle: string | null; displayName: string | null;
+  numbers: number[]; unpaid: number[]; sent: number[]; overdue: number[]; paid: number[]; bonus: number[];
+  owedCents: number; firstClaimAt: Date; overdueSince: Date | null; status: BuyerStatus;
+};
+
+/** Host ledger: every buyer in the break (paid ones too), grouped, in the fixed ledger order. `now` decides overdue. */
+export async function ledgerByBuyer(tx: Tx, breakId: string, now: Date): Promise<LedgerBuyer[]> {
+  const [b] = await tx.select({ paymentWindowHours: breaks.paymentWindowHours }).from(breaks).where(eq(breaks.id, breakId));
+  if (!b) return [];
+  const rows = await tx.select({
+    number: lines.number, ownerId: lines.ownerId, handle: users.handle, displayName: users.displayName,
+    claimedAt: lines.claimedAt, sentAt: lines.sentAt, paidAt: lines.paidAt, priceCents: lines.priceCents, isBonus: lines.isBonus,
+  }).from(lines).innerJoin(users, eq(users.id, lines.ownerId)).where(eq(lines.breakId, breakId)).orderBy(asc(lines.number));
+  const by = new Map<string, LedgerBuyer>();
+  for (const r of rows) {
+    const ownerId = r.ownerId!;
+    const claimedAt = r.claimedAt!; // lines_owned_claimed_chk: owned lines always have claimed_at
+    const g: LedgerBuyer = by.get(ownerId) ?? {
+      ownerId, handle: r.handle, displayName: r.displayName, numbers: [], unpaid: [], sent: [], overdue: [], paid: [], bonus: [],
+      owedCents: 0, firstClaimAt: claimedAt, overdueSince: null, status: "paid",
+    };
+    g.numbers.push(r.number);
+    if (r.isBonus) g.bonus.push(r.number);
+    if (r.paidAt) {
+      g.paid.push(r.number);
+    } else {
+      g.unpaid.push(r.number);
+      g.owedCents += r.priceCents ?? 0;
+      if (r.sentAt) g.sent.push(r.number);
+      if (isOverdue(r, b, now)) {
+        g.overdue.push(r.number);
+        const due = new Date(claimedAt.getTime() + b.paymentWindowHours * 3_600_000);
+        if (!g.overdueSince || due < g.overdueSince) g.overdueSince = due;
+      }
+    }
+    if (claimedAt < g.firstClaimAt) g.firstClaimAt = claimedAt;
+    by.set(ownerId, g);
+  }
+  return [...by.values()].map((g) => ({ ...g, status: buyerStatus(g) })).sort(compareLedger);
 }
 
 /** Unpaid lines a buyer holds across every break (the platform-wide cap counts these). */
