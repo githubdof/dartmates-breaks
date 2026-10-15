@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { ImageResponse } from "next/og";
 import type { OgCell, OgModel } from "@/domain/breaks/og";
-import { DEFAULT_KIT, type Kit } from "@/domain/flights";
+import { DEFAULT_KIT, LAMP, type Kit } from "@/domain/flights";
 import { OG_FONTS } from "./fonts";
 import { fillerCount, OG_SIZE, ogImage } from "./image";
 
@@ -24,6 +24,43 @@ const STATUSES: Record<string, Partial<OgModel>> = {
   closed: { caption: "Closed. Every line is paid.", heat: 4, cells: fifty(() => ({ tone: "paid" })) },
   ran: { caption: "Ran Oct 14. Anyone can check the draw.", heat: 4, cells: fifty((n) => (PLACES[n] ? { tone: "won", place: PLACES[n] } : { tone: "paid" })) },
 };
+
+// The element tree with every function component called, so a test reads the styles the renderer gets.
+type El = { type: unknown; props: { style?: Record<string, unknown>; children?: unknown } };
+const isEl = (x: unknown): x is El => typeof x === "object" && x !== null && "props" in x;
+function expand(x: unknown): unknown {
+  if (Array.isArray(x)) return x.map(expand);
+  if (!isEl(x)) return x;
+  if (typeof x.type === "function") return expand((x.type as (p: unknown) => unknown)(x.props));
+  return { ...x, props: { ...x.props, children: expand(x.props.children) } };
+}
+function find(x: unknown, test: (e: El) => boolean): El[] {
+  if (Array.isArray(x)) return x.flatMap((c) => find(c, test));
+  if (!isEl(x)) return [];
+  return [...(test(x) ? [x] : []), ...find(x.props.children, test)];
+}
+const numberDisc = (tree: unknown, n: number) => find(tree, (e) => e.props.children === String(n) && e.props.style?.borderRadius === "50%")[0];
+
+describe("the preview's bull and lamp (review fix round 1)", () => {
+  const ran = (columns: number) => expand(ogImage(model({ ...STATUSES.ran, columns })));
+  it("keeps the top-spot number inside its inner ring: 0.4 × the disc; 2nd and 3rd at 16/26", () => {
+    // 8 columns: 62 px cells, a 30 px disc, a 3 px ring, a 2 px gap: a 14 px centre, so a 12 px number.
+    const t8 = ran(8);
+    expect(numberDisc(t8, 23).props.style?.fontSize).toBe(12);
+    expect(numberDisc(t8, 14).props.style?.fontSize).toBe(18);
+    expect(numberDisc(t8, 9).props.style?.fontSize).toBe(18);
+    // 4 columns: 125 px cells, a 60 px disc and a 30 px centre, so a 24 px number.
+    expect(numberDisc(ran(4), 23).props.style?.fontSize).toBe(24);
+  });
+  it("lights the whole preview from the board's side, at the break's heat step, not only the board column", () => {
+    for (const heat of [0, 2, 4] as const) {
+      const root = expand(ogImage(model({ heat }))) as El;
+      expect(root.props.style?.backgroundImage).toBe(`radial-gradient(ellipse at 26% 50%, ${LAMP[heat]}, transparent 70%)`);
+      const [boardColumn] = root.props.children as El[];
+      expect(boardColumn.props.style?.backgroundImage).toBeUndefined();
+    }
+  });
+});
 
 describe("the link-preview image (Mosaic §6)", () => {
   it("fills the last row's empty slots, and short boards, with wall-2 slots", () => {

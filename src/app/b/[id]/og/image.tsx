@@ -14,8 +14,9 @@ function Bull({ n, place, cell }: { n: number; place: 1 | 2 | 3; cell: number })
   const d = Math.round(cell * 0.48);
   const w = Math.max(2, Math.round(cell * 0.05));
   const colour = place === 1 ? TOKENS.red : TOKENS.green;
-  // §5's won-cell sizes at 26 px: the number is 16 px (top spot 14 px), so the same share of the disc here.
-  const fontSize = Math.round((d * (place === 1 ? 14 : 16)) / 26);
+  // 2nd and 3rd: §5's 16 px number on a 26 px disc, the same share here. The top spot's double ring leaves a smaller
+  // centre (0.48 of the disc at every size), so its number is 0.4 × the disc: 12 px in the 14 px centre at a 62 px cell.
+  const fontSize = place === 1 ? Math.round(d * 0.4) : Math.round((d * 16) / 26);
   const disc = { display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: TOKENS.boardCream, color: TOKENS.boardInk, fontSize };
   if (place !== 1) return <div style={{ ...disc, width: d, height: d, border: `${w}px ${place === 3 ? "dashed" : "solid"} ${colour}` }}>{String(n)}</div>;
   // Double for the top spot: two red bands with a cream gap.
@@ -55,8 +56,10 @@ export function ogImage(m: OgModel) {
   // A long title steps down a size and stops at three lines.
   const titlePx = m.title.length <= 40 ? 60 : 44;
   return (
-    <div style={{ width: "100%", height: "100%", display: "flex", background: TOKENS.boardWall }}>
-      <div style={{ display: "flex", width: GRID_PX + 2 * PAD, height: "100%", alignItems: "center", justifyContent: "center", backgroundImage: `radial-gradient(ellipse at center, ${LAMP[m.heat]}, transparent 70%)` }}>
+    // The lamp lights the whole preview from over the board (26 % across, the board column's centre), so the glow
+    // reaches past the frame and under the text; the alphas stay the spec's (0.06 to 0.20).
+    <div style={{ width: "100%", height: "100%", display: "flex", background: TOKENS.boardWall, backgroundImage: `radial-gradient(ellipse at 26% 50%, ${LAMP[m.heat]}, transparent 70%)` }}>
+      <div style={{ display: "flex", width: GRID_PX + 2 * PAD, height: "100%", alignItems: "center", justifyContent: "center" }}>
         {/* Wires: the steel background through a 1 px margin around each cell (the renderer sizes boxes border-box,
             so the width adds the 1 px padding on each side or the last column wraps). The frame is the surround ×2. */}
         <div style={{
