@@ -206,6 +206,13 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   // A returning viewer sees no reveal: the same board, the same frame, cell for cell (§7: the reveal leaves nothing behind).
   await viewer.reload();
   await expect(viewer.getByTestId("reveal-replay")).toBeVisible();
+  // Mosaic §8's order: the headline, the full order, Replay, then Share (each follows the one before in the document).
+  const follows = await viewer.evaluate(() => {
+    const at = (id: string) => document.querySelector(`[data-testid="${id}"]`)!;
+    const after = (a: string, b: string) => (at(a).compareDocumentPosition(at(b)) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    return [after("winner", "full-order"), after("full-order", "reveal-replay"), after("reveal-replay", "share")];
+  });
+  expect(follows).toEqual([true, true, true]);
   await expect.poll(boardStyles).toEqual(afterReveal);
   await viewer.getByTestId("reveal-replay").click();
   await expect(viewer.getByTestId("reveal-skip")).toBeVisible();

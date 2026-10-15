@@ -135,7 +135,8 @@ export function Reveal(p: Props) {
   useEffect(() => {
     if (playing || !focusReplay.current) return;
     focusReplay.current = false;
-    replayRef.current?.querySelector("button")?.focus();
+    // Replay sits under the full order (§8): focus moves there without scrolling the finished board out of sight.
+    replayRef.current?.querySelector("button")?.focus({ preventScroll: true });
   }, [playing]);
 
   // The board as the throws have left it: a won cell keeps its pre-draw look until its dart lands.
@@ -155,11 +156,6 @@ export function Reveal(p: Props) {
 
   return (
     <section aria-labelledby="top-spot" data-reveal-final data-playing={playing || undefined} className="relative mt-2">
-      <div ref={replayRef} className="relative z-20 flex min-h-11 justify-end">
-        {playing
-          ? <Button variant="secondary" onClick={skip} data-testid="reveal-skip">Skip</Button>
-          : canReplay && <Button variant="secondary" onClick={() => { if (!prefersReducedMotion()) play(); }} data-testid="reveal-replay">Replay the draw</Button>}
-      </div>
       <div data-reveal-text>{p.headline}</div>
       <div ref={stage} data-skip={skipped || undefined} className="relative mt-6">
         <div data-lights={s.lights ? "down" : undefined} className="relative">
@@ -186,6 +182,17 @@ export function Reveal(p: Props) {
       )}
       <p role="status" aria-live="polite" className="sr-only"><span key={said.n}>{said.text}</span></p>
       <div data-reveal-text>{p.after}</div>
+      {/* §8 order: the full order, then Replay, then the page's Share. */}
+      <div ref={replayRef} className="mt-4 flex min-h-11">
+        {!playing && canReplay && <Button variant="secondary" onClick={() => { if (!prefersReducedMotion()) play(); }} data-testid="reveal-replay">Replay the draw</Button>}
+      </div>
+      {/* Skip shows throughout the reveal (§7): over the headline's corner, which is hidden while it plays, so it stays
+          in sight above the board (the full order below can run thousands of pixels) and takes no row of its own. */}
+      {playing && (
+        <div className="absolute top-0 right-0 z-20">
+          <Button variant="secondary" onClick={skip} data-testid="reveal-skip">Skip</Button>
+        </div>
+      )}
     </section>
   );
 }
