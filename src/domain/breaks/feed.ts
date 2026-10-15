@@ -34,8 +34,6 @@ export async function listFeed(tx: Tx, p: { sort: FeedSort; hostHandle?: string 
   const paidLastDay = sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.paid_at > ${since}::timestamptz and l.number <= ${breaks.lineCount})`;
   // Same rule as hostTrust: the host's drawn breaks, of any kind.
   const breaksRun = sql<number>`(select count(*)::int from breaks b2 where b2.host_id = ${breaks.hostId} and b2.status = 'drawn')`;
-  // Same rule as hostTrust's since: when the first drawn break ran, else when the host joined.
-  const hostSince = sql<Date>`coalesce((select min(d2.created_at) from draws d2 join breaks b2 on b2.id = d2.break_id where b2.host_id = ${breaks.hostId} and b2.status = 'drawn' and d2.voided_at is null), ${users.createdAt})`.mapWith(users.createdAt);
   const order: SQL[] =
     p.sort === "filling" ? [desc(paidLastDay), desc(breaks.openedAt), desc(breaks.id)]
     : p.sort === "almost" ? [asc(open), desc(breaks.openedAt), desc(breaks.id)]
@@ -45,7 +43,7 @@ export async function listFeed(tx: Tx, p: { sort: FeedSort; hostHandle?: string 
   const rows = await tx.select({
     id: breaks.id, title: breaks.title, lineCount: breaks.lineCount, linePriceCents: breaks.linePriceCents, openedAt: breaks.openedAt,
     open, taken, paid, paidLastDay,
-    hostId: users.id, hostHandle: users.handle, hostDisplayName: users.displayName, hostSince, breaksRun,
+    hostId: users.id, hostHandle: users.handle, hostDisplayName: users.displayName, hostSince: users.createdAt, breaksRun,
     kitDark: hostProfiles.kitDark, kitLight: hostProfiles.kitLight,
   }).from(breaks).innerJoin(users, eq(users.id, breaks.hostId)).leftJoin(hostProfiles, eq(hostProfiles.userId, breaks.hostId))
     .where(and(...where)).orderBy(...order).limit(p.limit ?? 50);

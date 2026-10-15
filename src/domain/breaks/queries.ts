@@ -43,16 +43,15 @@ export type HostTrust = { breaksRun: number; since: Date; drawsVerified: number;
 
 /**
  * The host record (Mosaic §9) and the interim trust figures. breaksRun: drawn breaks (each has an active draw, as
- * before). since: when the first of them ran (its active draw was recorded), else when the host joined, so "N breaks
- * run since Mar 2026" dates the runs and a host with none still has an "On Breaks since" date. drawsVerified: active
- * draws of drawn breaks whose `verified_at` was set when the draw was recorded (verifyInputs passed), so it never
+ * before). since: member-since, the month the host joined (Plan B's public "member since"), the one date the record
+ * and the "On Breaks since" line both say, so the profile says it once. drawsVerified: active draws of drawn breaks whose `verified_at` was set when the draw was recorded (verifyInputs passed), so it never
  * exceeds breaksRun and a voided draw counts neither way. stalledSince: the oldest Closed break still waiting for its
  * draw. Counts only: never prize totals, money or a ranking against other hosts. The id is bound as a parameter in
  * every subquery (see hostProfile on bare column names).
  */
 export async function hostTrust(tx: Tx, hostId: string): Promise<HostTrust> {
   const [r] = await tx.select({
-    since: sql<Date>`coalesce((select min(d.created_at) from draws d join breaks b on b.id = d.break_id where b.host_id = ${hostId}::uuid and b.status = 'drawn' and d.voided_at is null), ${users.createdAt})`.mapWith(users.createdAt),
+    since: users.createdAt,
     breaksRun: sql<number>`(select count(*)::int from breaks b where b.host_id = ${hostId}::uuid and b.status = 'drawn')`,
     drawsVerified: sql<number>`(select count(*)::int from draws d join breaks b on b.id = d.break_id where b.host_id = ${hostId}::uuid and b.status = 'drawn' and d.voided_at is null and d.verified_at is not null)`,
     stalledSince: sql<Date | null>`(select min(b.filled_at) from breaks b where b.host_id = ${hostId}::uuid and b.status = 'filled')`.mapWith(breaks.filledAt),

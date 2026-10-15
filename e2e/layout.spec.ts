@@ -259,7 +259,8 @@ async function axeViolations(page: Page, where: string): Promise<string[]> {
 test("axe finds no WCAG 2.1 A or AA violation on the main pages, the pay sheet and the ledger (D§7)", async ({ browser }) => {
   const found: string[] = [];
   const anon = await anonymous(browser, 390, 664);
-  for (const path of ["/", "/breaks", url, `/h/lh${run}`, "/legal/draw"]) {
+  // `/breaks?host=…` shows the host filter's <select> even when one host has open breaks (it otherwise needs two).
+  for (const path of ["/", "/breaks", `/breaks?host=lh${run}`, url, `/h/lh${run}`, "/legal/draw"]) {
     await anon.goto(path);
     found.push(...(await axeViolations(anon, `anonymous ${path}`)));
   }

@@ -241,18 +241,18 @@ describe("hostTrust record (Mosaic §9)", () => {
       expect(hostRecordText(p!)).toBe("No breaks run yet.");
     });
   });
-  it("counts a ran break whose draw never verified as run, not verified, and dates the record from the first ran break", async () => {
+  it("counts a ran break whose draw never verified as run, not verified, and dates the record from when the host joined", async () => {
     await withTx(async (tx) => {
       const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
-      // Joined long before the first break ran: the record's month is the first run, not the join date.
+      // Joined long before the first break ran: the record's month is member-since (Mosaic §9 extends hostTrust), not the first run.
       await tx.execute(sql`update users set created_at = '2025-01-10T12:00:00Z' where id = ${host.id}::uuid`);
       await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
       const early = await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
       await redrawUnverified(tx, early.drawId, host.id, new Date("2026-03-05T12:00:00Z"));
       const t = await hostTrust(tx, host.id);
       expect(t).toMatchObject({ breaksRun: 2, drawsVerified: 1, stalledSince: null });
-      expect(t.since.toISOString()).toBe("2026-03-05T12:00:00.000Z");
-      expect(hostRecordText(t)).toBe("2 breaks run since Mar 2026. 1 draw verified.");
+      expect(t.since.toISOString()).toBe("2025-01-10T12:00:00.000Z");
+      expect(hostRecordText(t)).toBe("2 breaks run since Jan 2025. 1 draw verified.");
       // The profile reads the same record.
       expect(await hostProfile(tx, host.handle)).toMatchObject({ breaksRun: 2, drawsVerified: 1, stalledSince: null, since: t.since });
     });
