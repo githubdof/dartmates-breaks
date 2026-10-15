@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../tests/helpers/fixtures";
-import { breaks } from "@/db/schema";
+import { breaks, hostProfiles } from "@/db/schema";
 import { draftForEdit, hostProfile, hostTrust, isGeneratedInstructions, lastBreakDefaults, listHostBreaks } from "./queries";
 import { createDraft } from "./commands";
 import { randomUUID } from "node:crypto";
@@ -115,7 +115,8 @@ describe("hostProfile", () => {
       expect(p).toMatchObject({ id: host.id, handle: host.handle, displayName: host.handle, breaksRun: 1, pastCount: 2 });
       expect(p!.breaksRun).toBeGreaterThan(0);
       expect(p!.since).toBeInstanceOf(Date);
-      expect(Object.keys(p!).sort()).toEqual(["breaksRun", "displayName", "handle", "id", "pastCount", "since"]);
+      expect(Object.keys(p!).sort()).toEqual(["breaksRun", "displayName", "handle", "id", "kit", "pastCount", "since"]);
+      expect(p!.kit).toEqual({ dark: "blue", light: "yellow" });
       expect(JSON.stringify(p)).not.toMatch(/example\.com|Secret Name/);
     });
   });
@@ -128,6 +129,15 @@ describe("hostProfile", () => {
       expect(await hostProfile(tx, "nobody_here_x")).toBeNull();
       // A host with nothing listed yet still has a profile page.
       expect(await hostProfile(tx, newHost.handle)).toMatchObject({ id: newHost.id, breaksRun: 0, pastCount: 0 });
+    });
+  });
+  it("carries the host's kit, and nothing else from the profile row", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      await tx.insert(hostProfiles).values({ userId: host.id, kitDark: "plum", kitLight: "lime", paymentHandles: { venmo: "@Secret-Pay" } });
+      const p = await hostProfile(tx, host.handle);
+      expect(p!.kit).toEqual({ dark: "plum", light: "lime" });
+      expect(JSON.stringify(p)).not.toContain("Secret-Pay");
     });
   });
 });

@@ -3,27 +3,40 @@ import type { Tx } from "@/db/client";
 import { breaks, breakItems, prizes, lines, users, hostProfiles } from "@/db/schema";
 import type { ClaimMode } from "./rules";
 import { SYSTEM } from "@/domain/types";
+import { kitFor, type Kit } from "@/domain/flights";
 
 export type BreakPage = {
   break: typeof breaks.$inferSelect;
-  host: { id: string; handle: string | null; displayName: string | null; paymentHandles: { venmo?: string; paypal?: string } };
+  host: { id: string; handle: string | null; displayName: string | null; paymentHandles: { venmo?: string; paypal?: string }; kit: Kit };
   items: (typeof breakItems.$inferSelect)[];
   prizes: (typeof prizes.$inferSelect)[];
-  lines: { number: number; ownerId: string | null; ownerHandle: string | null; claimedAt: Date | null; sentAt: Date | null; paidAt: Date | null; priceCents: number | null; reservedForMiniId: string | null; isBonus: boolean }[];
+  /** Holders' handles and flights are read for everyone; shapeGrid alone decides who sees them (Mosaic §6). */
+  lines: {
+    number: number; ownerId: string | null; ownerHandle: string | null; ownerFlightColour: string | null; ownerFlightShape: string | null;
+    claimedAt: Date | null; sentAt: Date | null; paidAt: Date | null; priceCents: number | null; reservedForMiniId: string | null; isBonus: boolean;
+  }[];
 };
 
 export async function getBreakPage(tx: Tx, breakId: string): Promise<BreakPage | null> {
   const [b] = await tx.select().from(breaks).where(eq(breaks.id, breakId));
   if (!b) return null;
-  const [host] = await tx.select({ id: users.id, handle: users.handle, displayName: users.displayName, paymentHandles: hostProfiles.paymentHandles })
-    .from(users).leftJoin(hostProfiles, eq(hostProfiles.userId, users.id)).where(eq(users.id, b.hostId));
+  const [host] = await tx.select({
+    id: users.id, handle: users.handle, displayName: users.displayName, paymentHandles: hostProfiles.paymentHandles,
+    kitDark: hostProfiles.kitDark, kitLight: hostProfiles.kitLight,
+  }).from(users).leftJoin(hostProfiles, eq(hostProfiles.userId, users.id)).where(eq(users.id, b.hostId));
   const items = await tx.select().from(breakItems).where(eq(breakItems.breakId, breakId)).orderBy(asc(breakItems.createdAt));
   const prizeRows = await tx.select().from(prizes).where(eq(prizes.breakId, breakId)).orderBy(asc(prizes.rank));
   const lineRows = await tx.select({
-    number: lines.number, ownerId: lines.ownerId, ownerHandle: users.handle, claimedAt: lines.claimedAt, sentAt: lines.sentAt,
+    number: lines.number, ownerId: lines.ownerId, ownerHandle: users.handle,
+    ownerFlightColour: users.flightColour, ownerFlightShape: users.flightShape,
+    claimedAt: lines.claimedAt, sentAt: lines.sentAt,
     paidAt: lines.paidAt, priceCents: lines.priceCents, reservedForMiniId: lines.reservedForMiniId, isBonus: lines.isBonus,
   }).from(lines).leftJoin(users, eq(users.id, lines.ownerId)).where(eq(lines.breakId, breakId)).orderBy(asc(lines.number));
-  return { break: b, host: { ...host, paymentHandles: host.paymentHandles ?? {} }, items, prizes: prizeRows, lines: lineRows };
+  return {
+    break: b,
+    host: { id: host.id, handle: host.handle, displayName: host.displayName, paymentHandles: host.paymentHandles ?? {}, kit: kitFor(host) },
+    items, prizes: prizeRows, lines: lineRows,
+  };
 }
 
 /** Interim trust figures (the reputation plan replaces them): drawn breaks and member-since. */
@@ -69,7 +82,7 @@ export async function listHostBreaks(tx: Tx, hostId: string): Promise<HostBreakR
   }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"))).orderBy(desc(breaks.createdAt), desc(breaks.id));
 }
 
-export type HostProfile = { id: string; handle: string; displayName: string | null; since: Date; breaksRun: number; pastCount: number };
+export type HostProfile = { id: string; handle: string; displayName: string | null; since: Date; breaksRun: number; pastCount: number; kit: Kit };
 
 /**
  * /h/{handle} (design §5.9): public figures only. Never email, payment name or payment handles. Null for an unknown
@@ -77,8 +90,10 @@ export type HostProfile = { id: string; handle: string; displayName: string | nu
  * handle is not a host profile).
  */
 export async function hostProfile(tx: Tx, handle: string): Promise<HostProfile | null> {
-  const [u] = await tx.select({ id: users.id, handle: users.handle, displayName: users.displayName, since: users.createdAt, role: users.role })
-    .from(users).where(sql`lower(${users.handle}) = lower(${handle})`);
+  const [u] = await tx.select({
+    id: users.id, handle: users.handle, displayName: users.displayName, since: users.createdAt, role: users.role,
+    kitDark: hostProfiles.kitDark, kitLight: hostProfiles.kitLight,
+  }).from(users).leftJoin(hostProfiles, eq(hostProfiles.userId, users.id)).where(sql`lower(${users.handle}) = lower(${handle})`);
   if (!u || !u.handle || u.id === SYSTEM.id) return null;
   // The id is bound as a parameter, as hostTrust does. Drizzle writes a single-table select's columns unqualified,
   // so `${users.id}` inside `from breaks b` would render as a bare "id" and Postgres would read it as b.id.
@@ -88,7 +103,7 @@ export async function hostProfile(tx: Tx, handle: string): Promise<HostProfile |
     listed: sql<number>`(select count(*)::int from breaks b where b.host_id = ${u.id}::uuid and b.status <> 'draft')`,
   }).from(users).where(eq(users.id, u.id));
   if (c.listed === 0 && u.role !== "host") return null;
-  return { id: u.id, handle: u.handle, displayName: u.displayName, since: u.since, breaksRun: c.breaksRun, pastCount: c.pastCount };
+  return { id: u.id, handle: u.handle, displayName: u.displayName, since: u.since, breaksRun: c.breaksRun, pastCount: c.pastCount, kit: kitFor(u) };
 }
 
 export type DraftForEdit = {

@@ -18,6 +18,8 @@ const TONE: Record<OgTone, { bg: string; fg: string; chip: boolean }> = {
   taken: { bg: WIRE, fg: INK_2, chip: true },
   paid: { bg: INK, fg: CARD, chip: false },
   reserved: { bg: CARD, fg: INK_2, chip: false },
+  // Interim until Task 14 draws the bull: the route passes no places yet, so no cell is won.
+  won: { bg: INK, fg: CARD, chip: false },
 };
 const GRID_PX = 500;
 

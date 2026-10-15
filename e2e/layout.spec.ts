@@ -92,6 +92,20 @@ test("an anonymous viewer's cell names never carry a handle (D§4)", async ({ br
   expect(names).toHaveLength(50);
   expect(names.filter((n) => n.includes(buyerHandle) || n.includes("@"))).toEqual([]);
   expect(names[2]).toBe("Line 3, taken");
+  // Mosaic §6: a kit-view cell renders no data-flight and no --fc custom property.
+  expect(await page.locator("[data-flight]").count()).toBe(0);
+  const styles = await page.locator("[data-cell]").evaluateAll((els) => els.map((e) => e.getAttribute("style") ?? ""));
+  expect(styles.filter((s) => s.includes("--fc"))).toEqual([]);
+});
+
+test("a signed-in viewer with no line here sees no flight and no handle either (Mosaic §6)", async ({ browser }) => {
+  const page = await signedIn(browser, `lq${run}@e2e.test`);
+  await page.goto(url);
+  const names = await page.locator("button[data-cell]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") ?? ""));
+  expect(names.filter((n) => n.includes(buyerHandle) || n.includes("@"))).toEqual([]);
+  expect(await page.locator("[data-flight]").count()).toBe(0);
+  const styles = await page.locator("[data-cell]").evaluateAll((els) => els.map((e) => e.getAttribute("style") ?? ""));
+  expect(styles.filter((s) => s.includes("--fc"))).toEqual([]);
 });
 
 test("Escape closes the pay sheet and focus lands on the claim bar (D§7)", async ({ browser }) => {

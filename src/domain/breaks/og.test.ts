@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { BreakPage } from "./queries";
+import type { Kit } from "@/domain/flights";
 import { ogCaption, ogModel } from "./og";
 
 const HOST = "00000000-0000-4000-8000-0000000000a1";
@@ -8,10 +9,10 @@ const now = new Date("2026-10-14T16:00:00Z");
 const hoursAgo = (h: number) => new Date(now.getTime() - h * 3_600_000);
 
 type L = BreakPage["lines"][number];
-const open = (number: number): L => ({ number, ownerId: null, ownerHandle: null, claimedAt: null, sentAt: null, paidAt: null, priceCents: null, reservedForMiniId: null, isBonus: false });
-const alice = (number: number, o: Partial<L> = {}): L => ({ ...open(number), ownerId: ALICE, ownerHandle: "alice", claimedAt: hoursAgo(1), priceCents: 500, ...o });
+const open = (number: number): L => ({ number, ownerId: null, ownerHandle: null, ownerFlightColour: null, ownerFlightShape: null, claimedAt: null, sentAt: null, paidAt: null, priceCents: null, reservedForMiniId: null, isBonus: false });
+const alice = (number: number, o: Partial<L> = {}): L => ({ ...open(number), ownerId: ALICE, ownerHandle: "alice", ownerFlightColour: "pink", ownerFlightShape: "slim", claimedAt: hoursAgo(1), priceCents: 500, ...o });
 
-function page(lines: L[], b: Partial<BreakPage["break"]> = {}): BreakPage {
+function page(lines: L[], b: Partial<BreakPage["break"]> = {}, kit: Kit = { dark: "blue", light: "yellow" }): BreakPage {
   return {
     break: {
       id: "00000000-0000-4000-8000-0000000000b1", hostId: HOST, kind: "main", title: "Taylor Chronos", description: "", lineCount: 6, linePriceCents: 500,
@@ -19,7 +20,7 @@ function page(lines: L[], b: Partial<BreakPage["break"]> = {}): BreakPage {
       onePrizePerPerson: false, miniTimeoutAutoAssign: true, threadClosedAt: null, status: "open", seedCommitment: "ab".repeat(32),
       openedAt: hoursAgo(48), filledAt: null, cancelReason: null, relistedFromId: null, createdAt: hoursAgo(49), ...b,
     },
-    host: { id: HOST, handle: "jim", displayName: "Jim", paymentHandles: { venmo: "@Jim-R" } },
+    host: { id: HOST, handle: "jim", displayName: "Jim", paymentHandles: { venmo: "@Jim-R" }, kit },
     items: [], prizes: [], lines,
   };
 }
@@ -37,6 +38,8 @@ describe("ogModel (Review Focus 4)", () => {
       title: "Taylor Chronos",
       caption: "3 of 6 left, $5 a line",
       columns: 4,
+      kit: { dark: "blue", light: "yellow" },
+      heat: 2,
       cells: [
         { number: 1, tone: "open" }, { number: 2, tone: "taken" }, { number: 3, tone: "taken" },
         { number: 4, tone: "paid" }, { number: 5, tone: "open" }, { number: 6, tone: "open" },
@@ -50,6 +53,24 @@ describe("ogModel (Review Focus 4)", () => {
   });
   it("is null for a draft, whoever asks", () => {
     expect(ogModel(page([], { status: "draft" }), now)).toBeNull();
+  });
+  it("has no flight key (Review Focus 1)", () => {
+    // A full BreakPage, flights and handles included, goes in: the model is rebuilt from line state only.
+    const m = ogModel(page(lines, {}, { dark: "petrol", light: "orange" }), now)!;
+    expect(Object.keys(m).sort()).toEqual(["caption", "cells", "columns", "heat", "kit", "title"]);
+    expect(m.kit).toEqual({ dark: "petrol", light: "orange" });
+    expect(m.cells.every((c) => Object.keys(c).every((k) => ["number", "tone", "place"].includes(k)))).toBe(true);
+    const text = JSON.stringify(m);
+    for (const s of ["alice", ALICE, "pink", "slim", "flight", "holder", "Jim-R"]) expect(text, s).not.toContain(s);
+  });
+  it("marks the won places on a ran break, and only there", () => {
+    const paid = [1, 2, 3, 4, 5, 6].map((n) => alice(n, { paidAt: hoursAgo(3) }));
+    const places = [{ number: 4, place: 1 as const }, { number: 2, place: 2 as const }, { number: 5, place: 3 as const }];
+    const ran = ogModel({ ...page(paid, { status: "drawn" }), places }, now)!;
+    expect(ran.cells.filter((c) => c.tone === "won")).toEqual([{ number: 2, tone: "won", place: 2 }, { number: 4, tone: "won", place: 1 }, { number: 5, tone: "won", place: 3 }]);
+    expect(ran.heat).toBe(4);
+    const notRan = ogModel({ ...page(paid, { status: "filled" }), places }, now)!;
+    expect(notRan.cells.some((c) => c.tone === "won")).toBe(false);
   });
   it("shortens a long title", () => {
     const m = ogModel(page(lines, { title: "x".repeat(120) }), now)!;

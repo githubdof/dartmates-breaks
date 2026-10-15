@@ -4,7 +4,7 @@ import {
   cellNote, isSelectable, isRepeat, loginHref, onboardingHref, outcomeText, parsePick, reconcileSelection, selectionAnnouncement, selectionSummary, takenAnnouncement, toggleSelection,
 } from "./selection";
 
-const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, ...o });
+const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, flight: null, ...o });
 const board = (n: number, taken: Record<number, Partial<GridCell>> = {}) => Array.from({ length: n }, (_, i) => cell(i + 1, taken[i + 1]));
 
 describe("parsePick and reconcileSelection", () => {

@@ -16,9 +16,9 @@ export const metadata = { title: "Components" };
 const STATES: GridCell["state"][] = ["open", "taken", "sent", "paid", "open", "taken", "paid", "reserved"];
 const cells: GridCell[] = [
   ...Array.from({ length: 50 }, (_, i): GridCell => ({
-    number: i + 1, state: STATES[i % STATES.length], mine: i % 11 === 3, overdue: i % 13 === 1, bonus: false, holder: null,
+    number: i + 1, state: STATES[i % STATES.length], mine: i % 11 === 3, overdue: i % 13 === 1, bonus: false, holder: null, flight: null,
   })),
-  ...Array.from({ length: 5 }, (_, i): GridCell => ({ number: 51 + i, state: "paid", mine: i === 0, overdue: false, bonus: true, holder: null })),
+  ...Array.from({ length: 5 }, (_, i): GridCell => ({ number: 51 + i, state: "paid", mine: i === 0, overdue: false, bonus: true, holder: null, flight: null })),
 ];
 
 export default function ComponentsPage() {

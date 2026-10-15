@@ -4,7 +4,7 @@ import { sql, eq } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../tests/helpers/fixtures";
 import { claimLines, markPaid, markSent, addBonusLine } from "@/domain/lines/commands";
-import { draws, users } from "@/db/schema";
+import { draws, hostProfiles, users } from "@/db/schema";
 import type { Caller } from "@/domain/types";
 import type { Tx } from "@/db/client";
 import { listFeed, feedThumbs, feedHosts, latestRanBreak, isFeedSort, type FeedSort } from "./feed";
@@ -166,5 +166,31 @@ describe("isFeedSort", () => {
     expect(["newest", "filling", "almost"].every(isFeedSort)).toBe(true);
     expect(isFeedSort("closing")).toBe(false);
     expect(isFeedSort(undefined)).toBe(false);
+  });
+});
+
+describe("kit and heat on feed cards (Mosaic §6, §10)", () => {
+  it("carries kit and heat and no flight (Review Focus 1)", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const alice = await makeUser(tx);
+      await tx.update(users).set({ flightColour: "pink", flightShape: "slim" }).where(eq(users.id, alice.id));
+      await tx.insert(hostProfiles).values({ userId: host.id, kitDark: "petrol", kitLight: "orange" });
+      const kitted = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      await claim(tx, alice, kitted.id, [1, 2]);
+      await markSent(tx, c(alice), { breakId: kitted.id, numbers: [1] });
+      const other = await makeUser(tx, { role: "host" });
+      const plain = await openBreakWithLines(tx, { hostId: other.id, lineCount: 4 });
+      const rows = [
+        ...(await listFeed(tx, { sort: "newest", hostHandle: host.handle, now: new Date() })),
+        ...(await listFeed(tx, { sort: "newest", hostHandle: other.handle, now: new Date() })),
+      ];
+      const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+      expect(by[kitted.id]).toMatchObject({ open: 2, kit: { dark: "petrol", light: "orange" }, heat: 2 }); // 2 of 4 claimed
+      expect(by[plain.id]).toMatchObject({ open: 4, kit: { dark: "blue", light: "yellow" }, heat: 0 }); // no profile: the default kit
+      const text = JSON.stringify(rows);
+      expect(text).not.toMatch(/flight|pink|slim/);
+      expect(text).not.toContain(alice.id);
+      expect(text).not.toContain(alice.handle);
+    });
   });
 });

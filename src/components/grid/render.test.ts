@@ -11,7 +11,7 @@ import { Grid } from "./grid";
 
 const noop = () => {};
 const html = (el: ReactElement) => renderToStaticMarkup(el);
-const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, ...o });
+const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, flight: null, ...o });
 
 describe("Cell: every state has a shape and a name, not only a colour (design §4)", () => {
   // Shapes are read from data-face, data-ink and data-mark, never from class names (Plan C Task 3).

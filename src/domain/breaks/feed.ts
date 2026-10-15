@@ -1,6 +1,7 @@
 import { sql, eq, and, asc, desc, inArray, isNull, isNotNull, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { breaks, draws, lines, users } from "@/db/schema";
+import { breaks, draws, hostProfiles, lines, users } from "@/db/schema";
+import { heatStep, kitFor, type HeatStep, type Kit } from "@/domain/flights";
 import type { CellState } from "./grid";
 
 export const FEED_SORTS = ["newest", "filling", "almost"] as const;
@@ -17,6 +18,8 @@ export type FeedBreak = {
   /** Numbered lines only (bonus lines never count). open: unowned and not reserved; taken: owned and unpaid, sent included. */
   open: number; taken: number; paid: number; paidLastDay: number;
   host: FeedHost;
+  /** Public (Mosaic §6): the host's kit and the lamp's step, never a flight. The feed lists open breaks, so the lamp is never closed here. */
+  kit: Kit; heat: HeatStep;
 };
 
 const DAY_MS = 86_400_000;
@@ -40,12 +43,16 @@ export async function listFeed(tx: Tx, p: { sort: FeedSort; hostHandle?: string 
     id: breaks.id, title: breaks.title, lineCount: breaks.lineCount, linePriceCents: breaks.linePriceCents, openedAt: breaks.openedAt,
     open, taken, paid, paidLastDay,
     hostId: users.id, hostHandle: users.handle, hostDisplayName: users.displayName, hostSince: users.createdAt, breaksRun,
-  }).from(breaks).innerJoin(users, eq(users.id, breaks.hostId)).where(and(...where)).orderBy(...order).limit(p.limit ?? 50);
+    kitDark: hostProfiles.kitDark, kitLight: hostProfiles.kitLight,
+  }).from(breaks).innerJoin(users, eq(users.id, breaks.hostId)).leftJoin(hostProfiles, eq(hostProfiles.userId, breaks.hostId))
+    .where(and(...where)).orderBy(...order).limit(p.limit ?? 50);
   return rows.map((r) => ({
     id: r.id, title: r.title, lineCount: r.lineCount, linePriceCents: r.linePriceCents,
     openedAt: r.openedAt ?? new Date(0), // an open break always has opened_at
     open: r.open, taken: r.taken, paid: r.paid, paidLastDay: r.paidLastDay,
     host: { id: r.hostId, handle: r.hostHandle, displayName: r.hostDisplayName, breaksRun: r.breaksRun, since: r.hostSince },
+    kit: kitFor(r),
+    heat: heatStep(r.open, r.lineCount, false),
   }));
 }
 
