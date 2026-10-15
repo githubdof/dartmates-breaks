@@ -47,6 +47,8 @@ const uiSegments = segments.filter((g) => /^src\/(components|app)\//.test(g.path
 // What a viewer reads: .tsx copy, plus the modules that build sentences for it.
 const COPY_MODULE = /(-copy|share-text|claim-bar-state|reveal-plan|board-moments|selection|status-word|network-note|messages|account\/actions)\.ts$|\/breaks\/og\.ts$/;
 const shown = segments.filter((g) => g.path.endsWith(".tsx") || COPY_MODULE.test(g.path));
+// The count and state-word rules read UI copy and the copy modules, so share text (pasted into Facebook) counts too.
+const countCopy = [...uiSegments, ...segments.filter((g) => COPY_MODULE.test(g.path) && !uiSegments.includes(g))];
 
 /**
  * Copy the rules allow on purpose, each with its reason. A new entry needs one too: a rule that keeps catching real
@@ -109,7 +111,7 @@ const RE = {
   lucky: /\blucky\s+colou?rs?\b/i,
   caps: /\b[A-Z]{2,}\b/,
   bet: /\b(back|backing|favou?rites?|pick your side)\b/i,
-  retired: /\bof\s+(\d+\s+)?(left|open)\b|\balmost full\b|\byou hold\b/i,
+  retired: /\bof\s+(\d+\s+)?(left|open)\b|\bspots?\s+left\b|\bonly\s+\d+(?:\s+\d+)?\s+(?:spots?\s+)?left\b|\balmost full\b|\byou hold\b/i,
   his: /\bhis\b/i,
   gold: /\bgold(?:en)?\b/i,
   oddsRatio: /\b\d+\s+in\s+\d+\b/i,
@@ -148,15 +150,16 @@ describe("copy audit, Mosaic (spec §3, Plan C Global Constraints)", () => {
     }
     expect([...new Set(bad)]).toEqual([]);
   });
-  it("says N to go, never the retired counts and sorts", () => {
-    expect(copyHits(RE.retired, uiSegments)).toEqual([]);
+  it("says N to go, never the retired counts and sorts (share text included)", () => {
+    expect(countCopy.some((g) => g.path === "src/lib/share-text.ts")).toBe(true);
+    expect(copyHits(RE.retired, countCopy)).toEqual([]);
   });
   it("says the host's, never his", () => expect(copyHits(RE.his)).toEqual([]));
   it("keeps state words out of JSX text, anywhere between the tags (widened from 'directly after >')", () => {
     expect(copyHits(/\b(filled|drawing|drawn)\b/i, uiSegments.filter((g) => g.kind === "jsx"))).toEqual([]);
   });
   it("keeps Filled, Drawing and Drawn out of UI string literals, wherever they sit in the string", () => {
-    expect(copyHits(/\b(Filled|Drawing|Drawn)\b/, uiSegments.filter((g) => g.kind === "literal"))).toEqual([]);
+    expect(copyHits(/\b(Filled|Drawing|Drawn)\b/, countCopy.filter((g) => g.kind === "literal"))).toEqual([]);
   });
   it("reads the domain errors that reach the UI as UI copy, state words in any case ('already been drawn')", () => {
     // Sentences only: the lone words are status keys in a switch, not copy.
@@ -183,7 +186,7 @@ describe("copy audit, Mosaic (spec §3, Plan C Global Constraints)", () => {
       ["oddsRatio", ["1 in 50", "a 3 in 10 chance"], ["Line 1, in the top row", "12 to go"]],
       ["winTotals", ["12 wins", "Win totals", "Total wins"], ["Wins a tin.", "Won 2nd place."]],
       ["caps", ["OPEN NOW", "HOT"], ["Open now", "A4 sheet"]],
-      ["retired", ["19 of 50 left", "7 of 50 open", "Almost full", "You hold 3 lines"], ["12 to go", "You have line 4.", "You can hold 3"]],
+      ["retired", ["19 of 50 left", "7 of 50 open", "Almost full", "You hold 3 lines", "Only 3 spots left.", "1 spot left", "Only 0 0 left."], ["12 to go", "You have line 4.", "You can hold 3", "Only 3 to go.", "Left to right"]],
       ["his", ["his break"], ["the host's break", "History"]],
       ["bet", ["Back this kit", "Your favourite", "Pick your side"], ["Backdrop", "Your kit"]],
     ];
