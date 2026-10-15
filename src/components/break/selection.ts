@@ -92,3 +92,9 @@ export const onboardingHref = (breakId: string, pick: readonly number[]) => `/on
 export function isRepeat(last: { text: string; at: number } | null, text: string, now: number): boolean {
   return last !== null && last.text === text && now - last.at < 3000;
 }
+
+/** Claim commits (Mosaic §7): "You have lines 4 and 11. Pay Jim $10." The amount is what the pay sheet shows. */
+export function claimAnnouncement(got: readonly number[], taken: readonly number[], hostName: string, owedCents: number): string {
+  const said = outcomeText(got, taken);
+  return got.length > 0 ? `${said} Pay ${hostName} ${formatMoney(owedCents)}.` : said;
+}

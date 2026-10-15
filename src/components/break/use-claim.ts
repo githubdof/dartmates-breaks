@@ -7,6 +7,8 @@ export type ClaimData = { got: number[]; taken?: number[] };
 type Options = {
   /** useOptimistic's setter: marks lines as taken by the viewer while the claim is in flight. */
   markClaimed: (numbers: number[]) => void;
+  /** Called synchronously, before the action: the island records the pending claim, so its drop never waits on render order (Plan C, recorded ruling 34). */
+  onStart?: (requested: number[]) => void;
   /** Runs inside the claim's transition, so optimistic marks hold until refreshed props land. */
   onDone: (r: ActionResult<ClaimData>, requested: number[]) => void;
   /** The action threw (dropped connection, 5xx): it may have committed. The batch id is kept for the retry. */
@@ -23,6 +25,7 @@ export function useClaim(o: Options) {
   const newBatch = () => setBatchId(crypto.randomUUID());
   const run = (optimistic: number[], call: (batchId: string) => Promise<ActionResult<ClaimData>>) => {
     const id = batchId;
+    o.onStart?.(optimistic);
     start(async () => {
       if (optimistic.length > 0) o.markClaimed(optimistic);
       let r: ActionResult<ClaimData>;

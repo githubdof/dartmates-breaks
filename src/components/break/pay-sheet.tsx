@@ -30,7 +30,8 @@ type Props = {
   onRetry: (count: number) => void;
   /** `done` runs only once the server accepted it. */
   onSent: (done: () => void) => void;
-  onGaveBack: () => void;
+  /** The lines just given back: the next refresh announces "You gave back …" for them. */
+  onGaveBack: (numbers: number[]) => void;
   /** A failure from onSent or onRetry, shown here because the page behind a modal is inert. */
   error: { for: "sent" | "retry"; text: string } | null;
   pending: boolean;
@@ -83,7 +84,7 @@ export function PaySheet(p: Props) {
       setError(null);
       try {
         const r = await giveBack(p.breakId, numbers);
-        if (r.ok) { setConfirming(false); p.onGaveBack(); p.onClose(); return; }
+        if (r.ok) { setConfirming(false); p.onGaveBack(numbers); p.onClose(); return; }
         setError(r.message);
       } catch {
         // The give-back may have gone through: the refresh shows what the server holds. Offline, a refresh would

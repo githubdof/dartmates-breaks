@@ -2,6 +2,8 @@ import type { CSSProperties } from "react";
 import { FLIGHT_COLOURS, type FlightShape } from "@/domain/flights";
 import { cellLabel, type CellData } from "./cell-label";
 import { cellMetrics } from "./cell-metrics";
+import type { CellMoment } from "./cell-moments";
+import { momentAttrs } from "./moment-attrs";
 
 /** md: the board. xs: legend mini cells (16 px). thumb: feed and hero thumbnails (no number, no glyph). */
 export type CellSize = "md" | "xs" | "thumb";
@@ -22,6 +24,14 @@ type Props = {
   testId?: string;
   tabIndex?: number;
   onPress?: (n: number) => void;
+  /** The moment this render plays (Task 11a): only cellMoments sets it, so nothing animates on mount. */
+  moment?: CellMoment;
+  /** This cell's place in its moment's stagger (`--i`). */
+  order?: number;
+  /** The cell as it was: drawn under (paid undone, release) or over (sent, paid) the new state while the moment plays. */
+  from?: CellData;
+  /** Drawn as a moment's ghost (inside another cell): no role, no name, no data-cell and no data-flight. */
+  ghost?: boolean;
 };
 
 type CSSVars = CSSProperties & Record<`--${string}`, string>;
@@ -59,7 +69,7 @@ function sizeVars(size: CellSize, px: number | undefined, c: CellData): CSSVars 
 }
 
 /** One board cell (Mosaic §5). Shape carries state; the face only adds hue. Styles: the board cell block in globals.css. */
-export function Cell({ cell, view = "member", size = "md", px, selected = false, struck = false, disabled = false, label, testId, tabIndex, onPress }: Props) {
+export function Cell({ cell, view = "member", size = "md", px, selected = false, struck = false, disabled = false, label, testId, tabIndex, onPress, moment, order, from, ghost = false }: Props) {
   const won = !!cell.place;
   const claimed = !won && (cell.state === "taken" || cell.state === "sent");
   const marks = size !== "thumb";
@@ -101,7 +111,15 @@ export function Cell({ cell, view = "member", size = "md", px, selected = false,
     </span>
   );
 
-  const style: CSSVars = { ...faceVars(cell, view), ...(px !== undefined ? { width: px, height: px } : {}) };
+  const motion = momentAttrs(moment, order);
+  // The drop's one glint on the wire, and the ghost: the old cell, aria-hidden, under or over the new one.
+  const momentLayers = (
+    <>
+      {motion.glint && <span aria-hidden className="bc-glint" />}
+      {motion.ghost && from && <span aria-hidden className="bc-ghost"><Cell cell={from} view={view} size={size} px={px} ghost /></span>}
+    </>
+  );
+  const style: CSSVars = { ...faceVars(cell, view), ...(px !== undefined ? { width: px, height: px } : {}), ...motion.style };
   const data = {
     "data-state": cell.state,
     "data-size": size,
@@ -116,9 +134,13 @@ export function Cell({ cell, view = "member", size = "md", px, selected = false,
   };
   const name = label ?? cellLabel(cell, { struck, foldSent: true });
   const base = "bc relative block aspect-square w-full select-none";
+  if (ghost) {
+    // Only what the CSS reads: the state, the size, mine and won. The ghost never names a flight or a line.
+    return <div data-state={data["data-state"]} data-size={data["data-size"]} data-mine={data["data-mine"]} data-won={data["data-won"]} style={style} className={base}>{body}</div>;
+  }
   if (!onPress) {
     // data-cell on display roots too, so the reveal can find its target cells (Task 12b).
-    return <div role="img" data-cell={cell.number} {...data} aria-label={name} style={style} className={base}>{body}</div>;
+    return <div role="img" data-cell={cell.number} {...data} data-moment={motion.moment} aria-label={name} style={style} className={base}>{body}{momentLayers}</div>;
   }
   return (
     <button
@@ -126,6 +148,7 @@ export function Cell({ cell, view = "member", size = "md", px, selected = false,
       data-cell={cell.number}
       data-testid={testId}
       {...data}
+      data-moment={motion.moment}
       aria-label={name}
       aria-pressed={cell.state === "open" ? selected : undefined}
       aria-disabled={disabled || undefined}
@@ -135,6 +158,7 @@ export function Cell({ cell, view = "member", size = "md", px, selected = false,
       className={`${base} touch-manipulation ${disabled ? "cursor-default" : "cursor-pointer"}`}
     >
       {body}
+      {momentLayers}
     </button>
   );
 }

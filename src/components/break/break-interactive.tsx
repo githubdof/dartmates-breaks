@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useOptimistic, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useOptimistic, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Allowance, GridCell, GridCounts } from "@/domain/breaks/grid";
 import type { ClaimMode } from "@/domain/breaks/rules";
@@ -10,6 +10,9 @@ import type { BreakStatus } from "@/components/status-word";
 import { claim, claimNextAction, claimRandomAction, claimRest } from "@/app/b/[id]/actions";
 import { Grid } from "@/components/grid/grid";
 import { nextFocusIndex } from "@/components/grid/layout";
+import { countMoment, landingTimes, momentAnnouncements, paySheetDelay, type PendingClaim } from "@/components/grid/board-moments";
+import { useBoardMoments } from "@/components/grid/use-board-moments";
+import { prefersReducedMotion } from "@/lib/motion";
 import { SegmentedControl } from "@/components/segmented-control";
 import { clampStep } from "@/components/stepper-math";
 import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
@@ -19,7 +22,7 @@ import { PaySheet } from "./pay-sheet";
 import { nextPendingOwe } from "./pay-copy";
 import { barCheckout, barShown, claimBar, failureNote, limitText, sentNote } from "./claim-bar-state";
 import { toGoText } from "./frame-copy";
-import { cellNote, isRepeat, isSelectable, loginHref, onboardingHref, outcomeText, reconcileSelection, selectionAnnouncement, takenAnnouncement, toggleSelection } from "./selection";
+import { cellNote, isRepeat, isSelectable, loginHref, onboardingHref, claimAnnouncement, reconcileSelection, selectionAnnouncement, takenAnnouncement, toggleSelection } from "./selection";
 import { useAutoRefresh } from "./use-auto-refresh";
 import { usePaySheet, type Owe } from "./use-pay-sheet";
 import { useClaim, type ClaimData } from "./use-claim";
@@ -72,6 +75,16 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   });
   const [selected, setSelected] = useState<number[]>(initial.selected);
   const [struck, setStruck] = useState<number[]>([]);
+  // The claim in flight, recorded before the action is called (useClaim's onStart), so its flights drop whichever lands
+  // first: the refreshed props or the answer (recorded ruling 34). Null once its lines landed, or when it was refused.
+  // Not named `claim`: that is the imported server action.
+  const [pendingClaim, setPendingClaim] = useState<PendingClaim | null>(null);
+  // The lines just given back: the next refresh announces "You gave back …" for them.
+  const gaveBack = useRef<number[]>([]);
+  const board = useBoardMoments({ cells: p.cells, view: p.boardView, struck }, pendingClaim);
+  // Drops not yet landed: the checkout count drops by one per landing (a text swap, never rolled).
+  const [landing, setLanding] = useState(0);
+  const sheetTimer = useRef<number | null>(null);
   // The live region: `n` re-keys the message so the same words twice (one taken cell tapped twice) are announced twice.
   const [announce, setAnnounce] = useState({ text: initial.note ?? "", n: 0 });
   // What was said last and when: the refresh after a refused claim would repeat its cap note (isRepeat).
@@ -110,12 +123,19 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       setNote(null);
       setStruck(taken);
       setOutcome({ got: r.data.got, taken });
-      say(outcomeText(r.data.got, taken));
+      const owedBefore = (p.owe ?? pay.pendingOwe)?.cents ?? 0;
+      say(claimAnnouncement(r.data.got, taken, p.hostName, owedBefore + r.data.got.length * p.priceCents));
+      if (r.data.got.length === 0) setPendingClaim(null); // none got: nothing will land
       // Built on what is already shown (a retry adds to the first claim's provisional amount); none got, none provisional.
       pay.setPendingOwe((prev) => nextPendingOwe(p.owe ?? prev, r.data.got, p.priceCents));
-      pay.show(); // the claim is committed; now the pay step
+      // The claim is committed; the pay step opens at the last landing or at 400 ms, whichever comes first.
+      if (sheetTimer.current !== null) window.clearTimeout(sheetTimer.current);
+      const wait = paySheetDelay(r.data.got.length, prefersReducedMotion());
+      if (wait === 0) pay.show();
+      else sheetTimer.current = window.setTimeout(() => { sheetTimer.current = null; pay.show(); }, wait);
       return;
     }
+    setPendingClaim(null); // refused: none of this claim will land
     if (r.code === "NOT_SIGNED_IN") { router.push(loginHref(p.breakId, requested)); return; }
     if (r.code === "NOT_ONBOARDED") { router.push(onboardingHref(p.breakId, requested)); return; }
     const taken = r.details?.taken ?? [];
@@ -132,6 +152,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
 
   const claimer = useClaim({
     markClaimed,
+    // Before the action is called: a selection or "Take the last N" knows its numbers; a random claim does not.
+    onStart: (requested) => setPendingClaim({ numbers: requested.length > 0 ? requested : null }),
     onDone: finish,
     // The claim may have committed: refresh the props (unless offline) and say so where the buyer is looking.
     onUnreachable: () => {
@@ -139,6 +161,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     },
   });
   const pending = claimer.pending || pay.pending;
+  // What the checkout count shows: the server's open count, plus the claimed lines whose flights have not landed yet.
+  const shownOpen = p.counts.open + landing;
 
   // Open: claims move. Closed: the host may start the draw. Running draw: the result lands. Keep all three fresh.
   useAutoRefresh(p.status === "open" || p.status === "filled" || p.status === "drawing");
@@ -148,9 +172,10 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const lastCells = useRef(p.cells);
-  const { cells: freshCells, allowance } = p;
+  const { cells: freshCells, allowance, hostName } = p;
   useEffect(() => {
     if (lastCells.current === freshCells) return;
+    const before = lastCells.current;
     lastCells.current = freshCells;
     const cur = selectedRef.current;
     const r = reconcileSelection(cur, freshCells, allowance.remaining);
@@ -169,12 +194,31 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       const text = limitText(allowance);
       setNote((cur) => (cur === text ? null : cur));
     }
+    // Paid, paid undone, released, given back, open again (Mosaic §7): own lines only where the row says so.
+    const moved = momentAnnouncements(before, freshCells, hostName, gaveBack.current);
+    if (moved) said.push(moved);
+    gaveBack.current = [];
     const text = said.join(" ");
     if (said.length > 0 && !isRepeat(lastSaid.current, text, Date.now())) {
       lastSaid.current = { text, at: Date.now() };
       setAnnounce((a) => ({ text, n: a.n + 1 }));
     }
-  }, [freshCells, allowance]);
+  }, [freshCells, allowance, hostName]);
+
+  // The claim's lines have landed: later diffs are other people's again.
+  useEffect(() => { if (board.landed.length > 0) setPendingClaim(null); }, [board.landed]);
+
+  // The checkout count drops by one per landing. Before paint, so the count never shows the lower number first.
+  useLayoutEffect(() => {
+    const drops = countMoment(board.moments, "drop");
+    if (drops === 0 || prefersReducedMotion()) { setLanding(0); return; }
+    const times = landingTimes(drops);
+    setLanding(times.length);
+    const ids = times.map((t) => window.setTimeout(() => setLanding((n) => Math.max(0, n - 1)), t));
+    return () => ids.forEach((id) => window.clearTimeout(id));
+  }, [board.moments]);
+
+  useEffect(() => () => { if (sheetTimer.current !== null) window.clearTimeout(sheetTimer.current); }, []);
 
   // The taken-cell popover closes on the next tap anywhere or on Escape.
   useEffect(() => {
@@ -298,6 +342,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
             label={`Lines, ${toGoText(p.counts.open)}`}
             selected={selectedSet}
             struck={struckSet}
+            moments={board.moments}
+            from={board.from}
             disabledOpen={selected.length >= p.allowance.remaining}
             readOnly={!canPick}
             onPress={onPress}
@@ -325,7 +371,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       <ClaimBar
         bar={bar}
         status={p.status}
-        toGo={barCheckout({ status: p.status, openCount: p.counts.open })}
+        toGo={barCheckout({ status: p.status, openCount: shownOpen })}
         pending={pending}
         count={stepCount}
         onCount={(n) => { setCount(n); claimer.newBatch(); }}
@@ -351,7 +397,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         retryMax={retryMax}
         onRetry={onRetry}
         onSent={pay.markSent}
-        onGaveBack={() => pay.setPendingOwe(null)}
+        onGaveBack={(numbers) => { gaveBack.current = numbers; pay.setPendingOwe(null); }}
         error={pay.error}
         pending={pending}
       />

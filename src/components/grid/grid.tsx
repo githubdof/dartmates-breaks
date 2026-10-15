@@ -3,6 +3,9 @@ import type { GridCell } from "@/domain/breaks/grid";
 import { DEFAULT_KIT, FLIGHT_COLOURS, type HeatStep, type Kit } from "@/domain/flights";
 import { Cell, type BoardView } from "./cell";
 import { lampLayer } from "./lamp";
+import type { CellData } from "./cell-label";
+import type { CellMoment } from "./cell-moments";
+import { momentOrder } from "./board-moments";
 import { GRID_COLS, GRID_MAX_W, gridTier } from "./layout";
 
 /** A board cell: the server's GridCell plus, on the result page only, its place (public there, Mosaic §5). */
@@ -34,6 +37,10 @@ type Props = {
   onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   /** The roving tab stop, owned by the caller (arrow keys). Falls back to the first selected, then the first open cell. */
   focusNumber?: number | null;
+  /** This render's moments (useBoardMoments); absent everywhere but the live break page. */
+  moments?: ReadonlyMap<number, CellMoment>;
+  /** The cells as they were, for the moments that draw them. */
+  from?: ReadonlyMap<number, CellData>;
 };
 
 /**
@@ -41,7 +48,7 @@ type Props = {
  * box-shadow spread into the page gutter (globals.css .board-frame), so the grid keeps its full width. Bonus lines sit
  * on their own wired row below the frame (recorded ruling 18).
  */
-export function Grid({ cells, lineCount, label, view = "member", kit = DEFAULT_KIT, heat = null, selected, struck, disabledOpen = false, readOnly = false, onPress, onKeyDown, focusNumber: rovingNumber = null }: Props) {
+export function Grid({ cells, lineCount, label, view = "member", kit = DEFAULT_KIT, heat = null, selected, struck, disabledOpen = false, readOnly = false, onPress, onKeyDown, focusNumber: rovingNumber = null, moments, from }: Props) {
   const tier = gridTier(lineCount);
   const numbered = cells.filter((c) => !c.bonus);
   const bonus = cells.filter((c) => c.bonus);
@@ -51,6 +58,7 @@ export function Grid({ cells, lineCount, label, view = "member", kit = DEFAULT_K
       ? rovingNumber
       : (numbered.find((c) => selected?.has(c.number)) ?? numbered.find((c) => c.state === "open") ?? numbered[0])?.number;
 
+  const order = momentOrder(moments);
   const renderCell = (c: BoardCell) => {
     const isSelected = selected?.has(c.number) ?? false;
     const disabled = c.state !== "open" || readOnly || (disabledOpen && !isSelected);
@@ -61,6 +69,9 @@ export function Grid({ cells, lineCount, label, view = "member", kit = DEFAULT_K
         view={view}
         selected={isSelected}
         struck={struck?.has(c.number) ?? false}
+        moment={moments?.get(c.number)}
+        order={order.get(c.number)}
+        from={from?.get(c.number)}
         disabled={disabled}
         onPress={onPress}
         testId={onPress ? `cell-${c.number}` : undefined}

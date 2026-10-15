@@ -234,3 +234,60 @@ html:has([data-wall]) footer {
   .thumb-frame > .bc { box-shadow: 0 0 0 1px var(--board-steel); }
   .board-lamp.thumb-lamp { inset: -12px; }
 }
+
+/* ---- Mosaic claim moments (spec §7). Per-cell motion is CSS on transform and opacity only, switched on by
+   data-moment, which only cellMoments sets: nothing plays on mount or on a view switch. --i is the cell's place in
+   its stagger. The layers are Task 7's (.bc-in > .bc-*); .bc-glint and .bc-ghost (the cell as it was) are root
+   children beside .bc-in. Child combinators keep a rule off the ghost's own copy of the layers. ---- */
+[data-moment] { will-change: transform, opacity; }
+
+/* Select: the cell dips under the thumb. */
+button[data-cell] { transition: transform var(--dur-unpress) var(--ease-over); }
+button[data-cell][data-state="open"]:not([aria-disabled="true"]):active { transform: scale(0.94); transition: transform var(--dur-press) var(--ease-out); }
+
+/* Claim commits: the outlined flight drops 6 px in, the cell squashes and settles, the wire glints once in cream, the ring lands. */
+[data-moment="drop"] { contain: none; z-index: 1; animation: squash calc(var(--dur-squash) + var(--dur-settle)) linear calc(var(--i, 0) * var(--stagger-own) + var(--dur-drop)) both; }
+[data-moment="drop"] > .bc-in > .bc-glyph { --drop: 6px; animation: land var(--dur-drop) var(--ease-in) calc(var(--i, 0) * var(--stagger-own)) both; }
+[data-moment="drop"] > .bc-in > .bc-ring { animation: fadein var(--dur-drop) step-end calc(var(--i, 0) * var(--stagger-own)) both; }
+.bc-glint { position: absolute; inset: -1px; border: 1px solid color-mix(in srgb, var(--board-cream) 70%, transparent); pointer-events: none; opacity: 0; animation: glint var(--dur-glint) var(--ease-out) calc(var(--i, 0) * var(--stagger-own) + var(--dur-drop)) forwards; }
+
+/* Others claim: their flight (or the kit band) fades in. No squash, no glint. */
+[data-moment="others-in"] > .bc-in > .bc-glyph,
+[data-moment="others-in"] > .bc-in > .bc-band { animation: fadein var(--dur-others) var(--ease-out) calc(var(--i, 0) * var(--stagger-others)) both; }
+
+/* I've sent it: the outline cross-fades into the filled glyph; the sent mark fades in. */
+[data-moment="sent"] > .bc-in > .bc-glyph,
+[data-moment="sent"] > .bc-in > .bc-sent { animation: fadein var(--dur-sent) var(--ease-inout) calc(var(--i, 0) * var(--stagger-own)) both; }
+[data-moment="sent"] > .bc-ghost { z-index: 2; animation: fadein var(--dur-sent) var(--ease-inout) calc(var(--i, 0) * var(--stagger-own)) reverse both; }
+
+/* Paid: the overlay fades in; the old number on its chip and the old glyph (the ghost, above them at z-index 2) hold
+   until the fade ends, then the new ink shows and the flight seats 2 px. Never a background-color transition. */
+[data-moment="paid"] > .bc-in > .bc-face { animation: set var(--dur-set) var(--ease-out) calc(var(--i, 0) * var(--stagger-others)) both; }
+[data-moment="paid"] > .bc-in > .bc-num { animation: fadein var(--dur-set) step-end calc(var(--i, 0) * var(--stagger-others)) both; }
+[data-moment="paid"] > .bc-in > .bc-glyph { animation: fadein var(--dur-set) step-end calc(var(--i, 0) * var(--stagger-others)) both, seat var(--dur-seat) var(--ease-over) calc(var(--i, 0) * var(--stagger-others) + var(--dur-set)) both; }
+[data-moment="paid"] > .bc-ghost { z-index: 2; animation: fadein var(--dur-set) step-start calc(var(--i, 0) * var(--stagger-others)) reverse both; }
+
+/* Paid undone: the ink is back at once; the old overlay (the ghost, under the number) fades out. */
+[data-moment="paid-undo"] > .bc-ghost { z-index: 0; animation: fadein var(--dur-set) var(--ease-inout) calc(var(--i, 0) * var(--stagger-others)) reverse both; }
+
+/* The ghost: the old cell without its own face, showing only the layers its moment names. */
+.bc-ghost { position: absolute; inset: 0; pointer-events: none; }
+.bc-ghost > .bc { background: transparent; box-shadow: none; }
+[data-moment="sent"] > .bc-ghost .bc-in > :not(.bc-glyph),
+[data-moment="paid"] > .bc-ghost .bc-in > :not(.bc-num, .bc-glyph),
+[data-moment="paid-undo"] > .bc-ghost .bc-in > :not(.bc-face) { visibility: hidden; }
+
+@keyframes land { from { transform: translateY(calc(-1 * var(--drop, 6px))); opacity: 0; } to { transform: none; opacity: 1; } }
+/* 40 % = --dur-squash / (--dur-squash + --dur-settle): linear into the squash, --ease-over out of it. */
+@keyframes squash { 0% { transform: scale(1); animation-timing-function: linear; } 40% { transform: scale(0.96); animation-timing-function: cubic-bezier(.3, 1.5, .5, 1); } 100% { transform: scale(1); } }
+@keyframes glint { from { opacity: 1; } to { opacity: 0; } }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+@keyframes set { from { opacity: 0; } to { opacity: 1; } }
+@keyframes seat { from { transform: translateY(-2px); } to { transform: none; } }
+
+/* Reduced motion: every moment is its final state at once (the global rule shortens durations, not delays). */
+@media (prefers-reduced-motion: reduce) {
+  [data-moment], [data-moment] * { animation: none !important; }
+  .bc-glint, .bc-ghost { display: none; }
+  button[data-cell]:active { transform: none !important; }
+}
