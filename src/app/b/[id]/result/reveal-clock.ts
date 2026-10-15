@@ -10,6 +10,8 @@ export type RevealHandlers = {
   /** The run was cancelled (Skip, a Replay, an unmount, Strict Mode's simulated unmount): undo its side channels. */
   onStop: () => void;
 };
+/** What a run that reached its end on its own leaves behind: the final state and no run, as Skip does, so it cannot replay itself. */
+export const ENDED = { t: Number.POSITIVE_INFINITY, run: 0 } as const;
 export type TimerClock = { setTimeout: (fn: () => void, ms: number) => number; clearTimeout: (id: number) => void };
 
 /**

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { readGate, startReveal, type RevealHandlers } from "./reveal-clock";
+import { ENDED, readGate, startReveal, type RevealHandlers } from "./reveal-clock";
 import { revealPlan, seenKey, type RevealStep } from "./reveal-plan";
 
 const plan = revealPlan([3, 1, 4, 2], [1, 2]);
@@ -70,5 +70,13 @@ describe("the reveal's clock survives React's lifecycle (Strict Mode re-runs eve
     expect(readGate({ current: null }, "b1", storage(), true)).toBe("still");
     const blocked = { getItem: () => { throw new Error("blocked"); }, setItem: () => {} };
     expect(readGate({ current: null }, "b1", blocked, false)).toBe("still");
+  });
+});
+
+describe("a finished run leaves no run behind", () => {
+  it("ends at the final state with run 0, as Skip does, so a new plan object cannot replay it", () => {
+    // The repo has no DOM renderer; the hook sets exactly ENDED in onEnd, and its effect starts only for run > 0.
+    expect(ENDED.run).toBe(0);
+    expect(ENDED.t).toBe(Number.POSITIVE_INFINITY);
   });
 });

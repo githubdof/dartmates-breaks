@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { startReveal, type RevealHandlers } from "./reveal-clock";
+import { ENDED, startReveal, type RevealHandlers } from "./reveal-clock";
 import type { RevealPlan } from "./reveal-plan";
 
 const FINAL = Number.POSITIVE_INFINITY;
@@ -22,7 +22,7 @@ export function useRevealClock(plan: RevealPlan, handlers: Omit<RevealHandlers, 
     const stop = startReveal(plan, {
       onTime: setT,
       onStep: (s) => h.current.onStep(s),
-      onEnd: () => { setT(FINAL); h.current.onEnd(); },
+      onEnd: () => { setT(ENDED.t); setRun(ENDED.run); h.current.onEnd(); },
       onStop: () => h.current.onStop(),
     }, { setTimeout: (fn, ms) => window.setTimeout(fn, ms), clearTimeout: (id) => window.clearTimeout(id) });
     cancel.current = stop;

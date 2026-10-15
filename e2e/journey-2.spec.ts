@@ -103,6 +103,27 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await expect(final).toContainText("Picks one of the prize choices.");
   await expect(final).toContainText("2nd place: @");
   await expect(final).toContainText("Flight pack");
+  // The board in the host's view with its two black bulls (two prizes), the caller's final call, the full order,
+  // and an entry list of handles as text: no flight glyph beside any handle.
+  await expect(host.getByTestId("board-frame")).toBeVisible();
+  await expect(host.locator("[data-won]")).toHaveCount(2, { timeout: 15_000 });
+  await expect(host.getByTestId("caller")).toContainText("takes the top spot.");
+  await expect(host.getByTestId("full-order").locator("li")).toHaveCount(4);
+  await expect(host.getByTestId("entries").locator("svg, [data-flight]")).toHaveCount(0);
+  await expect(host.getByTestId("entries")).toContainText("Line 1: @");
+  // A stranger sees the same bulls in the host's kit: no flight on any cell, a text-only call. A first-time viewer, so
+  // the reveal plays: a paused clock keeps Skip on screen (a live clock would race it, as section 8 explains).
+  const stranger = await (await browser.newContext()).newPage();
+  await stranger.clock.install();
+  await stranger.clock.pauseAt(new Date(Date.now() + 1000));
+  await stranger.goto(`${url}/result`);
+  await expect(stranger.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#17161A"); // a wall route (Mosaic §8)
+  await stranger.getByTestId("reveal-skip").click();
+  await expect(stranger.locator("[data-won]")).toHaveCount(2);
+  await expect(stranger.locator("[data-flight]")).toHaveCount(0);
+  await expect(stranger.getByTestId("caller").locator("svg")).toHaveCount(0);
+  await expect(stranger.getByTestId("caller")).toContainText(/^Line \d+\. @\S+ takes the top spot\.$/);
+  await stranger.context().close();
   await expect(host.getByTestId("verify-status")).toContainText("Checked");
   const inputs = (await (await host.request.get(`${url}/result.json`)).json()) as PublicInputs;
   expect(verifyInputs(inputs).ok).toBe(true);
