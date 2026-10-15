@@ -29,7 +29,7 @@ deferred or recorded under the one-round fix-loop rule (recorded ruling 8).
 
 ## Parked findings
 
-- The Mosaic spec §7 keyframe list named ten keyframes with `press` among them; the implementation uses eleven (adds `squash-throw`, offsets 36.36 % against `squash`'s 40 %) and does press as a transform transition. Spec §7 amended in place.
+- The Mosaic spec §7 keyframe list named ten keyframes with `press` among them; the implementation uses eleven (adds `squash-throw`, offsets 36.36 % against `squash`'s 40 %, and `fadeout`, the paid ghost's step-end fade) and does press as a transform transition. Spec §7 amended in place, both named.
 - The Replay/Skip row sits above the headline on the result page; §8 lists "full order, Replay, Share, Skip".
 - `FEED_SORTS` still contains the dead "filling" sort.
 - The OG route loads winner handles and item names it never uses, and a missing font gives an uncaught 500.
@@ -85,8 +85,9 @@ hit and changed copy once; nothing else needed a decision.
   (`Grid`, `cellMoments`, `boardMoments`, `lampLayer`, the layout tiers; 3458 B); the page chunk +1236 B (the island's
   moments wiring, the caller banner, "This is your flight"); +418 B in the shared UI chunk. No unused code, duplicate or
   server-only import was found in these chunks (no contrast maths, no OG or reveal code on the break page), so no local
-  fix fits one round without removing spec'd behaviour. Ruling: the +8252 B is accepted, the allowance in the spec is
-  amended to the measured figure, and the size pass is deferred. Its candidates:
+  fix fits one round without removing spec'd behaviour. Ruling: the +8252 B is accepted and the size pass is deferred.
+  The allowance is amended: Mosaic §11 now allows `/b/[id]` first-load JS 12 KB (12 288 B gzip) more than the base,
+  the measured figure plus headroom (fix wave). Its candidates:
   - lazy-load the moment layers and the caller banner (`next/dynamic` on the first moment; nothing plays on load), without
     delaying the drop that lands from whichever render comes first;
   - keep the flight glyphs and the colour table out of the kit view (strangers, most first loads, never draw a flight);

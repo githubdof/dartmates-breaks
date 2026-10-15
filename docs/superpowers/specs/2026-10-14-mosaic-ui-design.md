@@ -542,8 +542,8 @@ Implementation: per-cell effects are CSS-only on `transform` and `opacity`; the 
 path (`requestAnimationFrame`, no library). Per-cell custom properties: `--face`, `--num`, `--fc` (three per
 cell, at most 55 cells). `contain: paint` on each cell; `will-change` only while a cell animates; at most 8
 cells animate at once outside the reveal (the house-lights dim and lift are one board class and the only
-exceptions). Keyframes: `land`, `glint`, `fadein`, `set`, `seat`, `pull`, `strike`, `squash`, `squash-throw`,
-`shake`; press is a transition on `transform`, not a keyframe. (Amended during Plan C execution.)
+exceptions). Keyframes: `land`, `glint`, `fadein`, `fadeout`, `set`, `seat`, `pull`, `strike`, `squash`,
+`squash-throw`, `shake`; press is a transition on `transform`, not a keyframe. (Amended during Plan C execution.)
 Reveal timing stays as pure functions in `reveal-plan.ts`. `theme-color` is set per route (§8) so
 the in-app browser never flashes white.
 
@@ -679,8 +679,12 @@ rule; applied to the local, `breaks_test` and `breaks_e2e` databases):
   steps, without the crossfade; Replay shows the final state with at most a `--dur-reduced` fade; Skip and
   Replay remain.
 - Budget: five font files in the app, plus three static TTFs read by the OG route only (not shipped to
-  browsers); no texture image; at most 6 KB more CSS and 2 KB more JS than today; animation on `transform`
-  and `opacity` only; no canvas, particles, blur, audio, vibration or animation library.
+  browsers); no texture image; at most 6 KB more CSS and 2 KB more JS than today, except the first-load JS
+  of `/b/[id]`, which may grow by at most 12 KB (12 288 B gzip; measured +8252 B); animation on `transform`
+  and `opacity` only; no canvas, particles, blur, audio, vibration or animation library. A size pass is
+  deferred: lazy-load the moment layers and the caller banner, keep the flight glyphs and colour table out of
+  the kit view, and compute `lampLayer` and the layout tiers on the server. (Amended during Plan C
+  execution.)
 
 ## 12. Implementation notes for the planner
 
