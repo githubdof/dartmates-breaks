@@ -314,3 +314,11 @@ button[data-cell][data-state="open"]:not([aria-disabled="true"]):active { transf
 @media (prefers-reduced-motion: reduce) {
   .caller-banner[data-play] { animation: none !important; }
 }
+
+/* ---- The reveal's house lights (spec §7). One class on the board dims every cell at once; the dim lifts off a cell
+   the moment it is hit. Each viewer's own glyphs stay above the dim. ---- */
+/* The dim sits at z-index 2, over the number and the glyph (z-index 1, Task 7); your own glyphs rise to 3 above it. */
+.bc-dim { position: absolute; inset: 0; z-index: 2; background: var(--board-wall); opacity: 0; pointer-events: none; transition: opacity var(--dur-lights) var(--ease-out); }
+[data-lights="down"] .bc-dim { opacity: 0.55; }
+[data-lights="down"] [data-won] > .bc-dim { opacity: 0; transition: none; }
+[data-lights="down"] [data-mine] > .bc-in > .bc-glyph { z-index: 3; }

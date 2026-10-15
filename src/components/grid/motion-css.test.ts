@@ -59,4 +59,9 @@ describe("per-cell motion is CSS on transform and opacity only (Mosaic §7, Glob
     expect(blocks.some((b) => b.includes("[data-moment], [data-moment] *") && b.includes(".bc-glint, .bc-ghost { display: none; }"))).toBe(true);
     expect(blocks.some((b) => b.includes(".caller-banner[data-play] { animation: none !important; }"))).toBe(true);
   });
+  it("dims the board with one class: an opacity-only transition on the cells' dim, lifted at once on a won cell (§7 house lights)", () => {
+    expect(css).toContain("[data-lights=\"down\"] .bc-dim { opacity: 0.55; }");
+    expect(css).toContain("[data-lights=\"down\"] [data-won] > .bc-dim { opacity: 0; transition: none; }");
+    expect(css).toMatch(/\.bc-dim \{[^}]*transition: opacity var\(--dur-lights\)/);
+  });
 });

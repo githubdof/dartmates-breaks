@@ -144,7 +144,9 @@ export function Cell({ cell, view = "member", size = "md", px, selected = false,
   }
   if (!onPress) {
     // data-cell on display roots too, so the reveal can find its target cells (Task 12b).
-    return <div role="img" data-cell={cell.number} {...data} data-moment={motion.moment} aria-label={name} style={style} className={base}>{body}{momentLayers}</div>;
+    // The house-lights dim (Task 12a): the board's data-lights class fades it in on every cell at once, and a cell's
+    // data-won lifts it at impact. Only display boards (the result page) have it; the live break page and a ghost never dim.
+    return <div role="img" data-cell={cell.number} {...data} data-moment={motion.moment} aria-label={name} style={style} className={base}>{body}{momentLayers}<span aria-hidden className="bc-dim" /></div>;
   }
   return (
     <button
