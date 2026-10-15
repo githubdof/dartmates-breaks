@@ -417,6 +417,10 @@ describe("BoardLegend: mini cells beside words, spaces between", () => {
     const h = html(createElement(BoardLegend, { view: "member", flight: null, kit: plumLime }));
     expect(h).toContain('data-flight="plum-standard"');
   });
+  it("kit: the legend sits in the host's kit, not the default", () => {
+    const h = html(createElement(BoardLegend, { view: "kit", flight: null, kit: plumLime }));
+    expect(h).toContain(`--kit-dark:${FLIGHT_COLOURS.plum.face};--kit-light:${FLIGHT_COLOURS.lime.face}`);
+  });
   it("kit: open, taken, paid; no flight anywhere", () => {
     const h = html(createElement(BoardLegend, { view: "kit", flight: yellow, kit: DEFAULT_KIT }));
     expect([...h.matchAll(/<\/span>([a-z]+)<\/li>/g)].map((m) => m[1])).toEqual(["open", "taken", "paid"]);

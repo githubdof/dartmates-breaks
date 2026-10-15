@@ -95,7 +95,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
   return (
     <main data-wall className="mx-auto max-w-[600px] px-4 pb-6 sm:px-6">
       <section className="mt-3 flex gap-3">
-        <GridPreview count={b.lineCount} cells={grid.cells} />
+        <GridPreview count={b.lineCount} cells={grid.cells} kit={grid.kit} heat={grid.heat} />
         <div className="min-w-0 flex-1">
           <h1 className="line-clamp-2 font-condensed text-title font-semibold text-[var(--board-text)]">{b.title}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">

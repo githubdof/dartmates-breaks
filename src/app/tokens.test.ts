@@ -59,6 +59,12 @@ describe("Mosaic board tokens (Mosaic spec §4)", () => {
     // Spec §4: 16.8:1, 11.5:1 and 8.1:1.
     for (const fg of ["board-cream", "board-text-2", "board-text-3"]) expect(contrast(t[fg], t["board-wall"]), `${fg} on the wall`).toBeGreaterThanOrEqual(8);
   });
+  it("keeps the claim-bar note (red on a cream chip) and the focused skip link (cream on the wall) legible on the wall", () => {
+    expect(contrast(t.red, t["board-cream"])).toBeGreaterThanOrEqual(4.5);
+    const src = readFileSync(fileURLToPath(new URL("../components/break/break-interactive.tsx", import.meta.url)), "utf8");
+    expect(src).toMatch(/rounded bg-\[var\(--board-cream\)\][^"]*text-red" data-testid="bar-note"/);
+    expect(src).toMatch(/focus:text-\[var\(--board-text\)\][^"]*">Skip to claim bar/);
+  });
   it("keeps the steel wire at 3:1 or more on the wall and on cream (Review Focus 3)", () => {
     // Spec §4: 4.4:1 on the wall, 3.9:1 on cream.
     expect(contrast(t["board-steel"], t["board-wall"])).toBeGreaterThanOrEqual(3);

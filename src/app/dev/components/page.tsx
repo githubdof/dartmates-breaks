@@ -29,7 +29,7 @@ const board = (won: boolean): BoardCell[] => [
     const held = state !== "open" && state !== "reserved";
     return {
       number, state, place, bonus: false, holder: null,
-      mine: held && i % 11 === 3, overdue: !place && state === "taken" && i % 13 === 1,
+      mine: held && (i % 11 === 3 || i === 2), overdue: !place && state === "taken" && i % 13 === 1,
       flight: held ? FLIGHTS[i % FLIGHTS.length] : null,
     };
   }),
@@ -44,11 +44,11 @@ export default function ComponentsPage() {
       {/* The 390 × 664 density check (Review Focus 5, Task 20): the board at phone width on the wall, every §5 state. */}
       <section data-testid="density" className="-mx-4 w-[390px] max-w-[100vw] space-y-5 bg-[var(--board-wall)] px-4 py-6 sm:mx-0">
         <h2 className="text-headline font-semibold text-[var(--board-text)]">Member view, 50 + 3 bonus</h2>
-        <Grid cells={board(false)} lineCount={50} label="Lines, 7 to go" view="member" kit={KIT} heat={2} />
+        <Grid cells={board(false)} lineCount={50} label="Lines, 13 to go" view="member" kit={KIT} heat={2} />
         <BoardLegend view="member" flight={FLIGHTS[1]} kit={KIT} />
-        <p className="text-small text-[var(--board-text-2)]">You have 4, 11 and 27.</p>
+        <p className="text-small text-[var(--board-text-2)]">You have 3, 4, 15 and 26, and bonus 51.</p>
         <h2 className="text-headline font-semibold text-[var(--board-text)]">Kit view</h2>
-        <Grid cells={board(false)} lineCount={50} label="Lines, 7 to go" view="kit" kit={KIT} heat={1} />
+        <Grid cells={board(false)} lineCount={50} label="Lines, 13 to go" view="kit" kit={KIT} heat={1} />
         <BoardLegend view="kit" flight={null} kit={KIT} />
         <h2 className="text-headline font-semibold text-[var(--board-text)]">Ran, with the three bulls</h2>
         <Grid cells={board(true)} lineCount={50} label="Lines" view="member" kit={KIT} heat={4} />

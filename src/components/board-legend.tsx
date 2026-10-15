@@ -1,6 +1,7 @@
 import type { Flight, Kit } from "@/domain/flights";
 import type { CellData } from "./grid/cell-label";
 import { Cell, type BoardView } from "./grid/cell";
+import { kitVars } from "./grid/grid";
 
 const mini = (o: Partial<CellData>): CellData => ({ number: 0, state: "open", mine: false, overdue: false, bonus: false, flight: null, place: null, ...o });
 
@@ -27,7 +28,7 @@ export function BoardLegend({ view, flight, kit }: { view: BoardView; flight: Fl
         { word: "paid", cell: mini({ state: "paid" }) },
       ];
   return (
-    <ul aria-label="What the cells mean" data-testid="legend" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-micro font-medium text-[var(--board-text-2)]">
+    <ul aria-label="What the cells mean" data-testid="legend" style={kitVars(kit)} className="flex flex-wrap items-center gap-x-4 gap-y-1 text-micro font-medium text-[var(--board-text-2)]">
       {items.map((i) => (
         <li key={i.word} className="flex items-center gap-1.5">
           <span aria-hidden className="block size-4"><Cell cell={i.cell} view={view} size="xs" px={16} /></span>

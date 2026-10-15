@@ -294,7 +294,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         <SegmentedControl label="Show lines as" value={view} onChange={setView} options={[{ value: "grid", label: "Grid" }, { value: "list", label: "List" }]} />
       </div>
       {/* Only when the bar renders: an idle host with nothing to do gets no bar, and the link would go nowhere. */}
-      {barShown(bar) && <a href="#claim-bar" className="sr-only focus:not-sr-only focus:inline-flex focus:min-h-11 focus:items-center focus:px-2 focus:text-small focus:underline">Skip to claim bar</a>}
+      {barShown(bar) && <a href="#claim-bar" className="sr-only focus:not-sr-only focus:inline-flex focus:min-h-11 focus:items-center focus:px-2 focus:text-small focus:text-[var(--board-text)] focus:underline">Skip to claim bar</a>}
       <div ref={gridWrap} className="relative mt-3">
         {view === "grid" ? (
           <Grid
@@ -322,7 +322,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
           </p>
         )}
       </div>
-      {note && <p className="mt-2 text-small text-red" data-testid="bar-note">{note}</p>}
+      {note && <p className="mt-2 inline-block rounded bg-[var(--board-cream)] px-2 py-1 text-small text-red" data-testid="bar-note">{note}</p>}
       <p role="status" aria-live="polite" className="sr-only"><span key={announce.n}>{announce.text}</span></p>
       {p.children}
       <ClaimBar
