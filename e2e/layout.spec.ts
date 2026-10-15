@@ -234,7 +234,7 @@ test("Enter in the composer never opens a break", async ({ browser }) => {
   await host.locator("input[name=title]").press("Enter");
   await host.waitForURL(/\/b\//);
   await expect(host.getByTestId("composer-open")).toHaveCount(0);
-  // A draft has no claim bar, so no pill (Mosaic §8): the host's "Edit draft" is what marks it.
+  await expect(host.getByText("Draft", { exact: true }).first()).toBeVisible();
   await expect(host.getByTestId("edit-draft")).toBeVisible();
 });
 

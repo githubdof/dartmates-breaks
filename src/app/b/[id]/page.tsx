@@ -11,6 +11,7 @@ import { viewerZone } from "@/lib/zone";
 import { pageShare } from "@/lib/share-text";
 import { BoardLegend } from "@/components/board-legend";
 import type { BoardView } from "@/components/grid/cell";
+import { StatusPill } from "@/components/status-pill";
 import { CopyButton } from "@/components/copy-button";
 import { ButtonLink } from "@/components/button";
 import type { BreakStatus } from "@/components/status-word";
@@ -98,6 +99,8 @@ export default async function BreakPage({ params, searchParams }: Props) {
         <h1 className="line-clamp-2 font-shoulders text-wall-title font-extrabold text-[var(--board-text)]">{b.title}</h1>
         <p className="mt-1 flex min-h-6 flex-wrap items-center gap-x-3 text-small">
           <span className="text-[var(--board-text-2)]" data-testid="media-row">{mediaText(b.lineCount, b.linePriceCents)}</span>
+          {/* A draft renders no claim bar, so its pill stays in the head; every other status has it in the bar. */}
+          {status === "draft" && <span className="rounded-full bg-[var(--board-cream)]"><StatusPill status="draft" /></span>}
           {page.host.handle ? (
             <Link href={`/h/${page.host.handle}`} data-testid="host-line" className="inline-flex items-center gap-1.5 text-[var(--board-text-3)] hover:underline hover:underline-offset-4">
               {hostedByText(hostRef, trustText(trust))}<KitSwatch kit={grid.kit} />
