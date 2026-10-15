@@ -7,6 +7,7 @@ import { TabBar } from "@/components/shell/tab-bar";
 import { Footer } from "@/components/shell/footer";
 import { TzCookie } from "@/components/tz-cookie";
 import { HydrationMark } from "@/components/hydration-mark";
+import { FlightSprite } from "@/components/grid/flight-sprite";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -34,6 +35,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <div id="content" tabIndex={-1} className="outline-none">{children}</div>
         <Footer />
         <TabBar role={viewer?.role ?? null} />
+        <FlightSprite />
         <TzCookie />
         <HydrationMark />
       </body>

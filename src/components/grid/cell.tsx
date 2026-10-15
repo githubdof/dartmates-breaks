@@ -1,14 +1,21 @@
+import type { CSSProperties } from "react";
+import { FLIGHT_COLOURS, type FlightShape } from "@/domain/flights";
 import { cellLabel, type CellData } from "./cell-label";
+import { cellMetrics } from "./cell-metrics";
 
-export type CellSize = "md" | "sm" | "xs";
+/** md: the board. xs: legend mini cells (16 px). thumb: feed and hero thumbnails (no number, no glyph). */
+export type CellSize = "md" | "xs" | "thumb";
+/** member: holders' flights, which shapeGrid set; kit: the host's kit only, for anyone who holds no line here (Mosaic §6). */
+export type BoardView = "member" | "kit";
 
 type Props = {
   cell: CellData;
+  view?: BoardView;
   size?: CellSize;
-  /** Standalone cell (legend, mini cells): border on all four sides. */
-  boxed?: boolean;
+  /** A fixed pixel size (legend, previews, render tests). Without it the cell fills its track and container queries size it. */
+  px?: number;
   selected?: boolean;
-  /** A selected line someone else just took. */
+  /** Sniped: a selected line someone else just took (client-only, until the next tap). */
   struck?: boolean;
   disabled?: boolean;
   label?: string;
@@ -17,79 +24,101 @@ type Props = {
   onPress?: (n: number) => void;
 };
 
-const NUMBER_SIZE: Record<CellSize, string> = { md: "text-grid", sm: "text-[13px] leading-none", xs: "hidden" };
+type CSSVars = CSSProperties & Record<`--${string}`, string>;
+type GlyphKind = "filled" | "outline" | "on-face" | "kit" | "kit-paid" | "won" | "won-kit";
 
-/** The face and the number's ink by name: tests read them from data-face and data-ink, never from class names. */
-type Face = "card" | "hatch" | "ink";
-type NumberInk = "card" | "ink" | "ink-2";
-const FACE_CLASS: Record<Face, string> = { card: "bg-card", hatch: "bg-hatch", ink: "bg-ink" };
-const INK_CLASS: Record<NumberInk, string> = { card: "text-card", ink: "text-ink", "ink-2": "text-ink-2" };
-
-function faceOf(c: CellData): Face {
-  if (c.state === "paid") return "ink";
-  if (c.state === "taken" || c.state === "sent") return "hatch";
-  return "card";
+/** Which glyph the §5 table puts top-right, if any. Overdue: the "!" takes its place. Kit view: always the standard shape. */
+function glyphOf(c: CellData, view: BoardView): { kind: GlyphKind; shape: FlightShape } | null {
+  if (c.overdue) return null;
+  if (c.place) return view === "member" && c.flight ? { kind: "won", shape: c.flight.shape } : { kind: "won-kit", shape: "standard" };
+  if (c.state === "open" || c.state === "reserved") return null;
+  if (view === "kit") return { kind: c.state === "paid" ? "kit-paid" : "kit", shape: "standard" };
+  if (!c.flight) return null;
+  if (c.state === "paid") return { kind: "on-face", shape: c.flight.shape };
+  return { kind: c.mine && c.state === "taken" ? "outline" : "filled", shape: c.flight.shape };
 }
 
-function numberInk(c: CellData): NumberInk {
-  // Paid cells are always white on black, yours included: green on ink is 3.9:1 (recorded erratum 1).
-  // "Mine" on a paid cell is the white corner flag plus "yours" in the accessible name.
-  if (c.state === "paid") return "card";
-  if (c.overdue) return "ink"; // overdue (host only): ink number on the chip
-  if (c.state === "taken" || c.state === "reserved") return "ink-2";
-  return "ink";
+/**
+ * --face, --num and --fc (Mosaic §7): the pre-rendered overlay's colour, the number's ink on it, the glyph's fill.
+ * Set on every claimed cell so the paid overlay can fade in. The kit view never sets --fc (no flight leaves shapeGrid for it).
+ */
+function faceVars(c: CellData, view: BoardView): CSSVars {
+  if (c.state === "open" || c.state === "reserved") return {};
+  if (view === "kit") return { "--face": "var(--kit-dark)", "--num": "var(--board-cream)" };
+  if (!c.flight) return {};
+  const f = FLIGHT_COLOURS[c.flight.colour];
+  return { "--face": f.face, "--num": f.ink, "--fc": f.face };
 }
 
-/** One board segment. Shape carries state (design §4): hatch, dashed edge, ink face, corner flag, glyphs; each mark is named in data-mark. */
-export function Cell({ cell, size = "md", boxed = false, selected = false, struck = false, disabled = false, label, testId, tabIndex, onPress }: Props) {
-  const face = faceOf(cell);
-  const paidFace = face === "ink";
-  const hatched = face === "hatch";
-  const ink = numberInk(cell);
-  const edge = boxed ? "border border-wire-strong" : "border-r border-b border-wire-strong";
-  const chip = hatched || cell.state === "reserved";
-  const flag = size === "xs" ? "border-l-[5px] border-t-[5px]" : "border-l-[10px] border-t-[10px]";
-  const glyphs = size !== "xs";
-  // What tests key on: the state and the shape tokens as data attributes, so a restyle never moves a selector.
-  const data = {
-    "data-state": cell.state,
-    "data-face": face,
-    "data-mine": cell.mine || undefined,
-    "data-bonus": cell.bonus || undefined,
-    "data-overdue": cell.overdue || undefined,
-    "data-selected": selected || undefined,
-    "data-struck": struck || undefined,
-  };
+function sizeVars(size: CellSize, px: number | undefined, c: CellData): CSSVars | undefined {
+  if (size === "xs") return { "--g": "8px", "--gi": "1px" }; // legend minis, recorded ruling 20
+  if (size === "thumb") return { "--disc": "48%" }; // thumbnails, recorded ruling 20
+  if (px === undefined) return undefined;
+  const m = cellMetrics(px, { mine: c.mine, place: c.place ?? null });
+  return { "--g": `${m.glyph}px`, "--gi": `${m.inset}px`, "--disc": `${m.disc}px`, "--ns": `${m.num}px` };
+}
+
+/** One board cell (Mosaic §5). Shape carries state; the face only adds hue. Styles: the board cell block in globals.css. */
+export function Cell({ cell, view = "member", size = "md", px, selected = false, struck = false, disabled = false, label, testId, tabIndex, onPress }: Props) {
+  const won = !!cell.place;
+  const claimed = !won && (cell.state === "taken" || cell.state === "sent");
+  const marks = size !== "thumb";
+  const glyph = marks ? glyphOf(cell, view) : null;
+  const flight = view === "member" ? cell.flight ?? null : null;
+  const darkFace = won || (cell.state === "paid" && !!flight && FLIGHT_COLOURS[flight.colour].tier === "dark");
+  const numClass = ["bc-num font-condensed font-semibold tabular", claimed && "bc-chip"].filter(Boolean).join(" ");
+  // Task 3's named face and ink, with Mosaic values, so tests never key on a class name (recorded ruling 19).
+  const face = won ? "won" : cell.state === "reserved" ? "reserved" : claimed ? "hatch" : cell.state === "paid" ? "face" : "cream";
+  const numInk = won ? "ink" : cell.state === "reserved" ? "ink-2" : cell.state === "paid" ? (view === "kit" || darkFace ? "cream" : "ink") : "ink";
 
   const body = (
-    <>
-      <span aria-hidden data-ink={ink} className={`${NUMBER_SIZE[size]} font-condensed font-semibold tabular ${chip ? "bg-card px-0.5" : ""} ${INK_CLASS[ink]} ${struck ? "line-through decoration-red decoration-2" : ""}`}>
-        {cell.number}
-      </span>
-      {cell.state === "sent" && <span aria-hidden data-mark="sent-edge" className="pointer-events-none absolute inset-0 border-2 border-dashed border-ink" />}
-      {cell.overdue && <span aria-hidden data-mark="overdue-edge" className="pointer-events-none absolute inset-0 border-2 border-red" />}
-      {cell.overdue && glyphs && <span aria-hidden data-mark="overdue-glyph" className="absolute right-1 bottom-0.5 text-micro font-semibold text-red">!</span>}
-      {cell.state === "reserved" && <span aria-hidden data-mark="reserved-rule" className="pointer-events-none absolute inset-0.5 border-[3px] border-double border-wire-strong" />}
-      {cell.state === "reserved" && glyphs && <span aria-hidden data-mark="mini-label" className="absolute top-0.5 left-1 text-micro text-ink-2">m</span>}
-      {selected && <span aria-hidden data-mark="selected-ring" className="pointer-events-none absolute inset-0 shadow-[inset_0_0_0_3px_var(--ink)]" />}
-      {/* Selected keeps weight 600: 700 is not loaded (recorded erratum 2); the ring and the check carry it. */}
-      {selected ? (
-        glyphs && <span aria-hidden data-mark="check" className="absolute top-0 right-0.5 text-micro font-semibold text-ink">✓</span>
-      ) : cell.mine ? (
-        <span aria-hidden data-mark={paidFace ? "flag-card" : "flag-green"} className={`absolute top-0 right-0 h-0 w-0 border-l-transparent ${flag} ${paidFace ? "border-t-card" : "border-t-green"}`} />
-      ) : cell.bonus && glyphs ? (
-        <span aria-hidden data-mark="bonus-glyph" className={`absolute top-0 right-1 text-micro font-semibold ${paidFace ? "text-card" : "text-ink"}`}>+</span>
-      ) : null}
-      {/* Bonus and mine: the flag takes the corner, so the "+" moves to the bottom left and both marks survive. */}
-      {!selected && cell.mine && cell.bonus && glyphs && (
-        <span aria-hidden data-mark="bonus-glyph" className={`absolute bottom-0.5 left-1 text-micro font-semibold ${paidFace ? "text-card" : "text-ink"}`}>+</span>
+    <span aria-hidden className="bc-in" style={sizeVars(size, px, cell)}>
+      <span className="bc-face" />
+      {claimed && marks && <span className="bc-hatch" />}
+      {claimed && view === "kit" && <span className="bc-band" data-mark="band" />}
+      {cell.state === "reserved" && marks && <span className="bc-double" data-mark="reserved-rule" />}
+      {cell.state === "reserved" && size === "md" && <span className="bc-m text-micro" data-mark="mini-label">m</span>}
+      {won && <span className="bc-bull" data-place={cell.place} data-mark="bull"><span className="bc-bull-ring" /></span>}
+      {/* No yours ring on a won cell: the bull and its place ring are the only extra mark (Mosaic §5, recorded ruling 19). */}
+      {cell.mine && !won && marks && <span className="bc-ring" data-ring={darkFace ? "cream-out" : "ink-out"} data-mark="ring" />}
+      {cell.overdue && marks && <span className="bc-overdue" data-mark="overdue-edge" />}
+      {selected && <span className="bc-brackets" data-mark="brackets"><i /><i /><i /><i /></span>}
+      {/* Weight 600 in every state, selected included: 700 is not loaded. */}
+      {size === "md" && (
+        <span className={numClass} data-ink={numInk}>
+          {cell.number}
+          {struck && <span className="bc-strike" data-mark="strike" />}
+        </span>
       )}
-    </>
+      {cell.mine && cell.state === "sent" && marks && <span className="bc-sent" data-mark="sent" />}
+      {glyph && (
+        <svg className="bc-glyph" data-glyph={glyph.kind} viewBox="0 0 16 16">
+          <use className="bc-knock" href={`#flight-${glyph.shape}`} />
+          <use className="bc-mark" href={`#flight-${glyph.shape}`} />
+        </svg>
+      )}
+      {cell.overdue && size === "md" && <span className="bc-bang text-micro font-semibold" data-mark="overdue-glyph">!</span>}
+    </span>
   );
 
-  const base = `relative flex aspect-square w-full items-center justify-center select-none ${FACE_CLASS[face]} ${edge} transition-colors duration-[120ms] motion-reduce:transition-none`;
+  const style: CSSVars = { ...faceVars(cell, view), ...(px !== undefined ? { width: px, height: px } : {}) };
+  const data = {
+    "data-state": cell.state,
+    "data-size": size,
+    "data-mine": cell.mine ? "true" : undefined,
+    "data-won": cell.place ?? undefined,
+    "data-flight": flight ? `${flight.colour}-${flight.shape}` : undefined,
+    "data-face": face,
+    "data-bonus": cell.bonus ? "true" : undefined,
+    "data-overdue": cell.overdue ? "true" : undefined,
+    "data-selected": selected ? "true" : undefined,
+    "data-struck": struck ? "true" : undefined,
+  };
+  const name = label ?? cellLabel(cell, { struck, foldSent: true });
+  const base = "bc relative block aspect-square w-full select-none";
   if (!onPress) {
-    return <div role="img" aria-label={label ?? cellLabel(cell)} {...data} className={base}>{body}</div>;
+    // data-cell on display roots too, so the reveal can find its target cells (Task 12b).
+    return <div role="img" data-cell={cell.number} {...data} aria-label={name} style={style} className={base}>{body}</div>;
   }
   return (
     <button
@@ -97,12 +126,13 @@ export function Cell({ cell, size = "md", boxed = false, selected = false, struc
       data-cell={cell.number}
       data-testid={testId}
       {...data}
-      aria-label={label ?? cellLabel(cell)}
+      aria-label={name}
       aria-pressed={cell.state === "open" ? selected : undefined}
       aria-disabled={disabled || undefined}
       tabIndex={tabIndex}
       onClick={() => onPress(cell.number)}
-      className={`${base} touch-manipulation focus-visible:z-10 ${disabled ? "cursor-default" : "cursor-pointer"}`}
+      style={style}
+      className={`${base} touch-manipulation ${disabled ? "cursor-default" : "cursor-pointer"}`}
     >
       {body}
     </button>

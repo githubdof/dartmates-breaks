@@ -12,7 +12,7 @@ export function LineList({ cells, title, shareUrl }: { cells: GridCell[]; title:
           <li key={c.number} className="flex min-h-6 items-center gap-3 border-b border-wire-2 text-small">
             <span className="w-8 font-condensed text-grid font-semibold tabular">{c.number}</span>
             <span className="min-w-0 flex-1 truncate">{c.holder ? `@${c.holder}` : ""}</span>
-            <span className="text-ink-2">{cellStateWord(c)}</span>
+            <span className="text-ink-2">{cellStateWord(c, { foldSent: true })}</span>
           </li>
         ))}
       </ol>

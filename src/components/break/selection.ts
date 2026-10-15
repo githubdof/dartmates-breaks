@@ -80,8 +80,8 @@ export function outcomeText(got: readonly number[], taken: readonly number[]): s
 
 /** The popover text shown when a taken cell is tapped (also announced in the live region). The handle appears only if the server sent it. */
 export function cellNote(c: GridCell): string {
-  if (!c.mine && c.holder) return `Line ${c.number}: @${c.holder}, ${cellStateWord(c)}`;
-  return `Line ${c.number}: ${cellStateWord(c)}`;
+  if (!c.mine && c.holder) return `Line ${c.number}: @${c.holder}, ${cellStateWord(c, { foldSent: true })}`;
+  return `Line ${c.number}: ${cellStateWord(c, { foldSent: true })}`;
 }
 
 const breakPath = (breakId: string, pick: readonly number[]) => (pick.length ? `/b/${breakId}?pick=${pick.join(",")}` : `/b/${breakId}`);

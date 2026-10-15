@@ -1,84 +1,250 @@
 import { describe, it, expect } from "vitest";
-import { createElement, type ReactElement } from "react";
+import { createElement, type ComponentProps, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { GridCell } from "@/domain/breaks/grid";
 import type { LedgerRowView } from "@/components/ledger/ledger-view";
 import { LedgerRow } from "@/components/ledger/ledger-row";
 import { LedgerSheet } from "@/components/ledger/ledger-sheet";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import { FLIGHT_COLOURS, FLIGHT_SHAPES, TOKENS, type Flight, type FlightColour, type FlightShape } from "@/domain/flights";
 import { Cell } from "./cell";
+import { cellMetrics } from "./cell-metrics";
+import { PaperCell } from "./paper-cell";
+import { FlightSprite } from "./flight-sprite";
 import { Grid } from "./grid";
 
 const noop = () => {};
 const html = (el: ReactElement) => renderToStaticMarkup(el);
-const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, flight: null, ...o });
+type C = GridCell & { place?: 1 | 2 | 3 | null };
+const cell = (number: number, o: Partial<C> = {}): C => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, flight: null, ...o });
 
-describe("Cell: every state has a shape and a name, not only a colour (design §4)", () => {
-  // Shapes are read from data-face, data-ink and data-mark, never from class names (Plan C Task 3).
-  it("open: a card face, a toggle, no marks", () => {
-    const h = html(createElement(Cell, { cell: cell(1), onPress: noop }));
+describe("PaperCell: paper surfaces keep the first design (ledger, pay sheet; Mosaic §1.1)", () => {
+  it("open: a card face, a toggle", () => {
+    const h = html(createElement(PaperCell, { cell: cell(1), onPress: noop }));
     expect(h).toContain('aria-label="Line 1, open"');
     expect(h).toContain('aria-pressed="false"');
-    expect(h).toContain('data-state="open"');
-    expect(h).toContain('data-face="card"');
-    expect(h).toContain('data-ink="ink"');
-    expect(h).not.toContain("data-mark");
+    expect(h).toContain("bg-card");
   });
-  it("selected: pressed, the inset ring and the check", () => {
-    const h = html(createElement(Cell, { cell: cell(1), selected: true, onPress: noop }));
-    expect(h).toContain('aria-pressed="true"');
-    expect(h).toContain('data-selected="true"');
-    expect(h).toContain('data-mark="selected-ring"');
-    expect(h).toContain('data-mark="check"');
+  it("taken: the hatch; sent keeps its word and its dashed edge on paper", () => {
+    expect(html(createElement(PaperCell, { cell: cell(2, { state: "taken" }), disabled: true, onPress: noop }))).toContain("bg-hatch");
+    const sent = html(createElement(PaperCell, { cell: cell(3, { state: "sent" }), disabled: true, onPress: noop }));
+    expect(sent).toContain('aria-label="Line 3, sent"');
+    expect(sent).toContain("border-dashed");
   });
-  it("taken: the hatch, disabled but focusable, no pressed state", () => {
-    const h = html(createElement(Cell, { cell: cell(2, { state: "taken" }), disabled: true, onPress: noop }));
-    expect(h).toContain('aria-label="Line 2, taken"');
-    expect(h).toContain('aria-disabled="true"');
-    expect(h).not.toContain("aria-pressed");
-    expect(h).toContain('data-face="hatch"');
-    expect(h).toContain('data-ink="ink-2"');
+  it("paid: the ink face and a white number; no flight, no glyph", () => {
+    const h = html(createElement(PaperCell, { cell: cell(4, { state: "paid", flight: { colour: "plum", shape: "kite" } }), disabled: true, onPress: noop }));
+    expect(h).toContain("bg-ink");
+    expect(h).toContain("text-card");
+    expect(h).not.toContain("flight");
   });
-  it("sent and mine: the dashed edge and the green flag", () => {
-    const h = html(createElement(Cell, { cell: cell(3, { state: "sent", mine: true }), disabled: true, onPress: noop }));
-    expect(h).toContain('aria-label="Line 3, yours, sent"');
-    expect(h).toContain('data-mine="true"');
-    expect(h).toContain('data-mark="sent-edge"');
-    expect(h).toContain('data-mark="flag-green"');
+});
+
+const plum: Flight = { colour: "plum", shape: "kite" };
+const yellow: Flight = { colour: "yellow", shape: "pear" };
+const petrol: Flight = { colour: "petrol", shape: "standard" };
+const at = (px: number, c: C, o: Partial<ComponentProps<typeof Cell>> = {}) =>
+  html(createElement(Cell, { cell: c, px, onPress: noop, disabled: c.state !== "open", ...o }));
+const sizeVars = (px: number, o: { mine?: boolean; place?: 1 | 2 | 3 | null } = {}) => {
+  const m = cellMetrics(px, { mine: o.mine ?? false, place: o.place ?? null });
+  return `--g:${m.glyph}px;--gi:${m.inset}px;--disc:${m.disc}px;--ns:${m.num}px`;
+};
+
+describe("cellMetrics: the §5 glyph and won-cell size rules", () => {
+  it("sizes glyphs by cell size; yours is larger only from 48 px", () => {
+    expect(cellMetrics(44, { mine: false, place: null })).toEqual({ glyph: 14, inset: 2, disc: 0, num: 18 });
+    expect(cellMetrics(44.75, { mine: true, place: null })).toEqual({ glyph: 14, inset: 2, disc: 0, num: 18 });
+    expect(cellMetrics(48, { mine: false, place: null })).toEqual({ glyph: 14, inset: 3, disc: 0, num: 18 });
+    expect(cellMetrics(52, { mine: true, place: null })).toEqual({ glyph: 16, inset: 3, disc: 0, num: 18 });
+    expect(cellMetrics(56, { mine: true, place: null })).toEqual({ glyph: 20, inset: 3, disc: 0, num: 18 });
+    expect(cellMetrics(68, { mine: false, place: null })).toEqual({ glyph: 20, inset: 3, disc: 0, num: 18 });
   });
-  it("paid and mine: the ink face, a white number and a white flag", () => {
-    const h = html(createElement(Cell, { cell: cell(4, { state: "paid", mine: true }), disabled: true, onPress: noop }));
-    expect(h).toContain('aria-label="Line 4, yours, paid"');
-    expect(h).toContain('data-face="ink"');
-    expect(h).toContain('data-ink="card"');
-    expect(h).toContain('data-mark="flag-card"');
+  it("won: a 26 px disc, a 10 px glyph and a 14 px top-spot number under 56 px; 30 px discs above", () => {
+    expect(cellMetrics(44.75, { mine: false, place: 1 })).toEqual({ glyph: 10, inset: 2, disc: 26, num: 14 });
+    expect(cellMetrics(44.75, { mine: false, place: 2 })).toEqual({ glyph: 10, inset: 2, disc: 26, num: 16 });
+    expect(cellMetrics(55, { mine: true, place: 3 })).toEqual({ glyph: 10, inset: 2, disc: 26, num: 16 });
+    expect(cellMetrics(56, { mine: false, place: 1 })).toEqual({ glyph: 14, inset: 3, disc: 30, num: 18 });
+    expect(cellMetrics(67, { mine: false, place: 2 })).toEqual({ glyph: 14, inset: 3, disc: 30, num: 18 });
+    expect(cellMetrics(68, { mine: false, place: 1 })).toEqual({ glyph: 20, inset: 3, disc: 30, num: 18 });
   });
-  it("overdue (host view): the red edge and the ! glyph", () => {
-    const h = html(createElement(Cell, { cell: cell(5, { state: "taken", overdue: true }), disabled: true, onPress: noop }));
-    expect(h).toContain('aria-label="Line 5, taken, overdue"');
-    expect(h).toContain('data-overdue="true"');
-    expect(h).toContain('data-mark="overdue-edge"');
-    expect(h).toContain('data-mark="overdue-glyph"');
+});
+
+describe("FlightSprite: one sprite, four silhouettes, a non-scaling stroke", () => {
+  it("renders each shape's path from FLIGHT_SHAPES once", () => {
+    const h = html(createElement(FlightSprite));
+    expect(h).toContain('aria-hidden="true"');
+    for (const s of Object.keys(FLIGHT_SHAPES) as FlightShape[]) {
+      expect(h).toContain(`id="flight-${s}"`);
+      expect(h).toContain(`d="${FLIGHT_SHAPES[s].path}"`);
+    }
+    expect(h.match(/vector-effect="non-scaling-stroke"/g)).toHaveLength(4);
   });
-  it("reserved for a mini: the double rule and the m label", () => {
-    const h = html(createElement(Cell, { cell: cell(6, { state: "reserved" }) }));
-    expect(h).toContain('aria-label="Line 6, reserved for a mini"');
-    expect(h).toContain('data-state="reserved"');
-    expect(h).toContain('data-mark="reserved-rule"');
-    expect(h).toContain('data-mark="mini-label"');
+});
+
+for (const px of [44, 56, 68] as const) {
+  describe(`Cell at ${px} px: every §5 state, shape first`, () => {
+    it("open: cream, a toggle, no glyph", () => {
+      const h = at(px, cell(1));
+      expect(h).toContain('aria-label="Line 1, open"');
+      expect(h).toContain('aria-pressed="false"');
+      expect(h).toContain('data-state="open"');
+      expect(h).toContain('data-face="cream"');
+      expect(h).toContain('data-ink="ink"');
+      expect(h).toContain(sizeVars(px));
+      expect(h).not.toContain("bc-hatch");
+      expect(h).not.toContain("bc-glyph");
+      expect(h).not.toContain("data-flight");
+    });
+    it("selected: pressed, the four corner brackets, no check glyph", () => {
+      const h = at(px, cell(1), { selected: true });
+      expect(h).toContain('aria-pressed="true"');
+      expect(h).toContain('data-selected="true"');
+      expect(h).toContain('data-mark="brackets"');
+      expect(h).toContain("bc-brackets");
+      expect(h.match(/<i><\/i>/g)).toHaveLength(4);
+      expect(h).not.toContain("✓");
+    });
+    it("sniped: as claimed by others, with the ink strike; named just taken", () => {
+      const h = at(px, cell(7, { state: "taken", flight: plum, holder: "mike" }), { struck: true });
+      expect(h).toContain('aria-label="Line 7, just taken"');
+      expect(h).toContain('data-struck="true"');
+      expect(h).toContain('data-mark="strike"');
+      expect(h).toContain("bc-strike");
+      expect(h).toContain("bc-hatch");
+      expect(h).toContain('data-glyph="filled"');
+      expect(h).not.toContain("mike");
+    });
+    it("claimed, others (sent folds into taken): hatch, chip, the holder's flight filled with an ink keyline", () => {
+      const h = at(px, cell(2, { state: "sent", flight: plum, holder: "mike" }));
+      expect(h).toContain('aria-label="Line 2, taken"');
+      expect(h).toContain('aria-disabled="true"');
+      expect(h).not.toContain("aria-pressed");
+      expect(h).toContain("bc-hatch");
+      expect(h).toContain('data-face="hatch"');
+      expect(h).toContain("bc-chip");
+      expect(h).toContain('data-glyph="filled"');
+      expect(h).toContain('href="#flight-kite"');
+      expect(h).toContain('data-flight="plum-kite"');
+      expect(h).toContain(`--fc:${FLIGHT_COLOURS.plum.face}`);
+      expect(h).not.toContain("bc-ring");
+      expect(h).not.toContain("bc-sent");
+      expect(h).not.toContain("mike");
+    });
+    it("yours, not sent: your flight outlined, the yours ring ink outside", () => {
+      const h = at(px, cell(3, { state: "taken", mine: true, flight: yellow }));
+      expect(h).toContain('aria-label="Line 3, yours, taken"');
+      expect(h).toContain('data-mine="true"');
+      expect(h).toContain('data-glyph="outline"');
+      expect(h).toContain('data-ring="ink-out"');
+      expect(h).toContain('data-mark="ring"');
+      expect(h).toContain(sizeVars(px, { mine: true }));
+      expect(h).not.toContain("bc-sent");
+    });
+    it("yours, sent: your flight filled, the ring and the sent mark", () => {
+      const h = at(px, cell(3, { state: "sent", mine: true, flight: yellow }));
+      expect(h).toContain('aria-label="Line 3, yours, sent"');
+      expect(h).toContain('data-glyph="filled"');
+      expect(h).toContain("bc-ring");
+      expect(h).toContain("bc-sent");
+      expect(h).toContain('data-mark="sent"');
+    });
+    it("overdue (host view): the red inset edge and the ! in the glyph's place, no flight drawn", () => {
+      const h = at(px, cell(5, { state: "taken", overdue: true, flight: plum }));
+      expect(h).toContain('aria-label="Line 5, taken, overdue"');
+      expect(h).toContain("bc-overdue");
+      expect(h).toContain('data-overdue="true"');
+      expect(h).toContain('data-mark="overdue-edge"');
+      expect(h).toContain('data-mark="overdue-glyph"');
+      expect(h).toContain(">!<");
+      expect(h).toContain("bc-chip");
+      expect(h).not.toContain("bc-glyph");
+    });
+    it("paid: the holder's colour on the overlay, and the number ink switches per tier (Review Focus 3)", () => {
+      for (const colour of Object.keys(FLIGHT_COLOURS) as FlightColour[]) {
+        const f = FLIGHT_COLOURS[colour];
+        const h = at(px, cell(4, { state: "paid", flight: { colour, shape: "slim" } }));
+        expect(h).toContain('aria-label="Line 4, paid"');
+        expect(h).toContain(`--face:${f.face};--num:${f.ink};--fc:${f.face}`);
+        expect(f.ink).toBe(f.tier === "dark" ? TOKENS.boardCream : TOKENS.boardInk);
+        expect(h).toContain('data-face="face"');
+        expect(h).toContain(`data-ink="${f.tier === "dark" ? "cream" : "ink"}"`);
+        expect(h).toContain('data-glyph="on-face"');
+        expect(h).toContain("bc-face");
+        expect(h).not.toContain("bc-hatch");
+      }
+    });
+    it("yours, paid: the ring turns cream outside on a dark face, ink outside on a light one", () => {
+      const dark = at(px, cell(4, { state: "paid", mine: true, flight: petrol }));
+      expect(dark).toContain('aria-label="Line 4, yours, paid"');
+      expect(dark).toContain('data-ring="cream-out"');
+      expect(at(px, cell(4, { state: "paid", mine: true, flight: yellow }))).toContain('data-ring="ink-out"');
+    });
+    it("reserved for a mini: the double steel rule and the m, no hatch, no glyph", () => {
+      const h = at(px, cell(6, { state: "reserved" }));
+      expect(h).toContain('aria-label="Line 6, reserved for a mini"');
+      expect(h).toContain("bc-double");
+      expect(h).toContain('data-face="reserved"');
+      expect(h).toContain('data-ink="ink-2"');
+      expect(h).toContain('data-mark="reserved-rule"');
+      expect(h).toContain('data-mark="mini-label"');
+      expect(h).toContain(">m<");
+      expect(h).not.toContain("bc-hatch");
+      expect(h).not.toContain("bc-glyph");
+    });
+    it("bonus: drawn as its state; the + is retired; a display-only cell is an image", () => {
+      const h = html(createElement(Cell, { cell: cell(51, { state: "paid", bonus: true, flight: yellow }), px }));
+      expect(h).toContain('role="img"');
+      expect(h).toContain('data-cell="51"');
+      expect(h).toContain('data-bonus="true"');
+      expect(h).toContain('aria-label="Line 51, bonus, paid"');
+      expect(h).not.toContain(">+<");
+    });
+    for (const [place, name] of [[1, "top spot"], [2, "2nd place"], [3, "3rd place"]] as const) {
+      it(`won, ${name}: the black face, the cream bull with its ring, the holder's flight clear of it`, () => {
+        const h = at(px, cell(23, { state: "paid", flight: plum, place }));
+        expect(h).toContain(`aria-label="Line 23, ${name}"`);
+        expect(h).toContain(`data-won="${place}"`);
+        expect(h).toContain(`class="bc-bull" data-place="${place}"`);
+        expect(h).toContain('data-face="won"');
+        expect(h).toContain('data-mark="bull"');
+        expect(h).toContain('data-glyph="won"');
+        expect(h).toContain(`--fc:${FLIGHT_COLOURS.plum.face}`);
+        expect(h).toContain(sizeVars(px, { place }));
+        expect(h).not.toContain("bc-hatch");
+        expect(h).not.toMatch(/top spot<|place</); // no place word in the cell, only in its name
+      });
+    }
+    it("won and yours: named by its place alone, with no yours ring (Mosaic §5, recorded ruling 19)", () => {
+      const h = at(px, cell(23, { state: "paid", mine: true, flight: plum, place: 1 }));
+      expect(h).toContain('aria-label="Line 23, top spot"');
+      expect(h).toContain('data-won="1"');
+      expect(h).not.toContain("bc-ring");
+      expect(h).not.toContain("yours");
+    });
+    it("kit view: an ink standard flight and the kit-light band; no data-flight and no --fc, whatever the data says", () => {
+      const claimed = at(px, cell(2, { state: "taken", flight: plum }), { view: "kit" });
+      expect(claimed).toContain('aria-label="Line 2, taken"');
+      expect(claimed).toContain('data-glyph="kit"');
+      expect(claimed).toContain('href="#flight-standard"');
+      expect(claimed).toContain("bc-band");
+      expect(claimed).toContain('data-mark="band"');
+      expect(claimed).toContain("bc-hatch");
+      const paid = at(px, cell(4, { state: "paid", flight: plum }), { view: "kit" });
+      expect(paid).toContain("--face:var(--kit-dark);--num:var(--board-cream)");
+      expect(paid).toContain('data-glyph="kit-paid"');
+      const won = at(px, cell(23, { state: "paid", flight: plum, place: 1 }), { view: "kit" });
+      expect(won).toContain('data-glyph="won-kit"');
+      expect(won).toContain("bc-bull");
+      for (const h of [claimed, paid, won]) {
+        expect(h).not.toContain("data-flight");
+        expect(h).not.toContain("--fc");
+      }
+    });
   });
-  it("struck: a selected line someone else just took", () => {
-    const h = html(createElement(Cell, { cell: cell(8, { state: "taken" }), struck: true, disabled: true, onPress: noop }));
-    expect(h).toContain('data-struck="true"');
-    expect(h).toContain('data-state="taken"');
-  });
-  it("bonus: the + mark; a display-only cell is an image", () => {
-    const h = html(createElement(Cell, { cell: cell(51, { state: "paid", bonus: true }) }));
-    expect(h).toContain('role="img"');
-    expect(h).toContain('aria-label="Line 51, bonus, paid"');
-    expect(h).toContain('data-state="paid"');
-    expect(h).toContain('data-bonus="true"');
-    expect(h).toContain('data-mark="bonus-glyph"');
+}
+
+describe("Cell sizing without px", () => {
+  it("leaves the §5 sizes to the container queries: no inline size vars on a fluid board cell", () => {
+    expect(html(createElement(Cell, { cell: cell(1), onPress: noop }))).not.toContain("--g:");
   });
 });
 

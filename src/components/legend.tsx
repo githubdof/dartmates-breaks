@@ -1,4 +1,4 @@
-import { Cell } from "./grid/cell";
+import { PaperCell } from "./grid/paper-cell";
 import type { CellData } from "./grid/cell-label";
 
 const sample = (o: Partial<CellData>): CellData => ({ number: 0, state: "open", mine: false, overdue: false, bonus: false, ...o });
@@ -16,7 +16,7 @@ export function Legend() {
     <ul aria-label="What the cells mean" data-testid="legend" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-micro font-medium text-ink-2">
       {ITEMS.map((i) => (
         <li key={i.word} className="flex items-center gap-1.5">
-          <span aria-hidden className="block size-4"><Cell cell={i.cell} size="xs" boxed /></span>
+          <span aria-hidden className="block size-4"><PaperCell cell={i.cell} size="xs" boxed /></span>
           {i.word}
         </li>
       ))}

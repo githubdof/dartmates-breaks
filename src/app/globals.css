@@ -106,3 +106,107 @@
 html:has([data-wall]) footer {
   color: var(--board-text-2);
 }
+
+/* ---------- Board cells (Mosaic §5). Shape first: every state is a layer or a mark; the face only adds hue. ---------- */
+@layer components {
+  .bc {
+    container-type: inline-size;
+    contain: paint;
+    background-color: var(--board-cream);
+    color: var(--board-ink);
+  }
+  .bc-in {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    --g: 14px; --gi: 2px; --disc: 26px; --ns: 18px;
+  }
+  /* §5 sizes for fluid cells. cellMetrics (cell-metrics.ts) is the same table for fixed-size cells. */
+  .bc[data-won] .bc-in { --g: 10px; --ns: 16px; }
+  .bc[data-won="1"] .bc-in { --ns: 14px; }
+  @container (min-width: 48px) {
+    .bc:not([data-won]) .bc-in { --gi: 3px; }
+    .bc[data-mine="true"]:not([data-won]) .bc-in { --g: 16px; }
+  }
+  @container (min-width: 56px) {
+    .bc:not([data-won]) .bc-in, .bc[data-mine="true"]:not([data-won]) .bc-in { --g: 20px; --gi: 3px; }
+    .bc[data-won] .bc-in, .bc[data-won="1"] .bc-in { --g: 14px; --gi: 3px; --disc: 30px; --ns: 18px; }
+  }
+  @container (min-width: 68px) {
+    .bc[data-won] .bc-in, .bc[data-won="1"] .bc-in { --g: 20px; }
+  }
+
+  /* The pre-rendered overlay: the holder's colour (kit view: the kit's dark colour). Never transition background-color. */
+  .bc-face { position: absolute; inset: 0; background: var(--face, transparent); opacity: 0; }
+  .bc[data-state="paid"] .bc-face { opacity: 1; }
+  .bc[data-won] .bc-face { opacity: 1; background: var(--board-ring); }
+  .bc[data-state="reserved"] { background-color: var(--board-cream-2); }
+  /* Hatch: 45°, --board-ink-2 at 35 %, 1 px every 4 px. */
+  .bc-hatch {
+    position: absolute; inset: 0;
+    background-image: repeating-linear-gradient(45deg, color-mix(in srgb, var(--board-ink-2) 35%, transparent) 0 1px, transparent 1px 4px);
+  }
+  /* Kit view, claimed: a 5 px kit-light band along the bottom edge, its top 1 px an ink keyline (y 39–44 at 44 px). */
+  .bc-band { position: absolute; inset-inline: 0; bottom: 0; height: 5px; box-sizing: border-box; border-top: 1px solid var(--board-ink); background: var(--kit-light); }
+
+  /* The number and the glyph sit at z-index 1: the house-lights dim (Task 12a) sits at 2, your own glyphs at 3 (recorded ruling 19). */
+  .bc-num { position: relative; z-index: 1; font-size: var(--ns); line-height: 1; color: var(--board-ink); }
+  .bc-chip { background: var(--board-cream); padding-inline: 2px; }
+  .bc[data-state="paid"]:not([data-won]) .bc-num { color: var(--num); }
+  .bc[data-state="reserved"] .bc-num { color: var(--board-ink-2); }
+  .bc-strike { position: absolute; left: -1px; right: -1px; top: 50%; height: 2px; margin-top: -1px; background: var(--board-ink); }
+
+  .bc-glyph { position: absolute; z-index: 1; top: var(--gi); right: var(--gi); width: var(--g); height: var(--g); overflow: visible; }
+  .bc-glyph use { stroke-linejoin: round; }
+  /* The 1 px cream knockout, so the hatch never crosses a glyph (hatched cells only, recorded ruling 19). */
+  .bc-knock { display: none; }
+  .bc[data-state="taken"] .bc-knock, .bc[data-state="sent"] .bc-knock { display: inline; fill: var(--board-cream); stroke: var(--board-cream); stroke-width: 3.25px; }
+  .bc-glyph[data-glyph="outline"] .bc-knock { stroke-width: 4px; }
+  .bc-mark { fill: var(--fc, var(--board-ink)); stroke: var(--board-ink); stroke-width: 1.25px; }
+  .bc-glyph[data-glyph="outline"] .bc-mark { fill: none; stroke-width: 2px; }
+  .bc-glyph[data-glyph="on-face"] .bc-mark { fill: var(--num); stroke: none; }
+  .bc-glyph[data-glyph="kit"] .bc-mark { fill: var(--board-ink); }
+  .bc-glyph[data-glyph="kit-paid"] .bc-mark { fill: var(--board-cream); stroke: none; }
+  .bc-glyph[data-glyph="won"] .bc-mark { fill: var(--fc); stroke: var(--board-cream); }
+  .bc-glyph[data-glyph="won-kit"] .bc-mark { fill: var(--board-cream); stroke: var(--board-cream); }
+
+  /* Yours: a 4 px two-tone ring inset 2 px. Ink outside on cream and light faces; cream outside on dark faces. */
+  .bc-ring { position: absolute; inset: 2px; box-shadow: inset 0 0 0 2px var(--board-ink), inset 0 0 0 4px var(--board-cream); }
+  .bc-ring[data-ring="cream-out"] { box-shadow: inset 0 0 0 2px var(--board-cream), inset 0 0 0 4px var(--board-ink); }
+  /* The sent mark: 2 px ink, 10 px long, under the number's chip, on a 1 px cream knockout (recorded ruling 19). */
+  .bc-sent { position: absolute; z-index: 1; left: 50%; top: calc(50% + 11px); width: 10px; height: 2px; margin-left: -5px; background: var(--board-ink); box-shadow: 0 0 0 1px var(--board-cream); }
+  /* Selected: four 8 px corner ticks, 2 px ink, inset 3 px. */
+  .bc-brackets i { position: absolute; width: 8px; height: 8px; border: 0 solid var(--board-ink); }
+  .bc-brackets i:nth-child(1) { top: 3px; left: 3px; border-top-width: 2px; border-left-width: 2px; }
+  .bc-brackets i:nth-child(2) { top: 3px; right: 3px; border-top-width: 2px; border-right-width: 2px; }
+  .bc-brackets i:nth-child(3) { bottom: 3px; left: 3px; border-bottom-width: 2px; border-left-width: 2px; }
+  .bc-brackets i:nth-child(4) { bottom: 3px; right: 3px; border-bottom-width: 2px; border-right-width: 2px; }
+  /* Overdue (host and admin): a 2 px red inset edge; a 12 px / 600 red "!" in the glyph's place. */
+  .bc-overdue { position: absolute; inset: 0; box-shadow: inset 0 0 0 2px var(--red); }
+  .bc-bang { position: absolute; z-index: 1; top: var(--gi); right: calc(var(--gi) + 3px); color: var(--red); }
+  /* Reserved for a mini: a 3 px double steel rule inset 2 px and the "m" top-left. */
+  .bc-double { position: absolute; inset: 2px; border: 3px double var(--board-steel); }
+  .bc-m { position: absolute; top: 2px; left: 4px; color: var(--board-ink-2); }
+
+  /* Won: the cream bull, centred; its ring is drawn inside the disc's edge. Place is the ring's shape, never a word. */
+  .bc-bull { position: absolute; left: 50%; top: 50%; width: var(--disc); height: var(--disc); transform: translate(-50%, -50%); border-radius: 50%; background: var(--board-cream); }
+  .bc-bull-ring { position: absolute; inset: 0; border-radius: 50%; }
+  .bc-bull[data-place="1"] .bc-bull-ring { box-shadow: inset 0 0 0 2px var(--red), inset 0 0 0 3px var(--board-cream), inset 0 0 0 5px var(--red); }
+  .bc-bull[data-place="2"] .bc-bull-ring { box-shadow: inset 0 0 0 3px var(--green); }
+  /* 3rd: a 3 px green ring dashed in four segments (60° arcs, 30° gaps, recorded ruling 19). */
+  .bc-bull[data-place="3"] .bc-bull-ring {
+    background: conic-gradient(var(--green) 0 60deg, transparent 60deg 90deg, var(--green) 90deg 150deg, transparent 150deg 180deg,
+      var(--green) 180deg 240deg, transparent 240deg 270deg, var(--green) 270deg 330deg, transparent 330deg 360deg);
+    -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+    mask: radial-gradient(closest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  }
+  .bc[data-won] .bc-num { color: var(--board-ink); }
+
+  /* Legend minis and thumbnails (recorded ruling 20). */
+  .bc[data-size="xs"] .bc-ring { inset: 1px; box-shadow: inset 0 0 0 1px var(--board-ink), inset 0 0 0 2px var(--board-cream); }
+  .bc[data-size="xs"] .bc-ring[data-ring="cream-out"] { box-shadow: inset 0 0 0 1px var(--board-cream), inset 0 0 0 2px var(--board-ink); }
+  .bc[data-size="xs"] .bc-sent { top: auto; bottom: 2px; width: 6px; height: 1px; margin-left: -3px; }
+  .bc[data-size="thumb"] .bc-band { height: 30%; border-top: 0; }
+  /* Thumbnails keep the bull's ring: the ring carries the place, as on KitThumb (Task 15a). */
+
+  /* Focus on the board: a 2 px ink outline over a 4 px cream ring, so one band always contrasts (Mosaic §5). */
+  .bc:focus-visible { outline: 2px solid var(--board-ink); outline-offset: 0; box-shadow: 0 0 0 4px var(--board-cream); z-index: 10; }
+}

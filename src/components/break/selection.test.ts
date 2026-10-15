@@ -85,6 +85,7 @@ describe("copy", () => {
     expect(cellNote(cell(7, { state: "paid", holder: "mike" }))).toBe("Line 7: @mike, paid");
     expect(cellNote(cell(7, { state: "taken" }))).toBe("Line 7: taken");
     expect(cellNote(cell(9, { state: "sent", mine: true, holder: "me" }))).toBe("Line 9: yours, sent");
+    expect(cellNote(cell(8, { state: "sent", holder: "mike" }))).toBe("Line 8: @mike, taken");
   });
   it("keeps the selection through sign-in and onboarding", () => {
     expect(loginHref("b1", [4, 7])).toBe("/login?next=%2Fb%2Fb1%3Fpick%3D4%2C7");
