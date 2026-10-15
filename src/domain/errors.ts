@@ -41,7 +41,7 @@ export class NotAuthorized extends DomainError { constructor(msg = "You can't do
 export class NotOnboarded extends DomainError { constructor() { super("NOT_ONBOARDED", "Finish setting up your account first", 403); } }
 export class NotOpen extends DomainError { constructor(status: string) { super("NOT_OPEN", notOpenMessage(status), 409); } }
 export class NotFilled extends DomainError { constructor() { super("NOT_FILLED", "Every line must be paid before the draw", 409); } }
-export class AlreadyDrawn extends DomainError { constructor() { super("ALREADY_DRAWN", "This break has already been drawn", 409); } }
+export class AlreadyDrawn extends DomainError { constructor() { super("ALREADY_DRAWN", "This break has already run", 409); } }
 export class LineTaken extends DomainError { constructor(public numbers: number[]) { super("LINE_TAKEN", takenMessage(numbers), 409); } }
 export class OwnerChanged extends DomainError { constructor() { super("OWNER_CHANGED", "This line changed hands; refresh and try again", 409); } }
 export class CapExceeded extends DomainError { constructor(public kind: CapName, public limit: number) { super("CAP_EXCEEDED", capMessage(kind, limit), 409); } }

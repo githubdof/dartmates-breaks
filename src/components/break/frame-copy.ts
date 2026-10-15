@@ -3,7 +3,6 @@ import { joinAnd, ordinal, plural } from "@/lib/list";
 import { daysSince, formatMonthYear } from "@/lib/time";
 import { formatMoney } from "@/lib/money";
 
-/** Retired on the break page (Mosaic §9); the feed card and the link-preview caption drop it in Plan C Tasks 15a and 14. */
 /** The checkout count (Mosaic §9): open numbered lines, "12 to go". A text swap, never rolled. */
 export const toGoText = (open: number) => `${open} to go`;
 /** The media row (Mosaic §8): "50 lines, $5 a line". */
