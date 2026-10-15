@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import type { GridCell } from "@/domain/breaks/grid";
 import type { CellMoment } from "./cell-moments";
+import { MOTION, prefersReducedMotion } from "@/lib/motion";
 import { MOMENT_CLEAR_MS, stepMoments, type BoardSnap, type MomentState, type PendingClaim } from "./board-moments";
 
 const NONE: ReadonlyMap<number, CellMoment> = new Map();
@@ -12,6 +13,8 @@ type Shown = {
   landed: readonly number[];
   /** The map the last moving change produced; it changes only when a new run of moments starts. */
   played: ReadonlyMap<number, CellMoment>;
+  /** The member-view board shown while the viewer's own last lines drain, else null. */
+  held: BoardSnap | null;
 };
 
 /**
@@ -22,16 +25,27 @@ type Shown = {
  * clears after MOMENT_CLEAR_MS, so data-moment, will-change and the ghosts never outstay the motion. `claim` is the
  * island's pending claim: whichever renders first, the refreshed props or the action's answer, the claim's lines drop
  * when they turn the viewer's (recorded ruling 34). `landed` tells the island to clear it.
+ * When the viewer's own last lines go (member to kit), `held` is the member-view board with those cells draining
+ * (drainCells): the island draws it for --dur-release, then the kit view, still (spec §7 Release, recorded ruling 21).
+ * Under reduced motion there is no hold: the kit view shows at once.
  */
 export function useBoardMoments(next: BoardSnap, claim: PendingClaim | null): Shown {
-  const [state, setState] = useState<MomentState>(() => ({ snap: next, moments: NONE, from: NO_GHOSTS, landed: [], played: NONE }));
+  const [state, setState] = useState<MomentState>(() => ({ snap: next, moments: NONE, from: NO_GHOSTS, landed: [], played: NONE, held: null }));
   const current = stepMoments(state, next, claim);
   if (current !== state) setState(current); // adjusting state while rendering: React re-renders before it commits, so no stale frame
   const shown = current.moments;
+  // A hold only ever follows a client-side change, so the first (server) render never reads matchMedia.
+  const held = current.held && !prefersReducedMotion() ? current.held : null;
   useEffect(() => {
     if (shown.size === 0) return;
-    const id = window.setTimeout(() => setState((s) => (s.moments === shown ? { ...s, moments: NONE, from: NO_GHOSTS } : s)), MOMENT_CLEAR_MS);
+    const id = window.setTimeout(() => setState((s) => (s.moments === shown ? { ...s, moments: NONE, from: NO_GHOSTS, held: null } : s)), MOMENT_CLEAR_MS);
     return () => window.clearTimeout(id);
   }, [shown]);
-  return { moments: current.moments, from: current.from, landed: current.landed, played: current.played };
+  // The drain plays on the held member-view board; then the kit view takes over with nothing moving.
+  useEffect(() => {
+    if (!held) return;
+    const id = window.setTimeout(() => setState((s) => (s.held === held ? { ...s, held: null, moments: NONE, from: NO_GHOSTS } : s)), MOTION.release);
+    return () => window.clearTimeout(id);
+  }, [held]);
+  return { moments: current.moments, from: current.from, landed: current.landed, played: current.played, held };
 }

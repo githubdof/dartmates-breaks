@@ -19,7 +19,7 @@ import { DetailsFold } from "@/components/break/details-fold";
 import { BreakInteractive } from "@/components/break/break-interactive";
 import { bonusGoesWith, commitmentShort, payeeFor } from "@/components/break/pay-copy";
 import { onboardingHref, parsePick } from "@/components/break/selection";
-import { closesText, hostedByText, hostLabel, mediaText, perPersonText, pickingText, prizeLines, trustText, youHaveText } from "@/components/break/frame-copy";
+import { closesText, hostedByText, hostLabel, mediaText, payWithinText, perPersonText, pickingText, prizeLines, trustText, youHaveText } from "@/components/break/frame-copy";
 import { KitSwatch } from "@/components/kit-swatch";
 import { HostTools } from "@/components/ledger/host-tools";
 import type { LedgerRowView } from "@/components/ledger/ledger-view";
@@ -136,6 +136,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
         closedDaysAgo={status === "filled" && b.filledAt ? daysSince(b.filledAt, now) : null}
         viewerIsHost={!!caller && caller.id === b.hostId}
         initialPick={initialPick}
+        payWithin={status === "open" ? payWithinText(b.paymentWindowHours) : null}
         underBoard={
           <>
             {/* 12 px of frame, then the legend's 8 px gap (Mosaic §8 budget). */}

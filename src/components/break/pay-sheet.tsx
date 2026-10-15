@@ -40,6 +40,8 @@ type Props = {
   /** A failure from onSent or onRetry, shown here because the page behind a modal is inert. */
   error: { for: "sent" | "retry"; text: string } | null;
   pending: boolean;
+  /** "Pay within 24 hours." while the break is open, else null: it moved here from the page head (Mosaic §8, §1.1). */
+  payWithin?: string | null;
 };
 
 /** Try the app; if the page is still visible after a moment (scheme blocked), open the web profile instead. */
@@ -152,6 +154,8 @@ export function PaySheet(p: Props) {
             <div className="space-y-2">
               <Button full onClick={markSent} disabled={p.pending} data-testid="pay-sent">I&apos;ve sent it</Button>
               {showHint && <p className="text-small text-ink-2">{SENT_HINT}</p>}
+              {/* The pay window, then the absolute deadline under it (Mosaic §8 claim sheet). */}
+              {p.payWithin && !p.owe.late && <p className="text-small" data-testid="pay-within">{p.payWithin}</p>}
               {p.owe.payByIso && p.owe.payByFallback && (
                 <p className="text-small" data-testid="pay-by">
                   {p.owe.late ? (

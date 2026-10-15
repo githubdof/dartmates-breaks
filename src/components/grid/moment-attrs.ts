@@ -1,8 +1,8 @@
 import type { CSSProperties } from "react";
 import type { CellMoment } from "./cell-moments";
 
-/** Moments that draw the cell as it was (the ghost): sent cross-fades it, paid holds its ink, undo fades it out. Task 11b adds release. */
-export const GHOSTED_MOMENTS: ReadonlySet<CellMoment> = new Set<CellMoment>(["sent", "paid", "paid-undo"]);
+/** Moments that draw the cell as it was (the ghost): sent cross-fades it, paid holds its ink, undo and release fade it out. */
+export const GHOSTED_MOMENTS: ReadonlySet<CellMoment> = new Set<CellMoment>(["sent", "paid", "paid-undo", "release"]);
 
 export type MomentAttrs = { moment: Exclude<CellMoment, "still"> | undefined; style: CSSProperties; glint: boolean; ghost: boolean };
 

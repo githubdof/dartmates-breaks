@@ -1,15 +1,19 @@
 import type { GridCell } from "@/domain/breaks/grid";
 import { MOTION } from "@/lib/motion";
 import { joinAnd } from "@/lib/list";
-import { cellMoments, cellViews, type CellMoment } from "./cell-moments";
+import { cellMoments, cellViews, MAX_MOVING, MOMENT_CAPS, type CellMoment } from "./cell-moments";
 import { GHOSTED_MOMENTS } from "./moment-attrs";
 
 import type { BoardView } from "./cell";
 
 /** Member view: the viewer sees holders and flights. Kit view: everyone else (spec §6). Task 7 defines it on Cell. */
 export type { BoardView };
-/** What one render of the board showed; moments are the diff between two of these. */
-export type BoardSnap = { cells: readonly GridCell[]; view: BoardView; struck: readonly number[] };
+/**
+ * What one render of the board showed; moments are the diff between two of these. `selected` is the lines the viewer
+ * wanted in that render: the selection on screen plus the one snapshotted when the claim in flight went out (finish()
+ * clears the selection, so the strike cannot read it later). `struck` is the island's strike (Cell draws it).
+ */
+export type BoardSnap = { cells: readonly GridCell[]; view: BoardView; struck: readonly number[]; selected: readonly number[] };
 /**
  * A claim this viewer sent, recorded before the action is called (recorded ruling 34). `numbers` is what was asked for
  * (a selection, "Take the last N"), or null for a random claim, whose numbers only the server knows.
@@ -17,13 +21,17 @@ export type BoardSnap = { cells: readonly GridCell[]; view: BoardView; struck: r
 export type PendingClaim = { numbers: readonly number[] | null };
 
 export const DROP_CAP = 5;
+/** Line sniped and the viewer's own release: at most 8 at once (§7); cells past a cap set still. */
+export const SNIPED_CAP = MOMENT_CAPS.sniped;
+export const OWN_RELEASE_CAP = MOMENT_CAPS.release;
 /** The pay sheet never waits longer than this for the flights to land (§7 Claim commits). */
 export const PAY_SHEET_MAX_MS = 400;
 /** data-moment, will-change and the ghosts go once every moment has finished (longestMoment, pinned by a test). */
 export const MOMENT_CLEAR_MS = 1000;
 
-/** No selection and no strike: boardMoments diffs the server's cells; the strike is the island's own (Task 11b). */
+/** cellMoments gets no selection and no strike: boardMoments decides the strike itself (it needs the claim's order). */
 const NO_SET: ReadonlySet<number> = new Set();
+const claimedByOther = (c: GridCell | undefined) => !!c && !c.mine && (c.state === "taken" || c.state === "sent" || c.state === "paid");
 
 /**
  * The lines a pending claim landed in this diff: cells that turn the viewer's between `prev` and `next`, limited to the
@@ -39,12 +47,37 @@ export function landedClaim(prev: readonly GridCell[], next: readonly GridCell[]
 /**
  * cellMoments (Task 9) over the server's cells, wrapped with cellViews so the diff gets the CellView it is typed for
  * (recorded ruling 34). `claimed` is the lines this viewer's claim just landed: their flights drop even across the
- * kit → member switch. Task 11b adds the two moments cellMoments cannot see.
+ * kit → member switch. cellMoments also plays the viewer's own release across the member → kit switch (§6); the hold
+ * that lets it be seen is stepMoments' (`held`).
+ *
+ * The one moment it cannot see is the strike, because the selection is client-only. A line strikes in the diff where
+ * the server first shows it claimed by someone else while the viewer wanted it: selected on screen or when the claim
+ * went out, or named taken by the claim's answer (`struck`). That is the same diff that drops the claim's own lines,
+ * whichever renders first, the refreshed props or the answer, so the strike never cuts a drop (recorded ruling 34);
+ * a struck array arriving on its own moves nothing. At most SNIPED_CAP at once, MAX_MOVING in all; past a cap the
+ * strike shows at once (Cell draws `struck` itself).
  */
 export function boardMoments(prev: BoardSnap, next: BoardSnap, claimed: readonly number[]): Map<number, CellMoment> {
-  return new Map<number, CellMoment>(
+  const out = new Map<number, CellMoment>(
     cellMoments(cellViews(prev.cells, NO_SET, NO_SET), cellViews(next.cells, NO_SET, NO_SET), { view: next.view, prevView: prev.view, mine: claimed }),
   );
+  if (prev.cells.length === 0 || prev.cells.length !== next.cells.length) return out;
+  const wanted = new Set([...prev.selected, ...next.selected, ...next.struck]);
+  if (wanted.size === 0) return out;
+  const was = new Map(prev.cells.map((c) => [c.number, c]));
+  let moving = [...out.values()].filter((m) => m !== "still").length;
+  let struck = 0;
+  for (const c of [...next.cells].sort((a, b) => a.number - b.number)) {
+    const p = was.get(c.number);
+    if (!wanted.has(c.number) || !p || p.state !== "open" || p.mine || p.bonus !== c.bonus || !claimedByOther(c)) continue;
+    const before = out.get(c.number) ?? "still";
+    // Over the strike's cap, or no room left on the board: the strike shows at once, and the cell sets still.
+    if (struck >= SNIPED_CAP || (before === "still" && moving >= MAX_MOVING)) { if (before !== "still") moving--; out.set(c.number, "still"); continue; }
+    if (before === "still") moving++;
+    struck++;
+    out.set(c.number, "sniped");
+  }
+  return out;
 }
 
 /** The cells as they were, for the moments that draw them (GHOSTED_MOMENTS). */
@@ -57,7 +90,19 @@ export function ghostsFrom(prev: readonly GridCell[], moments: ReadonlyMap<numbe
   return out;
 }
 
-/** useBoardMoments' state: the last board this viewer saw, the moments of the change into it, and the claim lines it landed. */
+/**
+ * The board shown while the viewer's own last lines drain (spec §7 Release, recorded ruling 21): the previous member-view
+ * cells, with each released cell already open (its ghost drains over it). Only after --dur-release does the board
+ * re-render in the kit view, still.
+ */
+export function drainCells(prev: readonly GridCell[], moments: ReadonlyMap<number, CellMoment>): GridCell[] {
+  return prev.map((c): GridCell => (moments.get(c.number) === "release" ? { ...c, state: "open", mine: false, holder: null, flight: null } : c));
+}
+
+/**
+ * useBoardMoments' state: the last board this viewer saw, the moments of the change into it, the claim lines it
+ * landed, and the held member-view board while the viewer's own last lines drain (else null).
+ */
 export type MomentState = {
   snap: BoardSnap;
   moments: ReadonlyMap<number, CellMoment>;
@@ -65,6 +110,8 @@ export type MomentState = {
   landed: readonly number[];
   /** The map as the last moving diff produced it: the island keys the landing count on it, so a kept map never restarts it. */
   played: ReadonlyMap<number, CellMoment>;
+  /** The member-view board drawn while the viewer's own last lines drain (drainCells); null otherwise. */
+  held: BoardSnap | null;
 };
 
 /** Whether a cell looks the same in two renders (everything a moment or the cell's drawing reads). */
@@ -81,13 +128,13 @@ const sameCell = (a: GridCell, b: GridCell) =>
  * and starts a new run (`played`).
  */
 export function stepMoments(state: MomentState, next: BoardSnap, claim: PendingClaim | null): MomentState {
-  if (state.snap.cells === next.cells && state.snap.view === next.view && state.snap.struck === next.struck) return state;
+  if (state.snap.cells === next.cells && state.snap.view === next.view && state.snap.struck === next.struck && state.snap.selected === next.selected) return state;
   const landed = landedClaim(state.snap.cells, next.cells, claim);
   const moments = boardMoments(state.snap, next, landed);
   const moves = (m: ReadonlyMap<number, CellMoment>) => [...m.values()].some((x) => x !== "still");
   if (!moves(moments)) {
     if (!moves(state.moments)) return { ...state, snap: next, landed };
-    if (state.snap.view !== next.view) return { snap: next, moments: NO_MOMENTS, from: NO_GHOSTS, landed, played: NO_MOMENTS }; // a view switch shows the final state still
+    if (state.snap.view !== next.view) return { snap: next, moments: NO_MOMENTS, from: NO_GHOSTS, landed, played: NO_MOMENTS, held: null }; // a view switch shows the final state still
     const was = new Map(state.snap.cells.map((c) => [c.number, c]));
     const changed = next.cells.filter((c) => { const p = was.get(c.number); return !p || !sameCell(p, c); }).map((c) => c.number);
     if (changed.length === 0) return { ...state, snap: next, landed };
@@ -95,7 +142,10 @@ export function stepMoments(state: MomentState, next: BoardSnap, claim: PendingC
     for (const n of changed) kept.set(n, "still");
     return { ...state, snap: next, moments: kept, landed };
   }
-  return { snap: next, moments, from: ghostsFrom(state.snap.cells, moments), landed, played: moments };
+  // The viewer's own last lines went (member → kit): hold the member view while they drain (spec §7 Release).
+  const draining = state.snap.view === "member" && next.view === "kit" && [...moments.values()].includes("release");
+  const held: BoardSnap | null = draining ? { cells: drainCells(state.snap.cells, moments), view: "member", struck: next.struck, selected: next.selected } : null;
+  return { snap: next, moments, from: ghostsFrom(state.snap.cells, moments), landed, played: moments, held };
 }
 
 const NO_MOMENTS: ReadonlyMap<number, CellMoment> = new Map();

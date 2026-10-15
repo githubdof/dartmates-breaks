@@ -19,8 +19,7 @@ function keyframes(src: string): Map<string, string> {
 describe("per-cell motion is CSS on transform and opacity only (Mosaic §7, Global Constraints: Motion)", () => {
   it("animates no other property in any of the board's keyframes", () => {
     const frames = keyframes(css);
-    // Task 11b adds pull and strike to this list.
-    for (const name of ["land", "squash", "glint", "fadein", "set", "seat"]) expect(frames.has(name), name).toBe(true);
+    for (const name of ["land", "squash", "glint", "fadein", "set", "seat", "pull", "strike"]) expect(frames.has(name), name).toBe(true);
     for (const [name, body] of frames) {
       const props = [...body.matchAll(/([\w-]+)\s*:/g)].map((m) => m[1]);
       for (const p of props) expect(["transform", "translate", "scale", "opacity", "animation-timing-function"], `${name}: ${p}`).toContain(p);
@@ -40,7 +39,7 @@ describe("per-cell motion is CSS on transform and opacity only (Mosaic §7, Glob
     };
     /** Timing functions at x outside the before phase: step-start is 1 everywhere (even at 0), step-end only at 1; easings keep 0 and 1. */
     const ease = (fn: string, x: number) => (fn === "step-start" ? 1 : fn === "step-end" ? (x >= 1 ? 1 : 0) : x);
-    for (const moment of ["sent", "paid", "paid-undo"]) {
+    for (const moment of ["sent", "paid", "paid-undo", "release"]) {
       const rule = new RegExp(`\\[data-moment="${moment}"\\] > \\.bc-ghost \\{[^}]*animation:\\s*([^;]+);`).exec(css)?.[1] ?? "";
       expect(rule, moment).not.toBe("");
       const name = rule.trim().split(/\s+/)[0];
@@ -58,5 +57,6 @@ describe("per-cell motion is CSS on transform and opacity only (Mosaic §7, Glob
   it("makes every moment instant under reduced motion (no delay, no glint, no ghost)", () => {
     const blocks = css.split("@media (prefers-reduced-motion: reduce)").slice(1);
     expect(blocks.some((b) => b.includes("[data-moment], [data-moment] *") && b.includes(".bc-glint, .bc-ghost { display: none; }"))).toBe(true);
+    expect(blocks.some((b) => b.includes(".caller-banner[data-play] { animation: none !important; }"))).toBe(true);
   });
 });

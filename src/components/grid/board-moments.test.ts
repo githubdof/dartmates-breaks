@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import type { GridCell } from "@/domain/breaks/grid";
 import { MOTION } from "@/lib/motion";
 import {
-  boardMoments, countMoment, ghostsFrom, landedClaim, landingTimes, longestMoment, MOMENT_CLEAR_MS, momentAnnouncements, momentOrder,
-  paySheetDelay, stepMoments, type BoardSnap, type MomentState,
+  boardMoments, countMoment, drainCells, ghostsFrom, landedClaim, landingTimes, longestMoment, MOMENT_CLEAR_MS, momentAnnouncements, momentOrder,
+  paySheetDelay, SNIPED_CAP, stepMoments, type BoardSnap, type MomentState,
 } from "./board-moments";
 import type { CellMoment } from "./cell-moments";
 import { momentAttrs } from "./moment-attrs";
@@ -12,8 +12,8 @@ const BLUE_KITE = { colour: "blue", shape: "kite" } as const;
 const LIME = { colour: "lime", shape: "standard" } as const;
 const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, flight: null, ...o });
 const board = (n: number, f: (c: GridCell) => Partial<GridCell> = () => ({})) => Array.from({ length: n }, (_, i) => { const c = cell(i + 1); return { ...c, ...f(c) }; });
-const snap = (cells: readonly GridCell[], o: Partial<BoardSnap> = {}): BoardSnap => ({ cells, view: "member", struck: [], ...o });
-const fresh = (s: BoardSnap): MomentState => { const none = new Map<number, CellMoment>(); return { snap: s, moments: none, from: new Map(), landed: [], played: none }; };
+const snap = (cells: readonly GridCell[], o: Partial<BoardSnap> = {}): BoardSnap => ({ cells, view: "member", struck: [], selected: [], ...o });
+const fresh = (s: BoardSnap): MomentState => { const none = new Map<number, CellMoment>(); return { snap: s, moments: none, from: new Map(), landed: [], played: none, held: null }; };
 const moving = (m: ReadonlyMap<number, CellMoment>) => [...m].filter(([, x]) => x !== "still").sort(([a], [b]) => a - b);
 
 describe("boardMoments: cellMoments over the server's cells", () => {
@@ -26,7 +26,7 @@ describe("boardMoments: cellMoments over the server's cells", () => {
   it("keeps the old cell only for the moments that draw it", () => {
     const prev = board(4, () => ({ state: "taken", holder: "liz" }));
     const moments = new Map<number, CellMoment>([[1, "paid"], [2, "others-in"], [3, "release"], [4, "still"]]);
-    expect([...ghostsFrom(prev, moments).keys()]).toEqual([1]); // release draws its ghost from Task 11b on
+    expect([...ghostsFrom(prev, moments).keys()]).toEqual([1, 3]);
     expect(momentAttrs("drop", 2)).toEqual({ moment: "drop", style: { "--i": 2 }, glint: true, ghost: false });
     expect(momentAttrs("still")).toEqual({ moment: undefined, style: {}, glint: false, ghost: false });
     expect(momentAttrs(undefined).moment).toBeUndefined();
@@ -136,5 +136,93 @@ describe("momentAnnouncements (§7, Announced)", () => {
     expect(momentAnnouncements(prev, [cell(4), cell(11, { state: "taken", mine: true })], "Jim", [4])).toBe("You gave back line 4.");
     expect(momentAnnouncements(prev, prev, "Jim", [])).toBe("");
     expect(momentAnnouncements([cell(7, { state: "taken" })], [cell(7)], "Jim", [])).toBe("Line 7 is open again.");
+  });
+});
+
+describe("boardMoments: what cellMoments cannot see", () => {
+  const LIZ = { holder: "liz", flight: LIME } as const;
+  it("strikes a selected line someone else took, at most 8 at once, and never a line struck before", () => {
+    const m = boardMoments(snap(board(20), { selected: [3, 5] }), snap(board(20, (c) => (c.number === 5 ? { state: "taken", ...LIZ } : {}))), []);
+    expect(m.get(5)).toBe("sniped");
+    expect(m.get(3)).toBe("still");
+    // A line struck before (already taken last render) never strikes again when it moves on.
+    const was = board(20, (c) => (c.number === 5 ? { state: "taken", ...LIZ } : {}));
+    const sent = board(20, (c) => (c.number === 5 ? { state: "sent", ...LIZ } : {}));
+    expect(boardMoments(snap(was, { struck: [5] }), snap(sent, { struck: [5] }), []).get(5)).toBe("still");
+    const ten = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    const many = boardMoments(snap(board(20), { selected: [...ten] }), snap(board(20, (c) => (ten.has(c.number) ? { state: "taken", ...LIZ } : {}))), []);
+    expect(SNIPED_CAP).toBe(8);
+    expect(countMoment(many, "sniped")).toBe(8);
+    expect(many.get(9)).toBe("still"); // past the cap the strike shows at once (Cell draws `struck` itself)
+  });
+  it("a line nobody selected is the crowd arriving, not a strike", () => {
+    const m = boardMoments(snap(board(8)), snap(board(8, (c) => (c.number === 5 ? { state: "taken", ...LIZ } : {}))), []);
+    expect(m.get(5)).toBe("others-in");
+  });
+  it("strikes a line the claim's answer named taken (the selection already cleared)", () => {
+    const m = boardMoments(snap(board(8), { struck: [5] }), snap(board(8, (c) => (c.number === 5 ? { state: "taken", ...LIZ } : {})), { struck: [5] }), []);
+    expect(m.get(5)).toBe("sniped");
+  });
+  it("drains the viewer's own lines when their last line goes and the board turns to the kit view (§6)", () => {
+    const before = board(8, (c) => (c.number <= 2 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : c.number === 5 ? { state: "paid", holder: "liz", flight: { colour: "yellow", shape: "pear" } } : {}));
+    const after = board(8, (c) => (c.number === 5 ? { state: "paid" } : {}));
+    const m = boardMoments(snap(before), snap(after, { view: "kit" }), []);
+    expect(m.get(1)).toBe("release");
+    expect(m.get(2)).toBe("release");
+    expect(m.get(5) ?? "still").toBe("still"); // a flight face turning into a kit face is a view change: still
+  });
+  it("holds the member view while those lines drain: the released cells open, every other cell as it was (§7 Release)", () => {
+    const before = board(4, (c) => (c.number <= 2 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : c.number === 3 ? { state: "paid", holder: "liz", flight: { colour: "yellow", shape: "pear" } } : {}));
+    const moments = new Map<number, CellMoment>([[1, "release"], [2, "release"], [3, "still"], [4, "still"]]);
+    expect(drainCells(before, moments).map((c) => [c.number, c.state, c.mine, c.flight])).toEqual([
+      [1, "open", false, null], [2, "open", false, null], [3, "paid", false, { colour: "yellow", shape: "pear" }], [4, "open", false, null],
+    ]);
+  });
+  it("plays no release across a line-count change (a bonus line added)", () => {
+    const before = board(8, (c) => (c.number === 1 ? { state: "taken", mine: true, flight: BLUE_KITE } : {}));
+    const after = [...board(8), cell(9, { bonus: true })];
+    expect(countMoment(boardMoments(snap(before), snap(after, { view: "kit" }), []), "release")).toBe(0);
+  });
+});
+
+describe("the strike plays in the same diff as the drop, whichever renders first (recorded ruling 34)", () => {
+  const before = board(8);
+  const after = board(8, (c) => (c.number === 2 || c.number === 4 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : c.number === 7 ? { state: "taken", holder: "liz", flight: LIME } : {}));
+  const claim = { numbers: [2, 4, 7] };
+  it("props first: the selection is still on screen; the answer's strike array that follows never cuts the drop", () => {
+    const s1 = stepMoments(fresh(snap(before, { selected: [2, 4, 7] })), snap(after, { selected: [2, 4, 7] }), claim);
+    expect(moving(s1.moments)).toEqual([[2, "drop"], [4, "drop"], [7, "sniped"]]);
+    const s2 = stepMoments(s1, snap(after, { struck: [7] }), null); // finish(): selection cleared, 7 struck
+    expect(s2.moments).toBe(s1.moments);
+  });
+  it("answer first: the answer strikes 7 and clears the selection; the refreshed board drops 2 and 4 and strikes 7", () => {
+    const s0 = stepMoments(fresh(snap(before, { selected: [2, 4, 7] })), snap(before, { struck: [7] }), claim);
+    expect(moving(s0.moments)).toEqual([]);
+    const s1 = stepMoments(s0, snap(after, { struck: [7] }), claim);
+    expect(moving(s1.moments)).toEqual([[2, "drop"], [4, "drop"], [7, "sniped"]]);
+  });
+  it("the first claim as a stranger (kit to member) strikes the sniped line too: it is the viewer's own selection", () => {
+    const s1 = stepMoments(fresh(snap(before, { view: "kit", selected: [2, 4, 7] })), snap(after, { selected: [2, 4, 7] }), claim);
+    expect(moving(s1.moments)).toEqual([[2, "drop"], [4, "drop"], [7, "sniped"]]);
+  });
+});
+
+describe("stepMoments holds the member view while the viewer's own last lines drain (§7 Release)", () => {
+  it("returns the held board for a member to kit switch with own releases, and none otherwise", () => {
+    const before = snap(board(4, (c) => (c.number === 1 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : {})));
+    const after = snap(board(4), { view: "kit" });
+    const s = stepMoments(fresh(before), after, null);
+    expect(s.moments.get(1)).toBe("release");
+    expect(s.held?.view).toBe("member");
+    expect(s.held?.cells.map((c) => c.state)).toEqual(["open", "open", "open", "open"]);
+    expect(stepMoments(fresh(before), snap(board(4)), null).held).toBeNull();
+  });
+  it("a refresh that moves nothing keeps the held board; a later moving change ends it", () => {
+    const before = snap(board(4, (c) => (c.number === 1 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : {})));
+    const after = snap(board(4), { view: "kit" });
+    const s1 = stepMoments(fresh(before), after, null);
+    expect(stepMoments(s1, { ...after, cells: after.cells.map((c) => ({ ...c })) }, null).held).toBe(s1.held);
+    const crowd = snap(board(4, (c) => (c.number === 3 ? { state: "taken" } : {})), { view: "kit" });
+    expect(stepMoments(s1, crowd, null).held).toBeNull();
   });
 });

@@ -3,6 +3,8 @@ import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { GridCell } from "@/domain/breaks/grid";
 import { DEFAULT_KIT } from "@/domain/flights";
+import { CallerBanner } from "@/components/break/caller-banner";
+import { FlightGlyph } from "@/components/flight-glyph";
 import type { CellMoment } from "./cell-moments";
 import { Cell } from "./cell";
 import { Grid } from "./grid";
@@ -82,5 +84,51 @@ describe("Grid hands each cell its moment and its place in the stagger", () => {
     expect(buttonOf(h, 4)).toContain("--i:1");
     expect(buttonOf(h, 1)).not.toContain("data-moment");
     expect(buttonOf(h, 3)).not.toContain("data-moment");
+  });
+});
+
+describe("release draws the cell as it was and drains it", () => {
+  it("renders the ghost, hidden from assistive tech, under the open cell's own name", () => {
+    const was = cell(9, { state: "taken", mine: true, flight: BLUE_KITE });
+    const h = html(createElement(Cell, { cell: cell(9), onPress: noop, moment: "release", from: was }));
+    expect(h).toContain('data-moment="release"');
+    expect(h).toContain('<span aria-hidden="true" class="bc-ghost">');
+    expect(h).toContain('aria-label="Line 9, open"');
+    expect(h.slice(h.indexOf('class="bc-ghost"'))).not.toMatch(/role="img"|aria-label=|data-cell=|data-flight=/);
+  });
+});
+
+describe("the lamp steps back down after a release (Mosaic §4 Heat)", () => {
+  it("is the same layer at a lower opacity, so the change is the one --dur-lamp opacity transition", () => {
+    const up = html(createElement(Grid, { cells: [cell(1, { state: "taken" }), cell(2)], lineCount: 2, label: "L", kit: DEFAULT_KIT, heat: 3 }));
+    const down = html(createElement(Grid, { cells: [cell(1), cell(2)], lineCount: 2, label: "L", kit: DEFAULT_KIT, heat: 2 }));
+    expect(up).toMatch(/data-testid="lamp"[^>]*opacity:0.165/);
+    expect(down).toMatch(/data-testid="lamp"[^>]*opacity:0.13/);
+    const bg = (h: string) => /data-testid="lamp"[^>]*background-image:([^;"]+)/.exec(h)?.[1];
+    expect(bg(down)).toBeDefined();
+    expect(bg(down)).toBe(bg(up)); // one colour: only the layer's opacity steps
+  });
+});
+
+describe("the caller banner", () => {
+  // The lamp's opacity step is Task 8's (lampLayer in Grid, pinned in render.test.ts).
+  it("is decorative text with a rule, a glyph only when given a flight, and plays only when told", () => {
+    const still = html(createElement(CallerBanner, { text: "Board's full. Game on.", rule: "var(--kit-dark)" }));
+    expect(still).toContain('data-testid="caller"');
+    expect(still).toContain('aria-hidden="true"');
+    expect(still).toContain("Board&#x27;s full. Game on.");
+    expect(still).not.toContain("<svg");
+    expect(still).not.toContain("data-play");
+    const call = html(createElement(CallerBanner, { text: "Line 23. @mike takes the top spot.", rule: "#2340C4", flight: BLUE_KITE, play: true }));
+    expect(call).toContain("<svg");
+    expect(call).toContain("data-play");
+    expect(call).not.toContain("data-flight");
+  });
+  it("draws a flight outside a cell as one filled, keylined, hidden shape", () => {
+    const h = html(createElement(FlightGlyph, { flight: BLUE_KITE, size: 24, keyline: "var(--board-cream)", strokeWidth: 1.5 }));
+    expect(h).toContain('aria-hidden="true"');
+    expect(h).toContain('width="24"');
+    expect(h).toContain('stroke="var(--board-cream)"');
+    expect(h).not.toMatch(/aria-label|<title/);
   });
 });

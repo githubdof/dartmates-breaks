@@ -293,3 +293,24 @@ button[data-cell][data-state="open"]:not([aria-disabled="true"]):active { transf
   .bc-glint, .bc-ghost { display: none; }
   button[data-cell]:active { transform: none !important; }
 }
+
+/* ---- Mosaic claim moments, part two (spec §7): release, sniped, the caller. ---- */
+/* Release or give back: the old colour drains, its flight lifts 8 px and fades, the hatch fades. No stagger. */
+[data-moment="release"] > .bc-ghost { z-index: 0; animation: fadein var(--dur-release) var(--ease-inout) reverse both; }
+[data-moment="release"] > .bc-ghost .bc-glyph { animation: pull var(--dur-release) var(--ease-inout) both; }
+[data-moment="release"] > .bc-ghost .bc-num { visibility: hidden; }
+
+/* Line sniped: a 2 px ink strike draws across the number, left to right. */
+[data-moment="sniped"] > .bc-in > .bc-num > .bc-strike { transform-origin: left center; animation: strike var(--dur-strike) var(--ease-out) both; }
+
+/* The caller (§7): Big Shoulders 800 26/28 on the wall (the Display cut is pinned in the base layer), a 4 px left rule;
+   drops in with a 2 px overshoot (--ease-over over a 24 px drop peaks about 2 px past rest). */
+.caller-banner { display: flex; align-items: center; gap: 10px; border-left: 4px solid var(--call, var(--kit-dark)); padding: 4px 0 4px 12px; color: var(--board-text); font-family: var(--font-shoulders); font-size: 26px; line-height: 28px; }
+.caller-banner[data-play] { --drop: 24px; animation: land var(--dur-banner) var(--ease-over) both, fadein var(--dur-banner) var(--ease-out) both; }
+
+@keyframes pull { to { transform: translateY(-8px); opacity: 0; } }
+@keyframes strike { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .caller-banner[data-play] { animation: none !important; }
+}

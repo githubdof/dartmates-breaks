@@ -148,6 +148,15 @@ test("Escape closes the pay sheet and focus lands on the claim bar (D§7)", asyn
   await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest("[data-sticky-bar]"))).toBe(true);
 });
 
+test("the pay sheet's pay block says 'Pay within 24 hours.' while the break is open (Mosaic §8)", async ({ browser }) => {
+  const page = await signedIn(browser, `lw${run}@e2e.test`);
+  await page.goto(url);
+  await page.getByTestId("cell-44").click();
+  await page.getByTestId("claim-submit").click();
+  await expect(page.getByTestId("pay-sheet")).toBeVisible();
+  await expect(page.getByTestId("pay-within")).toHaveText(/^Pay within \d+ hours?\.$/);
+});
+
 test("a failed 'I've sent it' reports inside the pay sheet, not behind it", async ({ browser }) => {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();

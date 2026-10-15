@@ -13,6 +13,8 @@ import { nextFocusIndex } from "@/components/grid/layout";
 import { countMoment, landingTimes, momentAnnouncements, paySheetDelay, type PendingClaim } from "@/components/grid/board-moments";
 import { useBoardMoments } from "@/components/grid/use-board-moments";
 import { prefersReducedMotion } from "@/lib/motion";
+import { CallerBanner } from "./caller-banner";
+import { BOARD_FULL_CALL, boardFullAnnouncement, fullBoardKey } from "./caller-copy";
 import { SegmentedControl } from "@/components/segmented-control";
 import { clampStep } from "@/components/stepper-math";
 import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
@@ -39,6 +41,8 @@ export type BreakInteractiveProps = {
   shareUrl: string;
   /** The legend and the "You have …" line: directly under the board, inside the 390 × 664 budget (Mosaic §8). */
   underBoard?: React.ReactNode;
+  /** "Pay within 24 hours." while open, for the pay sheet's pay block (Mosaic §8); null once the break is not open. */
+  payWithin: string | null;
   cells: GridCell[];
   /** member when the viewer sees holders (GridModel.showHolders), else kit (Mosaic §6). */
   boardView: BoardView;
@@ -80,12 +84,22 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   // first: the refreshed props or the answer (recorded ruling 34). Null once its lines landed, or when it was refused.
   // Not named `claim`: that is the imported server action.
   const [pendingClaim, setPendingClaim] = useState<PendingClaim | null>(null);
+  // The selection as it stood when the claim went out (useClaim's onStart): finish() clears the selection, and a tap
+  // while the claim is in flight may change it, so the strike reads this too. Cleared once the claim has answered.
+  const [claimSelection, setClaimSelection] = useState<number[]>([]);
+  const wanted = useMemo(
+    () => (claimSelection.length === 0 ? selected : [...new Set([...selected, ...claimSelection])]),
+    [selected, claimSelection],
+  );
   // The lines just given back: the next refresh announces "You gave back …" for them.
   const gaveBack = useRef<number[]>([]);
-  const board = useBoardMoments({ cells: p.cells, view: p.boardView, struck }, pendingClaim);
+  const board = useBoardMoments({ cells: p.cells, view: p.boardView, struck, selected: wanted }, pendingClaim);
   // Drops not yet landed: the checkout count drops by one per landing (a text swap, never rolled).
   const [landing, setLanding] = useState(0);
   const sheetTimer = useRef<number | null>(null);
+  // Board fills: null until the once-per-viewer flag is read (the banner renders after hydration only).
+  const [fullPlay, setFullPlay] = useState<boolean | null>(null);
+  const fullRead = useRef<string | null>(null);
   // The live region: `n` re-keys the message so the same words twice (one taken cell tapped twice) are announced twice.
   const [announce, setAnnounce] = useState({ text: initial.note ?? "", n: 0 });
   // What was said last and when: the refresh after a refused claim would repeat its cap note (isRepeat).
@@ -123,6 +137,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       setJustSent(false);
       setNote(null);
       setStruck(taken);
+      setClaimSelection([]); // the strike now reads `struck`
       setOutcome({ got: r.data.got, taken });
       say(claimAnnouncement(r.data.got, taken, p.hostName, owedAfterClaim(p.owe ?? pay.pendingOwe, r.data.got, p.priceCents)));
       if (r.data.got.length === 0) setPendingClaim(null); // none got: nothing will land
@@ -136,6 +151,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       return;
     }
     setPendingClaim(null); // refused: none of this claim will land
+    setClaimSelection([]);
     if (r.code === "NOT_SIGNED_IN") { router.push(loginHref(p.breakId, requested)); return; }
     if (r.code === "NOT_ONBOARDED") { router.push(onboardingHref(p.breakId, requested)); return; }
     const taken = r.details?.taken ?? [];
@@ -153,10 +169,11 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const claimer = useClaim({
     markClaimed,
     // Before the action is called: a selection or "Take the last N" knows its numbers; a random claim does not.
-    onStart: (requested) => setPendingClaim({ numbers: requested.length > 0 ? requested : null }),
+    onStart: (requested) => { setPendingClaim({ numbers: requested.length > 0 ? requested : null }); setClaimSelection(selected); },
     onDone: finish,
     // The claim may have committed: refresh the props (unless offline) and say so where the buyer is looking.
     onUnreachable: () => {
+      setClaimSelection([]); // no answer: the selection stays on screen, and the strike reads it there
       if (canRefresh()) { router.refresh(); pay.fail("retry", NETWORK_NOTE); } else pay.fail("retry", OFFLINE_NOTE);
     },
   });
@@ -220,6 +237,22 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     const ids = times.map((t) => window.setTimeout(() => setLanding((n) => Math.max(0, n - 1)), t));
     return () => ids.forEach((id) => window.clearTimeout(id));
   }, [board.played]);
+
+  // Board fills (Mosaic §7): "Board's full. Game on." drops in once per viewer per break, then shows still.
+  useLayoutEffect(() => {
+    if (p.status !== "filled") { fullRead.current = null; setFullPlay(null); return; }
+    if (fullRead.current === p.breakId) return; // read once: a second run (Strict Mode, a new host name) would see its own write
+    fullRead.current = p.breakId;
+    let seen = true;
+    try {
+      seen = window.localStorage.getItem(fullBoardKey(p.breakId)) === "1";
+      window.localStorage.setItem(fullBoardKey(p.breakId), "1");
+    } catch {
+      seen = true; // storage blocked: never force the moment
+    }
+    setFullPlay(!seen && !prefersReducedMotion());
+    if (!seen) setAnnounce((a) => ({ text: boardFullAnnouncement(p.hostName), n: a.n + 1 }));
+  }, [p.status, p.breakId, p.hostName]);
 
   useEffect(() => () => { if (sheetTimer.current !== null) window.clearTimeout(sheetTimer.current); }, []);
 
@@ -337,8 +370,9 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       <div ref={gridWrap} className="relative mt-6">
         {view === "grid" ? (
           <Grid
-            cells={cells}
-            view={p.boardView}
+            // While the viewer's own last lines drain, the member-view board is held (spec §7 Release).
+            cells={board.held ? [...board.held.cells] : cells}
+            view={board.held ? board.held.view : p.boardView}
             kit={p.kit}
             heat={p.heat}
             lineCount={p.lineCount}
@@ -363,6 +397,10 @@ export function BreakInteractive(p: BreakInteractiveProps) {
           </p>
         )}
       </div>
+      {/* Between the board and the legend (recorded ruling 22). */}
+      {p.status === "filled" && fullPlay !== null && (
+        <div className="mt-3"><CallerBanner text={BOARD_FULL_CALL} rule="var(--kit-dark)" play={fullPlay} /></div>
+      )}
       {p.underBoard}
       {/* Grid | List stands (first design §5.4); the budget has no row for it above the board, so it sits here (recorded ruling 23). */}
       <div className="mt-3 flex min-h-11 items-center justify-end">
@@ -401,6 +439,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         onRetry={onRetry}
         onSent={pay.markSent}
         onGaveBack={() => pay.setPendingOwe(null)}
+        payWithin={p.payWithin}
         /* Recorded before the action: the refresh that carries the give-back may land before its answer. */
         onGiveBackStart={(numbers) => { gaveBack.current = numbers; }}
         onGiveBackRefused={() => { gaveBack.current = []; }}
