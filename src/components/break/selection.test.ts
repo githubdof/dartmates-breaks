@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { GridCell } from "@/domain/breaks/grid";
 import {
-  cellNote, isSelectable, loginHref, onboardingHref, outcomeText, parsePick, reconcileSelection, selectionAnnouncement, selectionSummary, takenAnnouncement, toggleSelection,
+  cellNote, isSelectable, isRepeat, loginHref, onboardingHref, outcomeText, parsePick, reconcileSelection, selectionAnnouncement, selectionSummary, takenAnnouncement, toggleSelection,
 } from "./selection";
 
 const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, ...o });
@@ -90,5 +90,15 @@ describe("copy", () => {
     expect(loginHref("b1", [4, 7])).toBe("/login?next=%2Fb%2Fb1%3Fpick%3D4%2C7");
     expect(loginHref("b1", [])).toBe("/login?next=%2Fb%2Fb1");
     expect(onboardingHref("b1", [4])).toBe("/onboarding?next=%2Fb%2Fb1%3Fpick%3D4");
+  });
+});
+
+describe("isRepeat", () => {
+  it("skips the same words said again within 3 s, nothing else", () => {
+    const last = { text: "You can hold 5 lines in this break.", at: 10_000 };
+    expect(isRepeat(last, "You can hold 5 lines in this break.", 12_000)).toBe(true);
+    expect(isRepeat(last, "You can hold 5 lines in this break.", 13_500)).toBe(false);
+    expect(isRepeat(last, "Line 7 was just taken.", 11_000)).toBe(false);
+    expect(isRepeat(null, "Line 7 was just taken.", 11_000)).toBe(false);
   });
 });

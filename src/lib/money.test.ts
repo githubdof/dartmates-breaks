@@ -19,3 +19,12 @@ describe("formatMoney", () => {
     expect(formatMoney(-250)).toBe("-$2.50");
   });
 });
+
+describe("tiny prices", () => {
+  it("keep their cents and never round to $0", () => {
+    expect(formatMoney(1)).toBe("$0.01");
+    expect(formatMoney(5)).toBe("$0.05");
+    expect(formatMoney(25)).toBe("$0.25");
+    expect(formatMoney(99)).toBe("$0.99");
+  });
+});

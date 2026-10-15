@@ -27,3 +27,24 @@ it("gates the pre-paint hide on the same once-per-viewer key and on reduced moti
   expect(js).toContain("prefers-reduced-motion: reduce");
   expect(js).toContain("dataset.deal");
 });
+
+it("marks <html data-deal> only for a first-time viewer without reduced motion, lifts it after 4 s, and never throws", () => {
+  const runGate = (o: { seen: string | null; reduced: boolean; storageThrows?: boolean }) => {
+    const dataset: Record<string, string> = {};
+    const timers: (() => void)[] = [];
+    const localStorage = { getItem: () => { if (o.storageThrows) throw new Error("blocked"); return o.seen; } };
+    const matchMedia = () => ({ matches: o.reduced });
+    const document = { documentElement: { dataset } };
+    const setTimeout = (fn: () => void) => { timers.push(fn); return 0; };
+    // The script runs against these stand-ins for the browser globals it names.
+    new Function("localStorage", "matchMedia", "document", "setTimeout", dealGateScript("b1"))(localStorage, matchMedia, document, setTimeout);
+    return { dataset, timers };
+  };
+  const first = runGate({ seen: null, reduced: false });
+  expect(first.dataset.deal).toBe("1");
+  first.timers.forEach((t) => t());
+  expect(first.dataset.deal).toBeUndefined();
+  expect(runGate({ seen: "1", reduced: false }).dataset.deal).toBeUndefined();
+  expect(runGate({ seen: null, reduced: true }).dataset.deal).toBeUndefined();
+  expect(() => runGate({ seen: null, reduced: false, storageThrows: true })).not.toThrow();
+});

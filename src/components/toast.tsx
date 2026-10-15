@@ -5,8 +5,10 @@ export type ToastOffset = "bar" | "sheet-action" | "none";
 /** Where the snackbar sits: above the claim bar, above a sheet's sticky bottom action, or at the bottom edge. */
 const BOTTOM: Record<ToastOffset, string> = {
   bar: "calc(var(--bar-total, calc(var(--bar-h) + max(12px, env(safe-area-inset-bottom)))) + 8px)",
-  "sheet-action": "calc(68px + max(12px, env(safe-area-inset-bottom)) + 8px)",
-  none: "max(12px, env(safe-area-inset-bottom))",
+  // --sheet-action-h is the sheet's measured bottom action (useMeasuredVar), safe area included.
+  "sheet-action": "calc(var(--sheet-action-h, calc(68px + max(12px, env(safe-area-inset-bottom)))) + 8px)",
+  // --tab-offset is the tab bar's height while it shows on phones (globals.css), else 0.
+  none: "calc(var(--tab-offset, 0px) + max(12px, env(safe-area-inset-bottom)))",
 };
 
 /** Polite snackbar. Render it inside the sheet that owns it (outside elements are inert under a modal). */

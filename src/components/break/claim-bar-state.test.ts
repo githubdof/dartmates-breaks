@@ -4,7 +4,7 @@ import { barShown, claimBar, failureNote, lastLabel, limitText, stepLabel, type 
 const base: BarInput = {
   status: "open", signedIn: true, claimMode: "pick_or_random", selected: [], priceCents: 500, openCount: 19,
   allowance: { remaining: 5, reason: "per_person", limit: 5 }, owe: null, justSent: false,
-  hostName: "Jim", payee: "@Jim-Roberts-36", closedDaysAgo: null,
+  hostName: "Jim", payee: "@Jim-Roberts-36", closedDaysAgo: null, viewerIsHost: false,
 };
 
 describe("claimBar (design §5.4 table)", () => {
@@ -106,5 +106,14 @@ describe("barShown", () => {
     expect(barShown({ ...idle, stepper: { max: 3, action: "random" } })).toBe(true);
     expect(barShown({ kind: "result" })).toBe(true);
     expect(barShown({ kind: "message", text: "Every line is taken. Waiting on payments." })).toBe(true);
+  });
+});
+
+describe("the host on their own break", () => {
+  it("is told what to do, not about themselves", () => {
+    const host = { ...base, viewerIsHost: true };
+    expect(claimBar({ ...host, status: "filled" })).toEqual({ kind: "message", text: "Closed. Every line is paid. Run the draw from Host tools." });
+    expect(claimBar({ ...host, status: "filled", closedDaysAgo: 4 })).toEqual({ kind: "message", text: "Closed 4 days ago, not drawn yet. Run the draw from Host tools." });
+    expect(claimBar({ ...host, status: "drawing" })).toEqual({ kind: "message", text: "You started the draw. The result is in about a minute." });
   });
 });

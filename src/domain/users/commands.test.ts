@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser } from "../../../tests/helpers/fixtures";
-import { completeOnboarding, normalizeHandle, TERMS_VERSION } from "./commands";
+import { cleanPaymentName, completeOnboarding, nameLocked, normalizeHandle, TERMS_VERSION, updateProfile } from "./commands";
 import { users, legalAcceptances, events } from "@/db/schema";
 import { InvalidInput } from "@/domain/errors";
 
@@ -56,5 +56,77 @@ describe("completeOnboarding", () => {
       await tx.update(users).set({ handle: null }).where(sql`${users.id} = ${u.id}`);
       await expect(completeOnboarding(tx, caller(u.id), { handle: "TAKEN1", displayName: "x", ageConfirmed: true, acceptedTerms: true })).rejects.toThrow(/taken/);
     });
+  });
+});
+
+const onboarded = (id: string) => ({ id, role: "member" as const, onboarded: true, banned: false });
+
+describe("payment name", () => {
+  it("is cleaned: trimmed, inner spaces collapsed, blank is none, at most 60 characters", () => {
+    expect(cleanPaymentName("  John   Smith ")).toBe("John Smith");
+    expect(cleanPaymentName("   ")).toBeNull();
+    expect(cleanPaymentName(undefined)).toBeNull();
+    expect(cleanPaymentName("Ｊｏｈｎ")).toBe("John");
+    expect(() => cleanPaymentName("x".repeat(61))).toThrow(/at most 60/);
+  });
+  it("is stored by onboarding when given", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      await tx.update(users).set({ handle: null, displayName: null, ageConfirmedAt: null }).where(sql`${users.id} = ${u.id}`);
+      await completeOnboarding(tx, caller(u.id), { handle: `p${u.handle}`.slice(0, 20), displayName: "Pat", ageConfirmed: true, acceptedTerms: true, paymentName: " Patricia  Lee " });
+      const [row] = await tx.select().from(users).where(sql`${users.id} = ${u.id}`);
+      expect(row.paymentName).toBe("Patricia Lee");
+    });
+  });
+  it("is refused by the database above 60 characters", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      // Drizzle wraps the driver error; the constraint name is on `.cause`. Last statement: the failure aborts the transaction.
+      const err = await tx.execute(sql`update users set payment_name = ${"x".repeat(61)} where id = ${u.id}`).catch((e: unknown) => e);
+      expect(String((err as { cause?: unknown })?.cause ?? err)).toMatch(/users_payment_name_chk/);
+    });
+  });
+});
+
+describe("completeOnboarding, half set up", () => {
+  it("finishes an account that has a handle but no display name or age confirmation", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      await tx.update(users).set({ displayName: null, ageConfirmedAt: null }).where(sql`${users.id} = ${u.id}`);
+      await completeOnboarding(tx, caller(u.id), { handle: u.handle, displayName: "Half Done", ageConfirmed: true, acceptedTerms: true });
+      const [row] = await tx.select().from(users).where(sql`${users.id} = ${u.id}`);
+      expect(row).toMatchObject({ handle: u.handle, displayName: "Half Done" });
+      expect(row.ageConfirmedAt).not.toBeNull();
+      expect(row.paymentName).toBeNull();
+    });
+  });
+});
+
+describe("updateProfile", () => {
+  it("changes the display name and payment name, logs what changed, and is a no-op when nothing did", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      expect(await updateProfile(tx, onboarded(u.id), { displayName: "Dave R", paymentName: "David Roberts" })).toEqual({ changed: ["displayName", "paymentName"] });
+      const [row] = await tx.select().from(users).where(sql`${users.id} = ${u.id}`);
+      expect(row).toMatchObject({ displayName: "Dave R", paymentName: "David Roberts" });
+      expect(row.nameChangedAt).not.toBeNull();
+      expect(await updateProfile(tx, onboarded(u.id), { displayName: "Dave R", paymentName: " David  Roberts" })).toEqual({ changed: [] });
+      const evs = await tx.select().from(events).where(sql`${events.actorId} = ${u.id} and ${events.type} = 'user.profile_updated'`);
+      expect(evs.map((e) => e.payload)).toEqual([{ changed: ["displayName", "paymentName"] }]);
+    });
+  });
+  it("locks the display name 30 days after sign-up but keeps the payment name editable", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      await tx.execute(sql`update users set created_at = now() - interval '31 days' where id = ${u.id}`);
+      await expect(updateProfile(tx, onboarded(u.id), { displayName: "New Name", paymentName: "" })).rejects.toThrow(/locked 30 days/);
+      expect(await updateProfile(tx, onboarded(u.id), { displayName: u.handle, paymentName: "Pat Lee" })).toEqual({ changed: ["paymentName"] });
+      await expect(updateProfile(tx, onboarded(u.id), { displayName: "", paymentName: "" })).rejects.toBeInstanceOf(InvalidInput);
+    });
+  });
+  it("tells when a name is locked", () => {
+    const now = new Date("2026-10-14T12:00:00Z");
+    expect(nameLocked(new Date("2026-09-14T11:00:00Z"), now)).toBe(true);
+    expect(nameLocked(new Date("2026-09-15T12:00:00Z"), now)).toBe(false);
   });
 });

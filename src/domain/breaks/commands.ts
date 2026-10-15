@@ -8,6 +8,7 @@ import type { Caller } from "@/domain/types";
 import { commitment } from "@/crypto/commit";
 import { newSecret, encryptSecret } from "@/crypto/secrets";
 import { validateDraftInput, validateDraftForOpen, isClaimMode, type ClaimMode } from "./rules";
+import { hostPaymentHandles } from "./queries";
 
 export type CreateDraftInput = {
   title: string; description?: string; lineCount: number; linePriceCents: number;
@@ -33,7 +34,10 @@ export function defaultPaymentInstructions(h: Handles): string {
   return parts.length ? [...parts, "Leave the note blank."].join(" ") : "";
 }
 
-/** Upserts host_profiles.payment_handles; bumps payment_handles_changed_at only when the handles actually changed. */
+/**
+ * Upserts host_profiles.payment_handles; when the handles actually changed, bumps payment_handles_changed_at and logs
+ * `host.payment_handles_changed` (a trust signal, spec §11). Only ever called for the caller's own profile.
+ */
 async function savePaymentHandles(tx: Tx, userId: string, h: Handles): Promise<void> {
   const [cur] = await tx.select({ paymentHandles: hostProfiles.paymentHandles }).from(hostProfiles).where(eq(hostProfiles.userId, userId)).for("update");
   const prev: Handles = cur?.paymentHandles ?? {};
@@ -41,6 +45,22 @@ async function savePaymentHandles(tx: Tx, userId: string, h: Handles): Promise<v
   if (same) return;
   await tx.insert(hostProfiles).values({ userId, paymentHandles: h, paymentHandlesChangedAt: new Date() })
     .onConflictDoUpdate({ target: hostProfiles.userId, set: { paymentHandles: h, paymentHandlesChangedAt: new Date() } });
+  await appendEvent(tx, { actorId: userId, type: "host.payment_handles_changed", payload: { from: prev, to: h } });
+}
+
+/** Rank-1 items (several make a choice) and rank-2 items (blank names skipped), each with its prize row. */
+async function insertPrizes(tx: Tx, breakId: string, input: Pick<CreateDraftInput, "items" | "secondPlace">): Promise<void> {
+  for (const item of input.items) {
+    const [it] = await tx.insert(breakItems).values({
+      breakId, name: item.name.trim(), variantSchema: item.variantSchema ?? null, expectedShipAt: item.expectedShipAt ?? null,
+    }).returning({ id: breakItems.id });
+    await tx.insert(prizes).values({ breakId, rank: 1, itemId: it.id });
+  }
+  for (const item of input.secondPlace ?? []) {
+    if (!item.name.trim()) continue;
+    const [it] = await tx.insert(breakItems).values({ breakId, name: item.name.trim() }).returning({ id: breakItems.id });
+    await tx.insert(prizes).values({ breakId, rank: 2, itemId: it.id });
+  }
 }
 
 export async function createDraft(tx: Tx, caller: Caller, input: CreateDraftInput): Promise<{ breakId: string }> {
@@ -61,18 +81,48 @@ export async function createDraft(tx: Tx, caller: Caller, input: CreateDraftInpu
     paymentWindowHours: input.paymentWindowHours ?? 24, maxLinesPerUser: input.maxLinesPerUser ?? null,
     claimMode, allowRandomClaims: claimMode === "pick_or_random", paymentInstructions,
   }).returning({ id: breaks.id });
-  for (const item of input.items) {
-    const [it] = await tx.insert(breakItems).values({
-      breakId: b.id, name: item.name.trim(), variantSchema: item.variantSchema ?? null, expectedShipAt: item.expectedShipAt ?? null,
-    }).returning({ id: breakItems.id });
-    await tx.insert(prizes).values({ breakId: b.id, rank: 1, itemId: it.id });
-  }
-  for (const item of input.secondPlace ?? []) {
-    if (!item.name.trim()) continue;
-    const [it] = await tx.insert(breakItems).values({ breakId: b.id, name: item.name.trim() }).returning({ id: breakItems.id });
-    await tx.insert(prizes).values({ breakId: b.id, rank: 2, itemId: it.id });
-  }
+  await insertPrizes(tx, b.id, input);
   await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.created", payload: { claimMode } });
+  return { breakId: b.id };
+}
+
+/**
+ * Design §5.6: drafts can be edited, by their host (or an admin) only. Replaces the settings and every prize in one
+ * transaction and logs `break.updated`. When the host edits, supplied payment handles are saved to their profile, as
+ * createDraft does. An admin never writes the host's profile: blank instructions are built from the handles supplied,
+ * or from the host's stored ones when the form left them blank.
+ */
+export async function updateDraft(tx: Tx, caller: Caller, breakId: string, input: CreateDraftInput): Promise<{ breakId: string }> {
+  assertOnboarded(caller);
+  const b = await assertHostOf(tx, caller, breakId); // locks the break row first
+  if (b.status !== "draft") throw new NotOpen(b.status);
+  validateDraftInput(input);
+  const claimMode = input.claimMode ?? "pick_or_random";
+  if (!isClaimMode(claimMode)) throw new InvalidInput("Choose how buyers get lines");
+  let paymentInstructions = input.paymentInstructions?.trim() ?? "";
+  if (caller.id === b.hostId) {
+    if (input.paymentHandles) {
+      const handles = cleanHandles(input.paymentHandles);
+      await savePaymentHandles(tx, b.hostId, handles);
+      if (!paymentInstructions) paymentInstructions = defaultPaymentInstructions(handles);
+    }
+  } else if (!paymentInstructions) {
+    // An admin editing someone else's draft never writes the host's profile: build the instructions from the handles
+    // supplied, or from the host's stored ones when the form left them blank, so a blank form erases nothing.
+    const supplied = cleanHandles(input.paymentHandles ?? {});
+    const handles = supplied.venmo || supplied.paypal ? supplied : await hostPaymentHandles(tx, b.hostId);
+    paymentInstructions = defaultPaymentInstructions(handles);
+  }
+  await tx.update(breaks).set({
+    title: input.title.trim(), description: input.description ?? "", lineCount: input.lineCount, linePriceCents: input.linePriceCents,
+    paymentWindowHours: input.paymentWindowHours ?? 24, maxLinesPerUser: input.maxLinesPerUser ?? null,
+    claimMode, allowRandomClaims: claimMode === "pick_or_random", paymentInstructions,
+  }).where(eq(breaks.id, b.id));
+  // Prizes reference items: delete them first. A draft has no paid line, so the items guard allows both.
+  await tx.delete(prizes).where(eq(prizes.breakId, b.id));
+  await tx.delete(breakItems).where(eq(breakItems.breakId, b.id));
+  await insertPrizes(tx, b.id, input);
+  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.updated", payload: { claimMode, lineCount: input.lineCount, linePriceCents: input.linePriceCents } });
   return { breakId: b.id };
 }
 

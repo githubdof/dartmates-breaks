@@ -15,7 +15,10 @@ type Props = {
   expanded: boolean;
   bonusUsed: number;
   bonusMax: number;
-  onToggle: () => void;
+  /** Expands the row (per-line marking, Release, bonus). Without it the name is plain text: the merged ledger. */
+  onToggle?: () => void;
+  /** The merged "waiting on you" ledger names each row's break above it (design §5.5). */
+  title?: string;
   onPaid: () => void;
   onUndo: () => void;
   onMarkLine: (n: number) => void;
@@ -48,12 +51,22 @@ export function LedgerRow(p: Props) {
 
   return (
     <li data-testid="ledger-row" data-status={r.status} className="border-b border-wire bg-card">
+      {p.title && <p className="truncate px-4 pt-2 text-small text-ink-2">{p.title}</p>}
       <div className={`flex min-h-14 gap-3 px-4 py-2 ${LEDGER_COLS}`}>
         <div className="min-w-0 flex-1 sm:contents">
-          <button type="button" onClick={p.onToggle} aria-expanded={p.expanded} className="flex min-h-11 w-full min-w-0 items-baseline gap-2 text-left">
-            <span className="truncate font-semibold">{name}</span>
-            {r.handle && r.displayName && <span className="truncate text-small text-ink-2">@{r.handle}</span>}
-          </button>
+          {p.onToggle ? (
+            <button type="button" onClick={p.onToggle} aria-expanded={p.expanded} className="flex min-h-11 w-full min-w-0 items-baseline gap-2 text-left">
+              <span className="truncate font-semibold">{name}</span>
+              {r.handle && r.displayName && <span className="truncate text-small text-ink-2">@{r.handle}</span>}
+              {r.paymentName && <span className="truncate text-small text-ink-2" data-testid="pays-as">pays as {r.paymentName}</span>}
+            </button>
+          ) : (
+            <p className="flex min-h-11 w-full min-w-0 items-baseline gap-2">
+              <span className="truncate font-semibold">{name}</span>
+              {r.handle && r.displayName && <span className="truncate text-small text-ink-2">@{r.handle}</span>}
+              {r.paymentName && <span className="truncate text-small text-ink-2" data-testid="pays-as">pays as {r.paymentName}</span>}
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2 text-small sm:contents">
             <MiniCells cells={cells} />
             <span className="flex items-center gap-2 text-small">
@@ -81,7 +94,7 @@ export function LedgerRow(p: Props) {
         </div>
       </div>
 
-      {p.expanded && (
+      {p.expanded && p.onToggle && (
         <div className="space-y-3 border-t border-wire-2 px-4 py-3">
           {p.actionable ? (
             <>

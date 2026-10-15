@@ -5,7 +5,7 @@ import { joinAnd, plural } from "@/lib/list";
 
 /** One buyer as the host ledger shows it; dates already turned into strings on the server. */
 export type LedgerRowView = {
-  ownerId: string; handle: string | null; displayName: string | null;
+  ownerId: string; handle: string | null; displayName: string | null; paymentName: string | null;
   numbers: number[]; unpaid: number[]; sent: number[]; overdue: number[]; paid: number[]; bonus: number[];
   owedCents: number; status: BuyerStatus; lateText: string | null;
 };
@@ -26,7 +26,7 @@ export function matchesQuery(r: LedgerRowView, q: string): boolean {
   if (!s) return true;
   const money = s.replace(/^\$/, "").replace(/,/g, "");
   if (/^\d+(\.\d{1,2})?$/.test(money) && Math.round(Number(money) * 100) === r.owedCents) return true;
-  return [r.handle, r.displayName].some((v) => v?.toLowerCase().includes(s) ?? false);
+  return [r.handle, r.displayName, r.paymentName].some((v) => v?.toLowerCase().includes(s) ?? false);
 }
 
 export const freezeOrder = (rows: readonly LedgerRowView[]) => rows.map((r) => r.ownerId);
@@ -82,10 +82,16 @@ export function paidToast(r: Pick<LedgerRowView, "handle" | "displayName">, numb
   return `Marked ${who(r)} paid (${numbers.length} ${plural(numbers.length, "line", "lines")}, ${formatMoney(cents)}).`;
 }
 
-export function releaseConfirm(r: Pick<LedgerRowView, "handle" | "displayName" | "sent">, numbers: readonly number[]): { text: string; confirm: string; warning: string | null } {
+export function releaseConfirm(r: Pick<LedgerRowView, "handle" | "displayName" | "sent" | "numbers" | "bonus">, numbers: readonly number[]): { text: string; confirm: string; warning: string | null } {
   const sentAmong = r.sent.filter((n) => numbers.includes(n));
+  // Releasing every numbered line the buyer holds takes their bonus lines too (recorded ruling 6): say so.
+  const numbered = r.numbers.filter((n) => !r.bonus.includes(n));
+  const bonusGoes = r.bonus.length > 0 && numbered.every((n) => numbers.includes(n)) ? [...r.bonus].sort((a, b) => a - b) : [];
+  const bonus = bonusGoes.length === 0 ? ""
+    : bonusGoes.length === 1 ? ` Their bonus line ${bonusGoes[0]} goes too.`
+    : ` Their bonus lines ${joinAnd(bonusGoes)} go too.`;
   return {
-    text: `Release ${linesPhrase(numbers)} from ${who(r)}? ${numbers.length === 1 ? "It reopens" : "They reopen"} now.`,
+    text: `Release ${linesPhrase(numbers)} from ${who(r)}? ${numbers.length === 1 ? "It reopens" : "They reopen"} now.${bonus}`,
     confirm: `Release ${numbers.length} ${plural(numbers.length, "line", "lines")}`,
     warning: sentAmong.length ? `${who(r)} marked ${linesPhrase(sentAmong)} as sent. Check your payments before releasing.` : null,
   };
@@ -110,4 +116,15 @@ export function rowCells(r: LedgerRowView): CellData[] {
 }
 
 /** The running-draw wait in the ledger's bottom action (design §5.4). */
-export const drawingText = (hostName: string) => `${hostName} started the draw. The result is in about a minute.`;
+export const drawingText = (hostName: string, self = false) =>
+  `${self ? "You" : hostName} started the draw. The result is in about a minute.`;
+
+/** One row of the merged "waiting on you" ledger (design §5.5): a buyer's sent lines in one break, with its title. */
+export type WaitingView = { key: string; breakId: string; breakTitle: string; row: LedgerRowView };
+
+/** The row as it reads once its unpaid lines are marked paid: kept in place, shown "Paid" (rows never move). */
+export function markedPaid(r: LedgerRowView): LedgerRowView {
+  return {
+    ...r, unpaid: [], sent: [], overdue: [], paid: [...r.paid, ...r.unpaid].sort((a, b) => a - b), owedCents: 0, status: "paid", lateText: null,
+  };
+}

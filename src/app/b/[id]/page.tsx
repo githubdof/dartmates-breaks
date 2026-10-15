@@ -1,13 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { db } from "@/db/client";
-import { getBreakPage, hostTrust } from "@/domain/breaks/queries";
-import { shapeGrid, canViewBreak, isHostView } from "@/domain/breaks/grid";
+import { shapeGrid } from "@/domain/breaks/grid";
 import { bonusAllowance } from "@/domain/breaks/rules";
-import { ledgerByBuyer, globalUnpaidCount } from "@/domain/lines/queries";
-import { getDrawResult } from "@/domain/draws/queries";
-import { getCaller } from "@/auth/session";
 import { env } from "@/lib/env";
 import { isUuid } from "@/lib/is-uuid";
 import { formatMoney } from "@/lib/money";
@@ -18,57 +13,57 @@ import { GridPreview } from "@/components/grid/grid-preview";
 import { Legend } from "@/components/legend";
 import { StatusPill } from "@/components/status-pill";
 import { CopyButton } from "@/components/copy-button";
+import { ButtonLink } from "@/components/button";
 import type { BreakStatus } from "@/components/status-word";
 import { DetailsFold } from "@/components/break/details-fold";
 import { BreakInteractive } from "@/components/break/break-interactive";
-import { commitmentShort } from "@/components/break/pay-copy";
+import { bonusGoesWith, commitmentShort, payeeFor } from "@/components/break/pay-copy";
 import { onboardingHref, parsePick } from "@/components/break/selection";
 import { closesText, hostLabel, leftText, perPersonText, pickingText, prizeLines, smallLineText, trustText, youHaveText } from "@/components/break/frame-copy";
 import { HostTools } from "@/components/ledger/host-tools";
 import type { LedgerRowView } from "@/components/ledger/ledger-view";
+import { loadBreak } from "./load";
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ pick?: string | string[] }> };
 
 export async function generateMetadata({ params }: Pick<Props, "params">): Promise<Metadata> {
   const { id } = await params;
   if (!isUuid(id)) return {};
-  const page = await db.transaction((tx) => getBreakPage(tx, id));
-  if (!page || page.break.status === "draft") return {};
-  return { title: page.break.title, description: `${page.break.lineCount} lines at ${formatMoney(page.break.linePriceCents)}.` };
+  const { view } = await loadBreak(id);
+  if (!view || view.page.break.status === "draft") return {};
+  const b = view.page.break;
+  const description = `${b.lineCount} lines at ${formatMoney(b.linePriceCents)}.`;
+  const url = `${env().APP_URL}/b/${id}`;
+  const image = { url: `${url}/og`, width: 1200, height: 630, alt: `${b.title}, the board as it stands` };
+  return {
+    title: b.title,
+    description,
+    openGraph: { title: b.title, description, url, type: "website", siteName: "Breaks", images: [image] },
+    twitter: { card: "summary_large_image", title: b.title, description, images: [image.url] },
+  };
 }
 
 export default async function BreakPage({ params, searchParams }: Props) {
   const { id } = await params;
   if (!isUuid(id)) notFound();
-  const page = await db.transaction((tx) => getBreakPage(tx, id));
-  if (!page) notFound();
+  // One transaction for everything below, shared with generateMetadata (React cache).
+  const { view, caller, now } = await loadBreak(id);
+  // A missing break and someone else's draft look the same: 404.
+  if (!view) notFound();
+  const { page, trust, globalUnpaid, top, ledger } = view;
   const b = page.break;
-  const caller = await getCaller();
-  // Drafts 404 for everyone but their host (and admins) before any further query.
-  if (!canViewBreak(b.status, isHostView(b.hostId, caller))) notFound();
   const { pick } = await searchParams;
   const initialPick = parsePick(pick, b.lineCount);
   if (caller && !caller.onboarded && initialPick.length > 0) redirect(onboardingHref(id, initialPick));
-  const now = new Date();
   const zone = await viewerZone();
-  const { trust, globalUnpaid } = await db.transaction(async (tx) => ({
-    trust: await hostTrust(tx, page.host.id),
-    globalUnpaid: caller ? await globalUnpaidCount(tx, caller.id) : 0,
-  }));
   const grid = shapeGrid(page, caller ? { id: caller.id, role: caller.role, globalUnpaid } : null, now);
 
   const status = b.status as BreakStatus;
   const hostName = hostLabel(page.host);
   const hostRef = page.host.handle ? `@${page.host.handle}` : hostName;
   const handles = page.host.paymentHandles;
-  const payee = handles.venmo ?? (handles.paypal ? `paypal.me/${handles.paypal}` : hostName);
+  const payee = payeeFor(handles, hostName);
   const url = `${env().APP_URL}/b/${id}`;
-  let top: { line: number; handle: string | null } | null = null;
-  if (status === "drawn") {
-    const res = await db.transaction((tx) => getDrawResult(tx, id));
-    const line = res?.ranking[0];
-    if (res && line !== undefined) top = { line, handle: res.entries.find((e) => e.number === line)?.handleAtDraw || null };
-  }
   const share = pageShare({ status, title: b.title, url, lineCount: b.lineCount, priceCents: b.linePriceCents, openCount: grid.counts.open, top });
   // The deadline goes down as ISO plus a fallback in the viewer's zone (tz cookie) or labelled New York time.
   const payBy = grid.viewer?.payBy ?? null;
@@ -77,13 +72,13 @@ export default async function BreakPage({ params, searchParams }: Props) {
         numbers: grid.viewer.unsent, cents: grid.viewer.owedCents,
         payByIso: payBy ? payBy.toISOString() : null,
         payByFallback: payBy ? formatDeadline(payBy, now, zone.tz, zone.labelled) : null,
+        late: payBy !== null && payBy.getTime() < now.getTime(),
+        bonusLost: bonusGoesWith(grid.cells.filter((c) => c.mine), grid.viewer.unsent),
       }
     : null;
   const youHave = grid.viewer ? youHaveText(grid.viewer.held) : null;
-  // Rows arrive in the ledger order (ledgerByBuyer sorts with compareLedger); the sheet freezes that order.
-  const ledger = grid.hostView ? await db.transaction((tx) => ledgerByBuyer(tx, id, now)) : [];
   const ledgerRows: LedgerRowView[] = ledger.map((r) => ({
-    ownerId: r.ownerId, handle: r.handle, displayName: r.displayName,
+    ownerId: r.ownerId, handle: r.handle, displayName: r.displayName, paymentName: r.paymentName,
     numbers: r.numbers, unpaid: r.unpaid, sent: r.sent, overdue: r.overdue, paid: r.paid, bonus: r.bonus,
     owedCents: r.owedCents, status: r.status, lateText: r.overdueSince ? formatLate(r.overdueSince, now) : null,
   }));
@@ -112,6 +107,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
         title={b.title}
         shareUrl={url}
         smallLine={smallLineText(status, b.paymentWindowHours, hostRef, trustText(trust))}
+        hostHref={page.host.handle ? `/h/${page.host.handle}` : null}
         cells={grid.cells}
         counts={grid.counts}
         signedIn={!!caller}
@@ -123,6 +119,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
         instructions={b.paymentInstructions}
         commitment={commitmentShort(b.seedCommitment)}
         closedDaysAgo={status === "filled" && b.filledAt ? daysSince(b.filledAt, now) : null}
+        viewerIsHost={!!caller && caller.id === b.hostId}
         initialPick={initialPick}
       >
         <div className="mt-3"><Legend /></div>
@@ -132,6 +129,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
         )}
         <div className="mt-4 flex flex-wrap gap-2">
           {share && <CopyButton value={share} label="Share" copiedLabel="Copied" testId="share" />}
+          {grid.hostView && status === "draft" && <ButtonLink href={`/host/${id}/edit`} variant="secondary" data-testid="edit-draft">Edit draft</ButtonLink>}
           {grid.hostView && (
             <HostTools
               breakId={id}
@@ -140,6 +138,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
               counts={{ paid: grid.counts.paid, taken: grid.counts.taken + grid.counts.sent, total: b.lineCount }}
               bonus={{ used: grid.cells.filter((c) => c.bonus).length, max: bonusAllowance(b.lineCount) }}
               hostName={hostName}
+              selfIsHost={!!caller && caller.id === b.hostId}
             />
           )}
         </div>

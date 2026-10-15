@@ -79,6 +79,11 @@ describe("shapeGrid", () => {
     expect(allowanceFor({ maxLinesPerUser: 2, lineCount: 6, heldNumbered: 1, isHost: false, globalUnpaid: 0 })).toEqual({ reason: "per_person", limit: 2, remaining: 1 });
     expect(shapeGrid(page(lines, { maxLinesPerUser: 2 }), v(BOB), now).allowance.remaining).toBe(1);
   });
+  it("an owned line keeps its owner's state even if it still carries a mini reservation", () => {
+    const m = shapeGrid(page([held(1, ALICE, "alice", { reservedForMiniId: MINI, paidAt: hoursAgo(1) }), open(2)]), null, now);
+    expect(m.cells[0]).toMatchObject({ number: 1, state: "paid", holder: null, overdue: false });
+    expect(m.counts).toMatchObject({ paid: 1, reserved: 0, open: 1 });
+  });
 });
 
 describe("canViewBreak", () => {

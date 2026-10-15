@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, lineRows } from "../../../tests/helpers/fixtures";
-import { createDraft, openBreak } from "./commands";
+import { createDraft, openBreak, updateDraft } from "./commands";
 import { getBreakPage } from "./queries";
 import { breaks, breakSecrets, events, hostProfiles } from "@/db/schema";
 import { InvalidInput, NotAuthorized, NotOpen } from "@/domain/errors";
@@ -116,6 +116,101 @@ describe("openBreak", () => {
       const { breakId } = await createDraft(tx, asHost(host), input);
       await tx.execute(sql`update users set listing_paused_at = now() where id = ${host.id}`);
       await expect(openBreak(tx, asHost(host), breakId)).rejects.toBeInstanceOf(NotAuthorized);
+    });
+  });
+});
+
+describe("updateDraft", () => {
+  it("replaces a draft's settings and prizes and logs break.updated", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, secondPlace: [{ name: "Flight pack" }] });
+      await updateDraft(tx, asHost(host), breakId, {
+        title: "Target Chronos v2", lineCount: 20, linePriceCents: 500, claimMode: "straight",
+        items: [{ name: "Chronos 26g" }], secondPlace: [], paymentHandles: { venmo: "Jim-R" },
+      });
+      const page = (await getBreakPage(tx, breakId))!;
+      expect(page.break).toMatchObject({
+        title: "Target Chronos v2", lineCount: 20, linePriceCents: 500, claimMode: "straight", allowRandomClaims: false,
+        status: "draft", paymentInstructions: "Venmo @Jim-R. Leave the note blank.",
+      });
+      expect(page.items.map((i) => i.name)).toEqual(["Chronos 26g"]);
+      expect(page.prizes.map((p) => p.rank)).toEqual([1]);
+      const evs = await tx.select().from(events).where(sql`${events.breakId} = ${breakId} and ${events.type} = 'break.updated'`);
+      expect(evs).toHaveLength(1);
+    });
+  });
+  it("refuses anyone but the host and changes nothing", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const otherHost = await makeUser(tx, { role: "host" }); const member = await makeUser(tx);
+      const { breakId } = await createDraft(tx, asHost(host), input);
+      await expect(updateDraft(tx, asMember(member), breakId, { ...input, title: "Hijacked" })).rejects.toBeInstanceOf(NotAuthorized);
+      await expect(updateDraft(tx, asHost(otherHost), breakId, { ...input, title: "Hijacked" })).rejects.toBeInstanceOf(NotAuthorized);
+      expect((await getBreakPage(tx, breakId))!.break.title).toBe("Target Chronos");
+    });
+  });
+  it("refuses a break that is already open and leaves its prizes alone", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), input);
+      await openBreak(tx, asHost(host), breakId);
+      await expect(updateDraft(tx, asHost(host), breakId, { ...input, items: [{ name: "Other" }] })).rejects.toBeInstanceOf(NotOpen);
+      expect((await getBreakPage(tx, breakId))!.items.map((i) => i.name).sort()).toEqual(["Chronos 22g", "Chronos 24g"]);
+    });
+  });
+  it("lets an admin edit a host's draft without touching the host's payment handles", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const admin = await makeUser(tx, { role: "admin" });
+      const asAdmin: Caller = { id: admin.id, role: "admin", onboarded: true, banned: false };
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, paymentHandles: { venmo: "Jim" } });
+      const [before] = await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${host.id}`);
+      // A blank handles form: the instructions come from the host's stored handles, and nothing is erased.
+      await updateDraft(tx, asAdmin, breakId, { ...input, title: "Fixed by admin", paymentHandles: { venmo: "", paypal: "" } });
+      let page = (await getBreakPage(tx, breakId))!;
+      expect(page.break).toMatchObject({ title: "Fixed by admin", paymentInstructions: "Venmo @Jim. Leave the note blank." });
+      // Supplied handles shape the instructions but are not saved to the host's profile.
+      await updateDraft(tx, asAdmin, breakId, { ...input, paymentHandles: { paypal: "Other" } });
+      page = (await getBreakPage(tx, breakId))!;
+      expect(page.break.paymentInstructions).toBe("PayPal paypal.me/Other. Leave the note blank.");
+      const [after] = await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${host.id}`);
+      expect(after.paymentHandles).toEqual({ venmo: "@Jim" });
+      expect(after.paymentHandlesChangedAt).toEqual(before.paymentHandlesChangedAt);
+      const [adminProfile] = await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${admin.id}`);
+      expect(adminProfile).toBeUndefined();
+    });
+  });
+  it("saves the host's own payment handles when the host edits", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, paymentHandles: { venmo: "Jim" } });
+      await updateDraft(tx, asHost(host), breakId, { ...input, paymentHandles: { venmo: "Jim2", paypal: "JimR" } });
+      const [p] = await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${host.id}`);
+      expect(p.paymentHandles).toEqual({ venmo: "@Jim2", paypal: "JimR" });
+      const [ev] = await tx.select().from(events).where(sql`${events.breakId} = ${breakId} and ${events.type} = 'break.updated'`);
+      expect(ev.payload).toMatchObject({ lineCount: 12, linePriceCents: 2000 });
+    });
+  });
+  it("logs host.payment_handles_changed with from and to only when the handles change", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, paymentHandles: { venmo: "Jim" } });
+      await updateDraft(tx, asHost(host), breakId, { ...input, paymentHandles: { venmo: "Jim" } }); // same: no event
+      await updateDraft(tx, asHost(host), breakId, { ...input, paymentHandles: { venmo: "Jim2", paypal: "JimR" } });
+      const evs = await tx.select().from(events).where(sql`${events.actorId} = ${host.id} and ${events.type} = 'host.payment_handles_changed'`);
+      // One transaction shares one now(): compare as a set, with the count pinning "no event for the same handles".
+      expect(evs).toHaveLength(2);
+      expect(evs.map((e) => e.payload)).toEqual(expect.arrayContaining([
+        { from: {}, to: { venmo: "@Jim" } },
+        { from: { venmo: "@Jim" }, to: { venmo: "@Jim2", paypal: "JimR" } },
+      ]));
+    });
+  });
+  it("validates like createDraft", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), input);
+      await expect(updateDraft(tx, asHost(host), breakId, { ...input, lineCount: 51 })).rejects.toBeInstanceOf(InvalidInput);
+      await expect(updateDraft(tx, asHost(host), breakId, { ...input, claimMode: "random_only" as never })).rejects.toBeInstanceOf(InvalidInput);
     });
   });
 });

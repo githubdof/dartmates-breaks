@@ -1,6 +1,6 @@
 import { sql, inArray } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { breaks, lines } from "@/db/schema";
+import { breaks, events, lines } from "@/db/schema";
 import { lockBreak, assertHostOf, assertOnboarded } from "@/auth/authz";
 import { appendEvent } from "@/domain/events";
 import { CapExceeded, InvalidInput, LineTaken, NotAuthorized, NotOpen, OwnerChanged } from "@/domain/errors";
@@ -19,6 +19,26 @@ function onlyOpen(n: number): LineTaken {
   const e = new LineTaken([]);
   e.message = n === 0 ? "Every line is taken." : `Only ${n} ${n === 1 ? "line is" : "lines are"} open.`;
   return e;
+}
+
+/** "Take the last 3" pressed after lines moved: the bar's count no longer matches what is open. */
+function openChanged(): LineTaken {
+  const e = new LineTaken([]);
+  e.message = "The open lines just changed. Check the board and try again.";
+  return e;
+}
+
+/** A bonus line goes with holding a numbered line (spec §7): once a buyer holds none in the break, their bonus lines go too. */
+async function dropOrphanBonus(tx: Tx, b: BreakRow, ownerId: string, actorId: string): Promise<number[]> {
+  const [held] = await tx.select({ n: sql<number>`count(*)::int` }).from(lines)
+    .where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} = ${ownerId} and ${lines.isBonus} = false`);
+  if (held.n > 0) return [];
+  const rows = await tx.execute<{ number: number }>(sql`delete from lines where break_id = ${b.id} and owner_id = ${ownerId} and is_bonus = true returning number`);
+  const numbers = rows.map((r) => r.number).sort((x, y) => x - y);
+  for (const number of numbers) {
+    await appendEvent(tx, { breakId: b.id, actorId, type: "line.bonus_removed", payload: { number, ownerId, reason: "no_numbered_line" } });
+  }
+  return numbers;
 }
 
 /** Claims are main-break only in Plan 1; minis and free draws arrive in Plan 2. */
@@ -127,7 +147,7 @@ export async function claimNext(tx: Tx, caller: Caller, p: { breakId: string; co
   return { got };
 }
 
-export async function claimAllOpen(tx: Tx, caller: Caller, p: { breakId: string; batchId: string; ipHash?: string }): Promise<{ got: number[] }> {
+export async function claimAllOpen(tx: Tx, caller: Caller, p: { breakId: string; batchId: string; expected?: number; ipHash?: string }): Promise<{ got: number[] }> {
   assertOnboarded(caller);
   const b = await lockBreak(tx, p.breakId);
   await lockUser(tx, caller.id); // lock order: break row -> user (advisory xact lock) -> lines
@@ -136,6 +156,8 @@ export async function claimAllOpen(tx: Tx, caller: Caller, p: { breakId: string;
   assertClaimable(b);
   const open = (await tx.select({ number: lines.number }).from(lines).where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} is null and ${lines.reservedForMiniId} is null and ${lines.number} <= ${b.lineCount}`)).map((r) => r.number);
   if (open.length === 0) throw new LineTaken([]);
+  // "Take the last 3" means those three: if lines reopened or went since the bar was drawn, claim nothing and say so.
+  if (p.expected !== undefined && open.length !== p.expected) throw openChanged();
   const isHost = caller.id === b.hostId;
   assertCaps({ requested: open.length, heldByCaller: await heldBy(tx, b.id, caller.id), maxLinesPerUser: b.maxLinesPerUser, isHost, lineCount: b.lineCount, globalUnpaid: await globalUnpaidCount(tx, caller.id) });
   const got = await assign(tx, b, caller, open, p.batchId);
@@ -163,6 +185,7 @@ export async function markSent(tx: Tx, caller: Caller, p: { breakId: string; num
 }
 
 export async function markPaid(tx: Tx, caller: Caller, p: { breakId: string; number: number; expectedOwnerId: string }): Promise<{ filled: boolean }> {
+  assertOnboarded(caller);
   const b = await assertHostOf(tx, caller, p.breakId);
   if (b.status !== "open" && b.status !== "filled") throw new NotOpen(b.status);
   const [cur] = await tx.select().from(lines).where(sql`${lines.breakId} = ${b.id} and ${lines.number} = ${p.number}`);
@@ -174,6 +197,7 @@ export async function markPaid(tx: Tx, caller: Caller, p: { breakId: string; num
 }
 
 export async function unmarkPaid(tx: Tx, caller: Caller, p: { breakId: string; number: number }): Promise<void> {
+  assertOnboarded(caller);
   const b = await assertHostOf(tx, caller, p.breakId);
   if (b.status !== "open" && b.status !== "filled") throw new NotOpen(b.status);
   // Bonus lines are free and always paid: never un-mark them (they would count toward the buyer's unpaid cap).
@@ -195,6 +219,7 @@ export async function releaseLine(tx: Tx, caller: Caller, p: { breakId: string; 
   if (p.reason === "overdue" && !isOverdue(cur, b)) throw new InvalidInput("That claim is not overdue yet");
   await tx.update(lines).set({ ownerId: null, claimedAt: null, sentAt: null, priceCents: null, claimBatchId: null }).where(sql`${lines.breakId} = ${b.id} and ${lines.number} = ${p.number}`);
   await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.released", payload: { number: p.number, reason: p.reason } });
+  await dropOrphanBonus(tx, b, cur.ownerId, caller.id);
 }
 
 /** Caller must already hold the break row lock. */
@@ -236,6 +261,7 @@ export async function releaseForBuyer(tx: Tx, caller: Caller, p: { breakId: stri
   for (const n of numbers) {
     await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.released", payload: { number: n, reason: p.reason } });
   }
+  await dropOrphanBonus(tx, b, p.ownerId, caller.id);
   return { released: numbers };
 }
 
@@ -250,15 +276,26 @@ export async function addBonusLine(tx: Tx, caller: Caller, p: { breakId: string;
   const [held] = await tx.select({ n: sql<number>`count(*)::int` }).from(lines)
     .where(sql`${lines.breakId} = ${b.id} and ${lines.ownerId} = ${p.ownerId} and ${lines.number} <= ${b.lineCount}`);
   if (held.n === 0) throw new InvalidInput("A bonus line goes to someone who holds a line in this break");
-  const [agg] = await tx.select({
-    used: sql<number>`(count(*) filter (where ${lines.isBonus}))::int`,
-    top: sql<number>`coalesce(max(${lines.number}), 0)::int`,
-  }).from(lines).where(sql`${lines.breakId} = ${b.id}`);
+  const [agg] = await tx.select({ used: sql<number>`(count(*) filter (where ${lines.isBonus}))::int` }).from(lines).where(sql`${lines.breakId} = ${b.id}`);
   const max = bonusAllowance(b.lineCount);
   if (agg.used >= max) throw new CapExceeded("bonus lines", max);
-  const number = Math.max(agg.top, b.lineCount) + 1;
+  // Numbered from every bonus line ever added, not the highest one left: a removed bonus line's number is never given again.
+  const [added] = await tx.select({ n: sql<number>`count(*)::int` }).from(events).where(sql`${events.breakId} = ${b.id} and ${events.type} = 'line.bonus_added'`);
+  const number = b.lineCount + added.n + 1;
   const now = new Date();
   await tx.insert(lines).values({ breakId: b.id, number, ownerId: p.ownerId, claimedAt: now, paidAt: now, priceCents: 0, isBonus: true });
   await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.bonus_added", payload: { number, ownerId: p.ownerId } });
   return { number };
+}
+
+/** A buyer gives back unpaid lines (reason `withdrawn`). All or nothing: any refusal throws, and the caller's transaction rolls back. */
+export async function giveBackLines(tx: Tx, caller: Caller, p: { breakId: string; numbers: number[] }): Promise<{ released: number[] }> {
+  for (const number of p.numbers) await releaseLine(tx, caller, { breakId: p.breakId, number, reason: "withdrawn" });
+  return { released: p.numbers };
+}
+
+/** The host un-marks paid lines (the ledger's Undo and per-line un-mark); each logs `line.unpaid`. All or nothing, as above. */
+export async function unmarkPaidLines(tx: Tx, caller: Caller, p: { breakId: string; numbers: number[] }): Promise<void> {
+  assertOnboarded(caller);
+  for (const number of p.numbers) await unmarkPaid(tx, caller, { breakId: p.breakId, number });
 }

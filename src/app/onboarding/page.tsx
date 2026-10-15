@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { OnboardingForm } from "./form";
-import { safeNext } from "@/lib/safe-next";
+import { afterSignIn, safeNext } from "@/lib/safe-next";
 import { getCaller } from "@/auth/session";
 import { getSessionViewer } from "@/auth/viewer";
 import { fromClaim, suggestHandle } from "@/domain/users/suggest-handle";
@@ -15,6 +15,6 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
   // "Already set up" means onboarded (handle, display name and age), the same test the break page uses to send
   // people here; testing the handle alone would loop a half-set-up account between the two pages.
   const caller = await getCaller();
-  if (caller?.onboarded) redirect(nextPath);
+  if (caller?.onboarded) redirect(afterSignIn(nextPath));
   return <OnboardingForm next={nextPath} suggested={suggestHandle(viewer.email)} claiming={fromClaim(nextPath)} />;
 }

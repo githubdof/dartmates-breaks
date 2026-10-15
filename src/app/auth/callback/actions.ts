@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/auth/supabase";
 import { getCaller } from "@/auth/session";
-import { safeNext } from "@/lib/safe-next";
+import { safeNext, signedInTarget } from "@/lib/safe-next";
 
 export async function exchange(form: FormData) {
   const code = String(form.get("code") ?? "");
@@ -18,5 +18,5 @@ export async function exchange(form: FormData) {
   if (error) redirect("/login?error=link");
   const caller = await getCaller();
   if (!caller) redirect("/login?error=link");
-  redirect(caller.onboarded ? next : `/onboarding?next=${encodeURIComponent(next)}`);
+  redirect(signedInTarget(caller.onboarded, next));
 }

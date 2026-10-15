@@ -2,6 +2,7 @@ import { sql, eq, asc, desc, and } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { breaks, breakItems, prizes, lines, users, hostProfiles } from "@/db/schema";
 import type { ClaimMode } from "./rules";
+import { SYSTEM } from "@/domain/types";
 
 export type BreakPage = {
   break: typeof breaks.$inferSelect;
@@ -25,14 +26,6 @@ export async function getBreakPage(tx: Tx, breakId: string): Promise<BreakPage |
   return { break: b, host: { ...host, paymentHandles: host.paymentHandles ?? {} }, items, prizes: prizeRows, lines: lineRows };
 }
 
-export async function listOpenBreaks(tx: Tx, limit = 50) {
-  return tx.select({ id: breaks.id, title: breaks.title, lineCount: breaks.lineCount, linePriceCents: breaks.linePriceCents, status: breaks.status, openedAt: breaks.openedAt,
-    openLines: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.owner_id is null and l.reserved_for_mini_id is null)`,
-    hostHandle: users.handle })
-    .from(breaks).innerJoin(users, eq(users.id, breaks.hostId))
-    .where(sql`${breaks.status} in ('open','filled','drawing')`).orderBy(sql`${breaks.openedAt} desc`).limit(limit);
-}
-
 /** Interim trust figures (the reputation plan replaces them): drawn breaks and member-since. */
 export async function hostTrust(tx: Tx, hostId: string): Promise<{ breaksRun: number; since: Date }> {
   const [r] = await tx.select({
@@ -41,6 +34,9 @@ export async function hostTrust(tx: Tx, hostId: string): Promise<{ breaksRun: nu
   }).from(users).where(eq(users.id, hostId));
   return { breaksRun: r?.breaksRun ?? 0, since: r?.since ?? new Date(0) };
 }
+
+/** Instructions built from handles ("Venmo @x. Leave the note blank.") go stale when a handle changes: forms carry only typed ones. */
+export const isGeneratedInstructions = (s: string): boolean => /^(Venmo \S+\. )?(PayPal paypal\.me\/\S+\. )?Leave the note blank\.$/.test(s.trim());
 
 export type LastBreakDefaults = {
   lineCount: number; linePriceCents: number; paymentWindowHours: number; maxLinesPerUser: number | null;
@@ -54,9 +50,7 @@ export async function lastBreakDefaults(tx: Tx, hostId: string): Promise<LastBre
     maxLinesPerUser: breaks.maxLinesPerUser, claimMode: breaks.claimMode, paymentInstructions: breaks.paymentInstructions,
   }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"))).orderBy(desc(breaks.createdAt), desc(breaks.id)).limit(1);
   if (!r) return null;
-  // Instructions built from handles ("Venmo @x. Leave the note blank.") go stale when a handle changes: carry only typed ones.
-  const generated = /^(Venmo \S+\. )?(PayPal paypal\.me\/\S+\. )?Leave the note blank\.$/.test(r.paymentInstructions.trim());
-  return { ...r, paymentInstructions: generated ? "" : r.paymentInstructions };
+  return { ...r, paymentInstructions: isGeneratedInstructions(r.paymentInstructions) ? "" : r.paymentInstructions };
 }
 
 export async function hostPaymentHandles(tx: Tx, hostId: string): Promise<{ venmo?: string; paypal?: string }> {
@@ -64,13 +58,57 @@ export async function hostPaymentHandles(tx: Tx, hostId: string): Promise<{ venm
   return r?.paymentHandles ?? {};
 }
 
-export type HostBreakRow = { id: string; title: string; status: string; lineCount: number; paid: number; taken: number };
+export type HostBreakRow = { id: string; title: string; status: string; lineCount: number; openedAt: Date | null; paid: number; taken: number };
 
-/** The host's breaks for /host, newest first. Paid and taken (claimed, unpaid) count numbered lines only. */
+/** The host's main breaks for /host, newest first (minis wait for their own UI). Paid and taken count numbered lines only. */
 export async function listHostBreaks(tx: Tx, hostId: string): Promise<HostBreakRow[]> {
   return tx.select({
-    id: breaks.id, title: breaks.title, status: breaks.status, lineCount: breaks.lineCount,
+    id: breaks.id, title: breaks.title, status: breaks.status, lineCount: breaks.lineCount, openedAt: breaks.openedAt,
     paid: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.paid_at is not null and l.number <= ${breaks.lineCount})`,
     taken: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.owner_id is not null and l.paid_at is null and l.number <= ${breaks.lineCount})`,
-  }).from(breaks).where(eq(breaks.hostId, hostId)).orderBy(desc(breaks.createdAt), desc(breaks.id));
+  }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"))).orderBy(desc(breaks.createdAt), desc(breaks.id));
+}
+
+export type HostProfile = { id: string; handle: string; displayName: string | null; since: Date; breaksRun: number; pastCount: number };
+
+/**
+ * /h/{handle} (design §5.9): public figures only. Never email, payment name or payment handles. Null for an unknown
+ * handle, for the SYSTEM user, and for anyone who is not a host and never listed a break (a buyer's or an admin's
+ * handle is not a host profile).
+ */
+export async function hostProfile(tx: Tx, handle: string): Promise<HostProfile | null> {
+  const [u] = await tx.select({ id: users.id, handle: users.handle, displayName: users.displayName, since: users.createdAt, role: users.role })
+    .from(users).where(sql`lower(${users.handle}) = lower(${handle})`);
+  if (!u || !u.handle || u.id === SYSTEM.id) return null;
+  // The id is bound as a parameter, as hostTrust does. Drizzle writes a single-table select's columns unqualified,
+  // so `${users.id}` inside `from breaks b` would render as a bare "id" and Postgres would read it as b.id.
+  const [c] = await tx.select({
+    breaksRun: sql<number>`(select count(*)::int from breaks b where b.host_id = ${u.id}::uuid and b.status = 'drawn')`,
+    pastCount: sql<number>`(select count(*)::int from breaks b where b.host_id = ${u.id}::uuid and b.kind = 'main' and b.status in ('drawn','cancelled'))`,
+    listed: sql<number>`(select count(*)::int from breaks b where b.host_id = ${u.id}::uuid and b.status <> 'draft')`,
+  }).from(users).where(eq(users.id, u.id));
+  if (c.listed === 0 && u.role !== "host") return null;
+  return { id: u.id, handle: u.handle, displayName: u.displayName, since: u.since, breaksRun: c.breaksRun, pastCount: c.pastCount };
+}
+
+export type DraftForEdit = {
+  id: string; hostId: string; status: string; title: string; description: string; lineCount: number; linePriceCents: number;
+  paymentWindowHours: number; maxLinesPerUser: number | null; claimMode: ClaimMode; paymentInstructions: string;
+  topSpot: string[]; secondPlace: string[];
+};
+
+/** A break's editable fields and prize names by rank. The caller decides who may see it (drafts: the host and admins). */
+export async function draftForEdit(tx: Tx, breakId: string): Promise<DraftForEdit | null> {
+  const [b] = await tx.select().from(breaks).where(eq(breaks.id, breakId));
+  if (!b) return null;
+  // Only the prize names: no lines, no holders.
+  const rows = await tx.select({ rank: prizes.rank, name: breakItems.name }).from(prizes)
+    .innerJoin(breakItems, eq(breakItems.id, prizes.itemId)).where(eq(prizes.breakId, breakId))
+    .orderBy(asc(prizes.rank), asc(breakItems.createdAt), asc(breakItems.id));
+  const names = (rank: number) => rows.filter((r) => r.rank === rank).map((r) => r.name);
+  return {
+    id: b.id, hostId: b.hostId, status: b.status, title: b.title, description: b.description, lineCount: b.lineCount, linePriceCents: b.linePriceCents,
+    paymentWindowHours: b.paymentWindowHours, maxLinesPerUser: b.maxLinesPerUser, claimMode: b.claimMode, paymentInstructions: b.paymentInstructions,
+    topSpot: names(1), secondPlace: names(2),
+  };
 }

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createServerSupabase } from "@/auth/supabase";
 import { getCaller } from "@/auth/session";
 import { env } from "@/lib/env";
-import { safeNext } from "@/lib/safe-next";
+import { safeNext, signedInTarget } from "@/lib/safe-next";
 import { sendErrorMessage } from "./messages";
 
 const emailSchema = z.object({ email: z.string().email() });
@@ -22,12 +22,10 @@ const otpSchema = z.object({ email: z.string().email(), token: z.string().regex(
 export async function verifyOtp(_: unknown, form: FormData) {
   const parsed = otpSchema.safeParse({ email: form.get("email"), token: form.get("token") });
   if (!parsed.success) return { error: "Type the 6-digit code from the email." };
-  const next = safeNext(form.get("next"));
   const supabase = await createServerSupabase();
   const { error } = await supabase.auth.verifyOtp({ email: parsed.data.email, token: parsed.data.token, type: "email" });
   if (error) return { error: "That code didn't work. Check it, or ask for a new one." };
   // Same rule as the link flow (auth/callback): new accounts set up first, keeping `next` (and any ?pick=).
   const caller = await getCaller();
-  if (caller && !caller.onboarded) return { redirect: `/onboarding?next=${encodeURIComponent(next)}` };
-  return { redirect: next };
+  return { redirect: signedInTarget(caller ? caller.onboarded : true, form.get("next")) };
 }

@@ -15,6 +15,20 @@
       "when": 1791936871223,
       "tag": "0001_claim_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792003745872,
+      "tag": "0002_payment_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792006190308,
+      "tag": "0003_rate_limits",
+      "breakpoints": true
     }
   ]
 }

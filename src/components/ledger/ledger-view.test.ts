@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  applyOrder, applyView, bonusText, drawingText, freezeView, chipCounts, freezeOrder, markPaidLabel, matchesFilter, matchesQuery, paidToast, releaseConfirm, releaseReason, rowCells, rowStateWord, type LedgerRowView,
+  applyOrder, applyView, bonusText, drawingText, freezeView, chipCounts, freezeOrder, markedPaid, markPaidLabel, matchesFilter, matchesQuery, paidToast, releaseConfirm, releaseReason, rowCells, rowStateWord, type LedgerRowView,
 } from "./ledger-view";
 
 const row = (o: Partial<LedgerRowView> & { ownerId: string }): LedgerRowView => ({
-  handle: null, displayName: null, numbers: [], unpaid: [], sent: [], overdue: [], paid: [], bonus: [], owedCents: 0, status: "paid", lateText: null, ...o,
+  handle: null, displayName: null, paymentName: null, numbers: [], unpaid: [], sent: [], overdue: [], paid: [], bonus: [], owedCents: 0, status: "paid", lateText: null, ...o,
 });
 const alice = row({ ownerId: "a", handle: "alice", displayName: "Alice Smith", numbers: [2, 5], unpaid: [2, 5], sent: [2, 5], owedCents: 1000, status: "sent" });
 const dave = row({ ownerId: "d", handle: "dave", displayName: "Dave", numbers: [4], unpaid: [4], owedCents: 500, status: "unpaid" });
@@ -35,6 +35,12 @@ describe("filters and search", () => {
     expect(matchesQuery(big, "1,250.00")).toBe(true);
     expect(matchesQuery(big, "1250")).toBe(true);
     expect(matchesQuery(big, "1,25")).toBe(false);
+  });
+  it("matches the name a buyer pays with", () => {
+    const pat = row({ ownerId: "p", handle: "pat", displayName: "Pat", paymentName: "Patricia Lee", owedCents: 500, status: "unpaid" });
+    expect(matchesQuery(pat, "patricia")).toBe(true);
+    expect(matchesQuery(pat, "lee")).toBe(true);
+    expect(matchesQuery(dave, "patricia")).toBe(false);
   });
 });
 
@@ -87,6 +93,7 @@ describe("row copy", () => {
   });
   it("says who started the draw (design §5.4)", () => {
     expect(drawingText("Dave")).toBe("Dave started the draw. The result is in about a minute.");
+    expect(drawingText("Dave", true)).toBe("You started the draw. The result is in about a minute.");
   });
   it("shows the bonus allowance and the row state word", () => {
     expect(bonusText(2, 5)).toBe("3 of 5 bonus lines left");
@@ -101,5 +108,33 @@ describe("row copy", () => {
       { number: 12, state: "taken", mine: false, overdue: true, bonus: false },
     ]);
     expect(rowCells(bob)[1]).toEqual({ number: 13, state: "paid", mine: false, overdue: false, bonus: true });
+  });
+});
+
+describe("markedPaid", () => {
+  it("is the row once its unpaid lines are paid: no owe, no lateness, bonus and paid lines kept", () => {
+    expect(markedPaid(erin)).toEqual({ ...erin, unpaid: [], sent: [], overdue: [], paid: [10, 11, 12], owedCents: 0, status: "paid", lateText: null });
+    expect(markedPaid(alice)).toMatchObject({ unpaid: [], sent: [], paid: [2, 5], owedCents: 0, status: "paid" });
+  });
+});
+
+describe("release confirm and bonus lines", () => {
+  it("names the bonus line when the release takes every numbered line the buyer holds", () => {
+    const fay = row({ ownerId: "f", handle: "fay", numbers: [4, 11, 51], unpaid: [4, 11], paid: [51], bonus: [51], owedCents: 1000, status: "unpaid" });
+    expect(releaseConfirm(fay, [4, 11]).text).toBe("Release lines 4 and 11 from @fay? They reopen now. Their bonus line 51 goes too.");
+    // A paid numbered line stays with fay, so her bonus line stays too.
+    expect(releaseConfirm(row({ ...fay, numbers: [3, 4, 11, 51], paid: [3, 51] }), [4, 11]).text).toBe("Release lines 4 and 11 from @fay? They reopen now.");
+  });
+});
+
+describe("edge cases", () => {
+  it("an empty ledger has zero counts and shows nobody", () => {
+    expect(chipCounts([])).toEqual({ all: 0, sent: 0, unpaid: 0, overdue: 0 });
+    expect(applyView(freezeView([], "all"), [], "")).toEqual([]);
+  });
+  it("applyOrder drops a buyer who left and puts a newcomer last", () => {
+    expect(applyOrder([dave, alice], ["a", "x", "d"]).map((r) => r.ownerId)).toEqual(["a", "d"]);
+    expect(applyOrder([bob, alice], ["a"]).map((r) => r.ownerId)).toEqual(["a", "b"]);
+    expect(applyOrder([], ["a"])).toEqual([]);
   });
 });

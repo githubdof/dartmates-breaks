@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, openBreakWithLines, lineRows } from "../../../tests/helpers/fixtures";
-import { claimLines, claimRandom, claimAllOpen, claimNext, markSent, markPaid, unmarkPaid, releaseLine, recomputeFill, releaseForBuyer, addBonusLine } from "./commands";
+import { claimLines, claimRandom, claimAllOpen, claimNext, markSent, markPaid, unmarkPaid, releaseLine, recomputeFill, releaseForBuyer, addBonusLine, giveBackLines, unmarkPaidLines } from "./commands";
 import { isOverdue } from "./rules";
 import { ledgerByBuyer, globalUnpaidCount } from "./queries";
 import { breaks, lines, events } from "@/db/schema";
@@ -309,7 +309,10 @@ describe("ledgerByBuyer", () => {
       await tx.execute(sql`update lines set claimed_at = now() - interval '30 hours' where break_id = ${b.id} and number = 9`);
       await tx.execute(sql`update lines set claimed_at = now() - interval '29 hours' where break_id = ${b.id} and number = 12`);
 
+      await tx.execute(sql`update users set payment_name = 'Dave Payer' where id = ${dave.id}`);
       const rows = await ledgerByBuyer(tx, b.id, new Date());
+      expect(rows.find((r) => r.ownerId === dave.id)?.paymentName).toBe("Dave Payer");
+      expect(rows.find((r) => r.ownerId === alice.id)?.paymentName).toBeNull();
       expect(rows.map((r) => r.ownerId)).toEqual([alice.id, dave.id, carol.id, erin.id, bob.id]);
       const by = Object.fromEntries(rows.map((r) => [r.ownerId, r]));
       expect(by[alice.id]).toMatchObject({ status: "sent", handle: alice.handle, unpaid: [2, 5], sent: [2, 5], overdue: [], paid: [], owedCents: 1000, overdueSince: null });
@@ -545,6 +548,136 @@ describe("globalUnpaidCount", () => {
       await claimLines(tx, c(a), { breakId: b2.id, numbers: [3], batchId: randomUUID() });
       await markPaid(tx, c(host, "host"), { breakId: b1.id, number: 1, expectedOwnerId: a.id });
       expect(await globalUnpaidCount(tx, a.id)).toBe(2);
+    });
+  });
+});
+
+describe("take the last N", () => {
+  it("take the last N refuses when the open count changed (Review Focus 5)", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx); const bb = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 6 });
+      await claimLines(tx, c(bb), { breakId: b.id, numbers: [1, 2, 3], batchId: randomUUID() });
+      // The bar offered "Take the last 3"; then line 3 was given back, so 4 are open when the claim lands.
+      await releaseLine(tx, c(bb), { breakId: b.id, number: 3, reason: "withdrawn" });
+      await expect(claimAllOpen(tx, c(a), { breakId: b.id, batchId: randomUUID(), expected: 3 })).rejects.toThrow("The open lines just changed. Check the board and try again.");
+      expect((await lineRows(tx, b.id)).filter((l) => l.ownerId === a.id)).toHaveLength(0);
+      const batchId = randomUUID();
+      expect((await claimAllOpen(tx, c(a), { breakId: b.id, batchId, expected: 4 })).got).toEqual([3, 4, 5, 6]);
+      // A retry of the claim that succeeded (lost response) returns its lines, whatever it now expects.
+      expect((await claimAllOpen(tx, c(a), { breakId: b.id, batchId, expected: 3 })).got).toEqual([3, 4, 5, 6]);
+    });
+  });
+});
+
+describe("bonus lines go with the last numbered line", () => {
+  it("a release that leaves a buyer no numbered line removes their bonus lines; otherwise they stay", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx); const bb = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 10 });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [1, 2], batchId: randomUUID() });
+      expect((await addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: a.id })).number).toBe(11);
+      await releaseLine(tx, c(host, "host"), { breakId: b.id, number: 2, reason: "host_dropped" });
+      expect((await lineRows(tx, b.id)).some((l) => l.number === 11)).toBe(true); // a still holds line 1
+      await releaseLine(tx, c(a), { breakId: b.id, number: 1, reason: "withdrawn" });
+      expect((await lineRows(tx, b.id)).some((l) => l.number === 11)).toBe(false);
+      const removed = await tx.select().from(events).where(sql`${events.breakId} = ${b.id} and ${events.type} = 'line.bonus_removed'`);
+      expect(removed.map((e) => e.payload)).toEqual([{ number: 11, ownerId: a.id, reason: "no_numbered_line" }]);
+
+      await claimLines(tx, c(bb), { breakId: b.id, numbers: [3, 4], batchId: randomUUID() });
+      expect((await addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: bb.id })).number).toBe(12); // 11 is never given twice
+      await releaseForBuyer(tx, c(host, "host"), { breakId: b.id, ownerId: bb.id, numbers: [3, 4], reason: "host_dropped" });
+      expect((await lineRows(tx, b.id)).filter((l) => l.ownerId === bb.id)).toEqual([]);
+      const removedAll = await tx.select().from(events).where(sql`${events.breakId} = ${b.id} and ${events.type} = 'line.bonus_removed'`);
+      expect(removedAll.map((e) => e.payload)).toEqual([
+        { number: 11, ownerId: a.id, reason: "no_numbered_line" },
+        { number: 12, ownerId: bb.id, reason: "no_numbered_line" },
+      ]);
+    });
+  });
+  it("a buyer who keeps a paid numbered line keeps their bonus when the host releases their unpaid ones", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 10 });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [1, 2, 3], batchId: randomUUID() });
+      await markPaid(tx, c(host, "host"), { breakId: b.id, number: 1, expectedOwnerId: a.id });
+      expect((await addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: a.id })).number).toBe(11);
+      await releaseForBuyer(tx, c(host, "host"), { breakId: b.id, ownerId: a.id, numbers: [2, 3], reason: "host_dropped" });
+      expect((await lineRows(tx, b.id)).filter((l) => l.ownerId === a.id).map((l) => l.number)).toEqual([1, 11]);
+      const removed = await tx.select().from(events).where(sql`${events.breakId} = ${b.id} and ${events.type} = 'line.bonus_removed'`);
+      expect(removed).toEqual([]);
+    });
+  });
+});
+
+describe("bonus numbers are never reused", () => {
+  it("a removed bonus line's number is not given to the next bonus line", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx); const bb = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 50 });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [1], batchId: randomUUID() });
+      await claimLines(tx, c(bb), { breakId: b.id, numbers: [2], batchId: randomUUID() });
+      expect((await addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: a.id })).number).toBe(51);
+      await releaseLine(tx, c(a), { breakId: b.id, number: 1, reason: "withdrawn" }); // line 51 goes with it
+      expect((await lineRows(tx, b.id)).some((l) => l.number === 51)).toBe(false);
+      expect((await addBonusLine(tx, c(host, "host"), { breakId: b.id, ownerId: bb.id })).number).toBe(52);
+    });
+  });
+});
+
+describe("banned hosts", () => {
+  it("cannot mark paid or un-mark paid", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 6 });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [1, 2], batchId: randomUUID() });
+      await markPaid(tx, c(host, "host"), { breakId: b.id, number: 1, expectedOwnerId: a.id });
+      const banned: Caller = { ...c(host, "host"), banned: true };
+      await expect(markPaid(tx, banned, { breakId: b.id, number: 2, expectedOwnerId: a.id })).rejects.toThrow("This account is suspended");
+      await expect(unmarkPaid(tx, banned, { breakId: b.id, number: 1 })).rejects.toThrow("This account is suspended");
+      await expect(unmarkPaidLines(tx, banned, { breakId: b.id, numbers: [1] })).rejects.toThrow("This account is suspended");
+      const rows = await lineRows(tx, b.id);
+      expect(rows.find((l) => l.number === 1)?.paidAt).not.toBeNull();
+      expect(rows.find((l) => l.number === 2)?.paidAt).toBeNull();
+    });
+  });
+});
+
+describe("give back and un-mark, all or nothing", () => {
+  it("giveBackLines releases every line or none", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx); const bb = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 6 });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [1, 2], batchId: randomUUID() });
+      await claimLines(tx, c(bb), { breakId: b.id, numbers: [5], batchId: randomUUID() });
+      // Line 5 is someone else's: the savepoint rolls back line 1's release too.
+      await expect(tx.transaction((t) => giveBackLines(t, c(a), { breakId: b.id, numbers: [1, 5] }))).rejects.toBeInstanceOf(NotAuthorized);
+      expect((await lineRows(tx, b.id)).find((l) => l.number === 1)?.ownerId).toBe(a.id);
+      expect(await giveBackLines(tx, c(a), { breakId: b.id, numbers: [1, 2] })).toEqual({ released: [1, 2] });
+      expect((await lineRows(tx, b.id)).filter((l) => l.ownerId === a.id)).toEqual([]);
+    });
+  });
+  it("unmarkPaidLines un-marks every line or none", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 6 });
+      await claimLines(tx, c(a), { breakId: b.id, numbers: [1, 2], batchId: randomUUID() });
+      await markPaid(tx, c(host, "host"), { breakId: b.id, number: 1, expectedOwnerId: a.id });
+      // Line 2 is not paid: the savepoint rolls back line 1's un-mark too.
+      await expect(tx.transaction((t) => unmarkPaidLines(t, c(host, "host"), { breakId: b.id, numbers: [1, 2] }))).rejects.toBeInstanceOf(InvalidInput);
+      expect((await lineRows(tx, b.id)).find((l) => l.number === 1)?.paidAt).not.toBeNull();
+      await unmarkPaidLines(tx, c(host, "host"), { breakId: b.id, numbers: [1] });
+      expect((await lineRows(tx, b.id)).find((l) => l.number === 1)?.paidAt).toBeNull();
+    });
+  });
+});
+
+describe("claimNext outside straight fill", () => {
+  it("refuses a break that lets buyers pick", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 6 });
+      await expect(claimNext(tx, c(a), { breakId: b.id, count: 1, batchId: randomUUID() })).rejects.toThrow("This break lets you pick your lines");
     });
   });
 });

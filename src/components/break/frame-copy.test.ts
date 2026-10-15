@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { closesText, hostLabel, leftText, orList, payWithinText, perPersonText, pickingText, prizeLines, smallLineText, trustText, youHaveText } from "./frame-copy";
+import { closesText, hostedByText, hostLabel, leftText, orList, pastText, payWithinText, perPersonText, pickingText, prizeLines, profileTrustText, smallLineText, trustText, youHaveText } from "./frame-copy";
 
 describe("frame copy", () => {
   it("counts and deadlines read as sentences, no middle dots", () => {
@@ -14,9 +14,17 @@ describe("frame copy", () => {
   });
   it("uses the interim trust line until the reputation plan lands", () => {
     const since = new Date("2026-10-01T12:00:00Z");
-    expect(trustText({ breaksRun: 0, since })).toBe("new host");
-    expect(trustText({ breaksRun: 4, since })).toBe("new host");
+    expect(trustText({ breaksRun: 0, since })).toBe("New host");
+    expect(trustText({ breaksRun: 4, since })).toBe("New host");
     expect(trustText({ breaksRun: 12, since })).toBe("12 breaks run since Oct 2026");
+    expect(hostedByText("@jim", "New host")).toBe("Hosted by @jim. New host.");
+    expect(profileTrustText({ breaksRun: 0, since })).toBe("New host. No breaks run yet.");
+    expect(profileTrustText({ breaksRun: 1, since })).toBe("New host. 1 break run.");
+    expect(profileTrustText({ breaksRun: 3, since })).toBe("New host. 3 breaks run.");
+    expect(profileTrustText({ breaksRun: 12, since })).toBe("12 breaks run since Oct 2026.");
+    expect(pastText(0)).toBe("No past breaks yet.");
+    expect(pastText(1)).toBe("1 past break.");
+    expect(pastText(7)).toBe("7 past breaks.");
   });
   it("describes prizes, choices and 2nd place", () => {
     const items = [{ id: "a", name: "Chronos 22g" }, { id: "b", name: "Chronos 24g" }, { id: "c", name: "Flight pack" }];
@@ -40,9 +48,9 @@ describe("frame copy", () => {
     expect(hostLabel({ displayName: null, handle: null })).toBe("the host");
   });
   it("shows the pay window only while the break is open", () => {
-    expect(smallLineText("open", 24, "@jim", "new host")).toBe("Pay within 24 hours. Hosted by @jim, new host.");
+    expect(smallLineText("open", 24, "@jim", "New host")).toBe("Pay within 24 hours. Hosted by @jim. New host.");
     for (const s of ["draft", "filled", "drawing", "drawn", "cancelled"]) {
-      expect(smallLineText(s, 24, "@jim", "new host")).toBe("Hosted by @jim, new host.");
+      expect(smallLineText(s, 24, "@jim", "New host")).toBe("Hosted by @jim. New host.");
     }
   });
 });

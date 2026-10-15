@@ -1,9 +1,10 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { users, legalAcceptances } from "@/db/schema";
-import { InvalidInput } from "@/domain/errors";
+import { InvalidInput, NotFound } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
 import { appendEvent } from "@/domain/events";
+import { assertOnboarded } from "@/auth/authz";
 
 export const TERMS_VERSION = "2026-10-13";
 
@@ -17,15 +18,37 @@ export function normalizeHandle(raw: string): string {
   return h;
 }
 
-export async function completeOnboarding(tx: Tx, caller: Caller, p: { handle: string; displayName: string; ageConfirmed: boolean; acceptedTerms: boolean; ipHash?: string }): Promise<void> {
+/** "  John   Smith " → "John Smith"; blank → null. At most 60 characters (users_payment_name_chk). */
+export function cleanPaymentName(raw: string | null | undefined): string | null {
+  const s = (raw ?? "").normalize("NFKC").trim().replace(/\s+/g, " ");
+  if (!s) return null;
+  if (s.length > 60) throw new InvalidInput("Payment name: at most 60 characters");
+  return s;
+}
+
+/** Handle and display name are editable for 30 days after sign-up, then locked (platform spec §6). */
+export const NAME_LOCK_DAYS = 30;
+export const nameLocked = (createdAt: Date, now: Date): boolean => now.getTime() - createdAt.getTime() > NAME_LOCK_DAYS * 86_400_000;
+
+function cleanDisplayName(raw: string): string {
+  const s = raw.normalize("NFKC").trim();
+  if (s.length < 1 || s.length > 40) throw new InvalidInput("Display name must be 1–40 characters");
+  return s;
+}
+
+export async function completeOnboarding(tx: Tx, caller: Caller, p: { handle: string; displayName: string; ageConfirmed: boolean; acceptedTerms: boolean; paymentName?: string; ipHash?: string }): Promise<void> {
   if (!p.ageConfirmed) throw new InvalidInput("You must confirm you are 18 or older");
   if (!p.acceptedTerms) throw new InvalidInput("You must accept the terms");
   const handle = normalizeHandle(p.handle);
-  const displayName = p.displayName.normalize("NFKC").trim();
-  if (displayName.length < 1 || displayName.length > 40) throw new InvalidInput("Display name must be 1–40 characters");
+  const displayName = cleanDisplayName(p.displayName);
+  const payment = p.paymentName !== undefined ? { paymentName: cleanPaymentName(p.paymentName) } : {};
   let updated: { id: string }[];
   try {
-    updated = await tx.update(users).set({ handle, displayName, ageConfirmedAt: sql`coalesce(${users.ageConfirmedAt}, now())` }).where(sql`${users.id} = ${caller.id} and ${users.handle} is null`).returning({ id: users.id });
+    // Any account that is not fully set up may finish here, including one that already has a handle
+    // (the half-set-up account: handle, but no display name or age confirmation).
+    updated = await tx.update(users).set({ handle, displayName, ...payment, ageConfirmedAt: sql`coalesce(${users.ageConfirmedAt}, now())` })
+      .where(sql`${users.id} = ${caller.id} and (${users.handle} is null or ${users.displayName} is null or ${users.ageConfirmedAt} is null)`)
+      .returning({ id: users.id });
   } catch (e) {
     // drizzle wraps the driver error (DrizzleQueryError); the postgres error is on `.cause`
     const pg = (e instanceof Error && "cause" in e ? (e as { cause?: unknown }).cause : undefined) ?? e;
@@ -36,4 +59,31 @@ export async function completeOnboarding(tx: Tx, caller: Caller, p: { handle: st
   if (updated.length === 0) throw new InvalidInput("Your account is already set up");
   await tx.insert(legalAcceptances).values({ userId: caller.id, docKind: "terms", version: TERMS_VERSION, ipHash: p.ipHash ?? null });
   await appendEvent(tx, { actorId: caller.id, type: "user.onboarded", payload: { handle } });
+}
+
+/** /account: the display name (locked 30 days after sign-up) and the payment name (always editable). */
+export async function updateProfile(tx: Tx, caller: Caller, p: { displayName: string; paymentName: string }): Promise<{ changed: ("displayName" | "paymentName")[] }> {
+  assertOnboarded(caller);
+  const displayName = cleanDisplayName(p.displayName);
+  const paymentName = cleanPaymentName(p.paymentName);
+  const [cur] = await tx.select({ displayName: users.displayName, paymentName: users.paymentName, createdAt: users.createdAt })
+    .from(users).where(sql`${users.id} = ${caller.id}`).for("update");
+  if (!cur) throw new NotFound("Account not found");
+  const changed: ("displayName" | "paymentName")[] = [];
+  const set: Partial<typeof users.$inferInsert> = {};
+  if (displayName !== cur.displayName) {
+    if (nameLocked(cur.createdAt, new Date())) throw new InvalidInput("Your display name is locked 30 days after sign-up.");
+    set.displayName = displayName;
+    set.nameChangedAt = new Date();
+    changed.push("displayName");
+  }
+  if (paymentName !== cur.paymentName) {
+    set.paymentName = paymentName;
+    changed.push("paymentName");
+  }
+  if (changed.length === 0) return { changed };
+  await tx.update(users).set(set).where(sql`${users.id} = ${caller.id}`);
+  // Which fields changed, never the names themselves: events are append-only and outlive an account's deletion.
+  await appendEvent(tx, { actorId: caller.id, type: "user.profile_updated", payload: { changed } });
+  return { changed };
 }

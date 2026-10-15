@@ -10,6 +10,8 @@ export const users = pgTable("users", {
   id: uuid("id").primaryKey(), // = auth.users.id
   handle: text("handle"),
   displayName: text("display_name"),
+  /** The name on the buyer's Venmo or PayPal, when it differs; hosts match payments by it. Hosts and the owner only. */
+  paymentName: text("payment_name"),
   avatarUrl: text("avatar_url"),
   email: text("email").notNull(),
   role: text("role").notNull().default("member"),
@@ -23,6 +25,7 @@ export const users = pgTable("users", {
 }, (t) => [
   uniqueIndex("users_handle_lower_idx").on(sql`lower(${t.handle})`),
   check("users_role_chk", sql`${t.role} in ('member','host','admin')`),
+  check("users_payment_name_chk", sql`char_length(${t.paymentName}) <= 60`),
 ]);
 
 export const hostProfiles = pgTable("host_profiles", {
@@ -215,3 +218,12 @@ export const idempotencyKeys = pgTable("idempotency_keys", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: createdAt(),
 });
+
+/** Fixed-window counters for rate limits (handle checks). Buckets carry an IP hash or a user id, never a raw address. */
+export const rateLimits = pgTable("rate_limits", {
+  id: id(),
+  bucket: text("bucket").notNull(),
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+  hits: integer("hits").notNull().default(0),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("rate_limits_bucket_window_uq").on(t.bucket, t.windowStart)]);
