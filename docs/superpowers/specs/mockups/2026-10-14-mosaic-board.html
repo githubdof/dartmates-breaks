@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#17161A">
+<title>Mosaic Board Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600&family=Big+Shoulders+Display:wght@800&display=swap">
+<style>
+  :root {
+    --wall: #17161A; --wall-2: #221F26;
+    --sisal: #FBF7EE; --sisal-2: #EEE8DA;
+    --ink: #15130F; --ink-2: #5A5246;
+    --steel: #7A7D84; --ring: #0F0E0C;
+    --red: #C8102E; --green: #1E7A4C;
+    --paper: #FAF8F2;
+    --text: #FBF7EE; --text-2: #B3ADA3; --text-3: #D4CEC3;
+    --kit-dark: #2340C4; --kit-light: #F7C51B;
+    --lamp: rgba(196, 212, 236, 0.08);
+    --wire: 1px;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --paper: #FAF8F2; } }
+  :root[data-theme="dark"] { --paper: #FAF8F2; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: #0B0A0C; color: var(--text); font-family: Barlow, system-ui, sans-serif; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px; }
+  h1, h2, h3 { margin: 0; }
+  .lede { max-width: 390px; color: var(--text-2); font-size: 14px; line-height: 1.4; }
+  .lede b { color: var(--text); font-weight: 600; }
+
+  .phone { width: 390px; max-width: 100%; height: 664px; background: var(--wall); position: relative; overflow: hidden; border-radius: 24px; box-shadow: 0 0 0 1px #2A2730, 0 24px 60px rgba(0,0,0,.6); display: flex; flex-direction: column; }
+  @media (max-width: 420px) { .phone { height: 100dvh; border-radius: 0; order: 1; } body { padding: 0; gap: 12px; } .lede, .controls { padding: 0 16px; } .lede { order: 2; } .controls { order: 3; } }
+  .screen { flex: 1; overflow: auto; padding: 0 16px 120px; scroll-padding-bottom: 120px; }
+  .screen::-webkit-scrollbar { display: none; }
+
+  .top { display: flex; justify-content: space-between; align-items: center; padding: 14px 0 6px; font-size: 13px; color: var(--text-2); }
+  .top .brand { font-family: "Big Shoulders Display", Impact, sans-serif; font-weight: 800; font-size: 18px; letter-spacing: .02em; color: var(--text); }
+  .title { font-family: "Big Shoulders Display", Impact, sans-serif; font-weight: 800; font-size: 34px; line-height: 1; color: var(--text); margin-top: 8px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 14px; color: var(--text-3); align-items: center; }
+  .meta .count { font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 16px; color: var(--text); }
+  .meta .host { color: var(--text-2); display: inline-flex; align-items: center; gap: 6px; }
+  .meta .host b { color: var(--text); font-weight: 500; }
+  .swatch { width: 20px; height: 10px; display: inline-block; background: linear-gradient(90deg, var(--kit-dark) 50%, var(--kit-light) 50%); border: 1px solid rgba(255,255,255,.25); }
+
+  /* ---------- board ---------- */
+  .board-wrap { position: relative; margin: 22px -4px 0; padding: 12px; }
+  .lamp { position: absolute; inset: -40px -60px -30px; pointer-events: none; background: radial-gradient(60% 55% at 50% 30%, var(--lamp), transparent 70%); transition: background 600ms ease-in-out; }
+  .board {
+    position: relative; display: grid; grid-template-columns: repeat(8, 1fr); gap: var(--wire);
+    background: var(--steel);
+    /* the kit is the board's surround: steel wire, the numbers ring, the kit's dark colour, a light pinstripe */
+    box-shadow: 0 0 0 1px var(--steel), 0 0 0 7px var(--ring), 0 0 0 11px var(--kit-dark), 0 0 0 12px var(--kit-light), 0 14px 34px rgba(0,0,0,.55);
+  }
+  .dimmer { position: absolute; inset: 0; background: var(--wall); opacity: 0; pointer-events: none; transition: opacity 300ms ease-out; z-index: 3; }
+  .board.dim .dimmer { opacity: .55; }
+  .cell {
+    appearance: none; border: 0; margin: 0; padding: 0; aspect-ratio: 1; min-height: 40px;
+    background: var(--sisal); color: var(--ink);
+    font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 18px; line-height: 1;
+    position: relative; cursor: pointer; touch-action: manipulation;
+    --face: var(--sisal); --num: var(--ink);
+  }
+  .cell:focus-visible { outline: 2px solid var(--sisal); outline-offset: -3px; z-index: 2; box-shadow: 0 0 0 2px var(--ink) inset; }
+  .cell[aria-pressed="true"]::before, .cell[aria-pressed="true"]::after { content: ""; position: absolute; width: 10px; height: 10px; border: 2px solid var(--ink); z-index: 1; }
+  .cell[aria-pressed="true"]::before { top: 3px; left: 3px; border-right: 0; border-bottom: 0; }
+  .cell[aria-pressed="true"]::after { bottom: 3px; right: 3px; border-left: 0; border-top: 0; }
+  /* claimed, not paid: cream + hatch. paid: the holder's colour via an overlay that fades in. */
+  .cell[data-state="taken"] { background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(21,19,15,.14) 5px 6px); }
+  .cell .face { position: absolute; inset: 0; background: var(--face); opacity: 0; transition: opacity 140ms ease-out; }
+  .cell[data-state="paid"] .face { opacity: 1; }
+  .cell .num { position: relative; z-index: 1; color: var(--ink); transition: color 140ms linear; }
+  .cell[data-state="paid"] .num { color: var(--num); }
+  /* the flight glyph: filled with an ink keyline on cream; filled in the number ink on colour; outlined on your unsent line */
+  .cell .flight { position: absolute; right: 3px; top: 3px; width: 14px; height: 14px; display: none; z-index: 1; }
+  .cell[data-state="taken"] .flight, .cell[data-state="paid"] .flight { display: block; }
+  .cell .flight path { fill: var(--fc, var(--ink)); stroke: var(--ink); stroke-width: 1.25; stroke-linejoin: round; }
+  .cell[data-state="paid"] .flight path { fill: var(--num); stroke: none; }
+  .cell[data-mine] .flight { width: 16px; height: 16px; }
+  .cell[data-mine="unsent"] .flight path { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+  /* yours: an ink-and-cream inner ring */
+  .cell[data-mine] { box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 4px var(--sisal); }
+  .cell[data-mine][data-state="paid"] { box-shadow: inset 0 0 0 2px var(--sisal), inset 0 0 0 4px var(--ink); }
+  /* won: the cell goes black; a cream bull disc carries the red (top) or green ring; the holder's flight sits inside it */
+  .cell[data-won] { z-index: 4; }
+  .cell[data-won] .face { opacity: 1; background: var(--ring); }
+  .cell[data-won] .num { color: var(--ink); }
+  /* under 56 px cells: a 26 px disc and a 10 px glyph. Place is a ring shape: double (top), single (2nd), dashed (3rd). No caps chips. */
+  .cell[data-won] .bull { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; transform: translate(-50%, -50%); border-radius: 50%; background: var(--sisal); border: 2.5px solid var(--green); }
+  .cell[data-won="1"] .bull { border-color: var(--red); box-shadow: 0 0 0 1.5px var(--sisal), 0 0 0 3px var(--red); }
+  .cell[data-won="3"] .bull { border-style: dashed; }
+  .cell[data-won] .flight { right: 2px; top: 2px; width: 10px; height: 10px; }
+  .cell[data-won] .flight path { fill: var(--fc); stroke: var(--sisal); stroke-width: 1; }
+  .cell.land .flight { animation: drop 160ms cubic-bezier(.3,.7,.3,1) both; }
+  .cell.land { animation: squash 200ms ease-out 160ms both; }
+  /* the glint: one cream line on the wire, once, 220 ms. never gold, never repeated */
+  .cell.flash::after { content: ""; position: absolute; inset: -2px; border: 2px solid rgba(251,247,238,.7); animation: flash 220ms ease-out 160ms both; pointer-events: none; z-index: 2; }
+  .cell.seat .face { animation: seat 100ms ease-out 140ms both; }
+  @keyframes drop { from { transform: translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes squash { 0% { transform: scale(1); } 40% { transform: scale(.96); } 100% { transform: scale(1); } }
+  @keyframes flash { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes seat { from { transform: translateY(-2px); } to { transform: none; } }
+  .board.mine .cell:not([data-mine]) { opacity: .35; }
+  .blank { background: var(--wall-2); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 18px; font-size: 12px; color: var(--text-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 14px; height: 14px; display: inline-block; background: var(--sisal); }
+  .legend i.t { background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(21,19,15,.2) 3px 4px); }
+  .legend i.p { background: #2340C4; }
+  .legend i.k { background: var(--kit-dark); }
+  .legend i.w { background: var(--sisal); border-radius: 50%; box-shadow: 0 0 0 2px var(--red), 0 0 0 3px var(--sisal), 0 0 0 4px var(--red); width: 10px; height: 10px; margin: 2px; }
+  .legend i.y { box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3px var(--sisal); }
+  .legend i.s { background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(21,19,15,.2) 3px 4px); box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3px var(--sisal); }
+
+  /* ---------- bar ---------- */
+  .bar { position: absolute; left: 0; right: 0; bottom: 0; background: var(--paper); color: var(--ink); padding: 12px 16px max(12px, env(safe-area-inset-bottom)); box-shadow: 0 -1px 0 #D9D2C0, 0 -12px 30px rgba(0,0,0,.35); display: flex; gap: 12px; align-items: center; z-index: 5; }
+  .bar .text { flex: 1; min-width: 0; }
+  .bar .line1 { font-size: 15px; font-weight: 500; }
+  .bar .line2 { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+  .bar .togo { font-family: "Big Shoulders Display", Impact, sans-serif; font-weight: 800; font-size: 26px; line-height: 1; letter-spacing: .02em; }
+  .bar .togo small { font-family: Barlow, sans-serif; font-weight: 500; font-size: 12px; letter-spacing: 0; color: var(--ink-2); display: block; }
+  .btn { appearance: none; border: 0; cursor: pointer; font: inherit; font-weight: 600; min-height: 44px; padding: 0 18px; border-radius: 8px; background: var(--ink); color: var(--paper); white-space: nowrap; }
+  .btn:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+  .bar .actions { display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
+  .youhave { margin: 10px 0 0; font-size: 13px; color: var(--text-3); }
+  .mine-btn { appearance: none; border: 0; background: none; font: inherit; font-size: 13px; color: var(--text-3); text-decoration: underline; padding: 6px 0; min-height: 32px; cursor: pointer; }
+  .mine-btn[aria-pressed="true"] { color: var(--text); }
+
+  /* ---------- reveal ---------- */
+  .deal { margin-top: 14px; min-height: 28px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .deal span { font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 14px; background: var(--wall-2); color: var(--text-3); padding: 3px 6px; border-radius: 3px; opacity: 0; }
+  .deal span.in { opacity: 1; transition: opacity 120ms; }
+  .dart { position: absolute; width: 56px; height: 14px; pointer-events: none; z-index: 6; opacity: 0; transform-origin: 100% 50%; }
+  .caller { position: absolute; left: 16px; right: 16px; bottom: 112px; z-index: 7; background: var(--sisal); color: var(--ink); padding: 10px 12px 10px 14px; border-left: 8px solid var(--call, var(--kit-dark)); box-shadow: 0 10px 30px rgba(0,0,0,.5); display: flex; gap: 10px; align-items: center; transform: translateY(140%); visibility: hidden; pointer-events: none; transition: transform 180ms cubic-bezier(.2,.9,.3,1.2), visibility 0s 180ms; }
+  .caller.in { transform: none; visibility: visible; pointer-events: auto; transition-delay: 0s; }
+  .caller .glyph { width: 24px; height: 24px; flex-shrink: 0; }
+  .caller .glyph path { fill: var(--call); stroke: var(--ink); stroke-width: 1; }
+  .caller .place { font-family: Barlow, sans-serif; font-weight: 600; font-size: 12px; letter-spacing: .04em; color: var(--ink-2); }
+  .caller .call { font-family: "Big Shoulders Display", Impact, sans-serif; font-weight: 800; font-size: 28px; line-height: 1; }
+
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .controls { width: 390px; max-width: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .controls button { appearance: none; border: 1px solid #3A3640; background: #1E1A22; color: var(--text); font: inherit; font-size: 13px; min-height: 36px; padding: 0 12px; border-radius: 6px; cursor: pointer; }
+  .controls button:focus-visible { outline: 2px solid var(--sisal); }
+  .controls label { font-size: 13px; color: var(--text-2); display: inline-flex; gap: 6px; align-items: center; }
+
+  @media (prefers-reduced-motion: reduce) { .cell, .cell *, .caller, .deal span.in, .lamp, .dimmer { animation: none !important; transition: none !important; } }
+  :root[data-reduced="1"] .cell, :root[data-reduced="1"] .cell *, :root[data-reduced="1"] .caller, :root[data-reduced="1"] .deal span.in, :root[data-reduced="1"] .lamp, :root[data-reduced="1"] .dimmer { animation: none !important; transition: none !important; }
+</style>
+</head>
+<body>
+
+<p class="lede"><b>Mosaic, as refined by the panel.</b> Your flight lands when you claim; lines fill with their holder's colour when the host ticks them paid; the host's kit is the board's surround; the lamp warms as the board fills. Strangers see the board in the host's kit only.</p>
+
+<div class="phone" id="phone">
+  <div class="screen" id="screen">
+    <div class="top"><span class="brand">Breaks</span><span id="who">Signed in as @mamadou</span></div>
+    <h1 class="title">Target Nexus 90% 22g, full set</h1>
+    <div class="meta">
+      <span class="count">50 lines, $5 a line</span>
+      <span class="host">Hosted by <b>@jim</b> <i class="swatch" aria-hidden="true"></i> <span>41 breaks run</span></span>
+    </div>
+    <div class="board-wrap">
+      <div class="lamp" id="lamp" aria-hidden="true"></div>
+      <div class="board" id="board" role="group" aria-label="Lines"><div class="dimmer" aria-hidden="true"></div></div>
+      <svg class="dart" id="dart" viewBox="0 0 56 14" aria-hidden="true">
+        <path d="M0 7 L14 3 L14 11 Z" fill="#FBF7EE"/>
+        <path d="M14 5 h20 v4 h-20 z" fill="#7A7D84"/>
+        <path d="M34 5.5 h16 v3 h-16 z" fill="#A8ABB2"/>
+        <path d="M50 7 L56 7" stroke="#DDD" stroke-width="1.2"/>
+      </svg>
+    </div>
+    <div class="legend" aria-hidden="true" id="legend"></div>
+    <p class="youhave" id="youhave" hidden><button type="button" class="mine-btn" id="mineToggle" aria-pressed="false">You have 4, 11 and 27. Show mine</button></p>
+    <div class="deal" id="deal" aria-hidden="true"></div>
+    <p class="sr" role="status" aria-live="polite" id="live"></p>
+  </div>
+
+  <div class="caller" id="caller" aria-hidden="true">
+    <svg class="glyph" id="callerGlyph" viewBox="0 0 16 16"><path id="callerPath" d=""/></svg>
+    <div><div class="place" id="callerPlace">TOP SPOT</div><div class="call" id="callerText"></div></div>
+  </div>
+
+  <div class="bar" id="bar">
+    <div class="text"><div class="line1" id="bar1">Tap a line to claim it.</div><div class="line2" id="bar2">Pay Jim on Venmo after you claim.</div></div>
+    <div class="actions"><div class="togo" id="togo">38<small>to go</small></div><button class="btn" id="primary" hidden>Claim</button></div>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="others">Others claim 10</button>
+  <button id="tick">Host ticks 5 paid</button>
+  <button id="draw">Run the draw</button>
+  <button id="skip" hidden>Skip</button>
+  <button id="reset">Reset board</button>
+</div>
+<div class="controls">
+  <label><input type="checkbox" id="stranger"> view as a stranger (no flights, host's kit)</label>
+  <label><input type="checkbox" id="reduced"> reduced motion</label>
+</div>
+
+<script>
+(() => {
+  const N = 50, COLS = 8;
+  const board = document.getElementById('board'), live = document.getElementById('live');
+  const bar1 = document.getElementById('bar1'), bar2 = document.getElementById('bar2'), togo = document.getElementById('togo'), primary = document.getElementById('primary');
+  const caller = document.getElementById('caller'), callerPlace = document.getElementById('callerPlace'), callerText = document.getElementById('callerText'), callerPath = document.getElementById('callerPath');
+  const deal = document.getElementById('deal'), dart = document.getElementById('dart'), skipBtn = document.getElementById('skip'), lamp = document.getElementById('lamp');
+  const reduced = () => document.documentElement.dataset.reduced === '1' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Ten colours in two tiers (cream numbers on the dark tier, ink on the light), four dart shapes. 40 flights.
+  // Eight colours (red and green faces are kept for the board's own rings), four shapes: 32 flights.
+  const COLOURS = {
+    petrol: ['#0B5E7A', '#FBF7EE'], blue: ['#2340C4', '#FBF7EE'], plum: ['#82195F', '#FBF7EE'],
+    yellow: ['#F7C51B', '#15130F'], orange: ['#F5913A', '#15130F'], lime: ['#AED445', '#15130F'], sky: ['#7CC4EE', '#15130F'], pink: ['#F4A0C4', '#15130F'],
+  };
+  const SHAPES = {
+    standard: 'M2 15 L2 3 L8 5.5 L14 3 L14 15 L8 12 Z',
+    kite: 'M8 1 L14 8 L8 15 L2 8 Z',
+    slim: 'M8 1 L11 5 L11 15 L5 15 L5 5 Z',
+    pear: 'M8 1 Q14 5 13 10 Q12 15 8 15 Q4 15 3 10 Q2 5 8 1 Z',
+  };
+  const FLIGHTS = { you: ['blue', 'kite'], dave: ['petrol', 'standard'], mike: ['yellow', 'pear'], sarah: ['pink', 'slim'], tony: ['plum', 'kite'], liz: ['plum', 'standard'], rob: ['orange', 'slim'], ana: ['sky', 'pear'], ben: ['petrol', 'kite'], kim: ['lime', 'standard'] };
+  const NAMES = Object.keys(FLIGHTS).filter(n => n !== 'you');
+  const STRANGER_KIT = ['#2340C4', '#FBF7EE']; // paid lines in the host's dark kit colour, no flights
+
+  let cells = [], selected = new Set(), mode = 'claim', drawing = false, skip = false, stranger = false;
+
+  function seed() {
+    cells = Array.from({ length: N }, (_, i) => ({ n: i + 1, state: 'open', mine: '', holder: null }));
+    [3, 7, 8, 12, 19, 21, 22, 30, 33, 41, 44, 48].forEach((n, i) => { cells[n - 1].state = i < 8 ? 'paid' : 'taken'; cells[n - 1].holder = NAMES[i % NAMES.length]; });
+    selected.clear(); mode = 'claim'; drawing = false; board.classList.remove('dim', 'mine');
+    render(); renderBar(); deal.innerHTML = ''; hideCaller();
+  }
+  function hideCaller() { caller.classList.remove('in'); caller.setAttribute('aria-hidden', 'true'); }
+  function flightOf(c) { if (!c.holder) return null; const [col, shape] = FLIGHTS[c.holder]; return { fc: COLOURS[col][0], num: COLOURS[col][1], path: SHAPES[shape] }; }
+  function paint(el, c) {
+    const f = flightOf(c);
+    const p = el.querySelector('.flight path');
+    if (stranger) { el.style.setProperty('--face', STRANGER_KIT[0]); el.style.setProperty('--num', STRANGER_KIT[1]); el.style.setProperty('--fc', 'var(--ink)'); p.setAttribute('d', SHAPES.standard); return; }
+    if (f) { el.style.setProperty('--face', f.fc); el.style.setProperty('--num', f.num); el.style.setProperty('--fc', f.fc); p.setAttribute('d', f.path); }
+    else { el.style.removeProperty('--face'); el.style.removeProperty('--num'); el.style.removeProperty('--fc'); p.setAttribute('d', ''); }
+  }
+  function label(c) {
+    if (c.mine === 'unsent') return `Line ${c.n}, yours, not paid yet`;
+    if (c.mine === 'sent') return `Line ${c.n}, yours, sent`;
+    if (c.mine === 'paid') return `Line ${c.n}, yours, paid`;
+    if (c.state === 'paid') return `Line ${c.n}, paid`;
+    if (c.state === 'taken') return `Line ${c.n}, taken`;
+    return `Line ${c.n}, open`;
+  }
+  function render() {
+    [...board.querySelectorAll('.cell, .blank')].forEach(e => e.remove());
+    for (const c of cells) {
+      const b = document.createElement('button');
+      b.className = 'cell'; b.type = 'button'; b.dataset.n = c.n; b.dataset.state = c.state;
+      if (c.mine && !stranger) b.dataset.mine = c.mine;
+      b.setAttribute('aria-pressed', selected.has(c.n) ? 'true' : 'false'); b.setAttribute('aria-label', label(c));
+      if (c.state !== 'open' && !c.mine) b.setAttribute('aria-disabled', 'true');
+      b.innerHTML = `<span class="face"></span><span class="num">${c.n}</span><svg class="flight" viewBox="0 0 16 16" aria-hidden="true"><path d=""/></svg>`;
+      paint(b, c);
+      b.addEventListener('click', () => onCell(c.n));
+      board.appendChild(b);
+    }
+    for (let i = 0; i < (COLS - (N % COLS)) % COLS; i++) { const d = document.createElement('div'); d.className = 'blank'; d.setAttribute('aria-hidden', 'true'); board.appendChild(d); }
+    renderLegend();
+  }
+  function renderLegend() {
+    document.getElementById('legend').innerHTML = stranger
+      ? '<span><i></i> open</span><span><i class="t"></i> claimed, not paid</span><span><i class="k"></i> paid (host’s kit)</span><span><i class="w"></i> top spot</span>'
+      : '<span><i></i> open</span><span><i class="t"></i> taken</span><span><i class="s"></i> yours, sent</span><span><i class="p"></i> paid, in the holder’s flight</span><span><i class="y"></i> yours</span><span><i class="w"></i> top spot</span>';
+  }
+  const cellEl = n => board.querySelector(`.cell[data-n="${n}"]`);
+  const openCount = () => cells.filter(c => c.state === 'open').length;
+  const mine = () => cells.filter(c => c.mine);
+
+  // Heat: five steps from cool to warm, alpha never above .20, never labelled, never pulsing.
+  const STEPS = ['rgba(196,212,236,0.08)', 'rgba(211,209,212,0.11)', 'rgba(226,206,188,0.14)', 'rgba(241,203,164,0.17)', 'rgba(255,200,140,0.20)'];
+  function updateHeat() { const taken = cells.filter(c => c.state !== 'open').length; const step = Math.min(4, Math.floor((taken / N) * 4 + 1e-9)); document.documentElement.style.setProperty('--lamp', STEPS[taken === N ? 4 : step]); }
+
+  function renderBar() {
+    updateHeat(); renderYouHave();
+    togo.innerHTML = `${openCount()}<small>to go</small>`;
+    if (stranger) { bar1.textContent = 'Sign in to claim a line.'; bar2.textContent = 'Breaks is free for buyers.'; primary.hidden = true; return; }
+    if (mode === 'claim') {
+      if (selected.size === 0) { bar1.textContent = 'Tap a line to claim it.'; bar2.textContent = 'Pay Jim on Venmo after you claim.'; primary.hidden = true; }
+      else { bar1.textContent = `${selected.size} line${selected.size > 1 ? 's' : ''} picked, $${selected.size * 5}`; bar2.textContent = 'You can hold 5 lines in this break.'; primary.hidden = false; primary.textContent = `Claim ${selected.size}`; }
+    } else if (mode === 'pay') {
+      bar1.textContent = `Pay Jim $${mine().filter(c => c.mine === 'unsent').length * 5} on Venmo @Jim-Roberts-36`; bar2.textContent = 'Due 9:40 pm tonight. Then tap “I’ve sent it”.'; primary.hidden = false; primary.textContent = 'I’ve sent it';
+    } else if (mode === 'sent') {
+      bar1.textContent = 'Sent. Jim will tick you off when it arrives.'; bar2.textContent = 'Your flight marks your lines.'; primary.hidden = true;
+    } else if (mode === 'paid') {
+      bar1.textContent = 'Paid. You’re in.'; bar2.textContent = 'Jim runs the draw once every line is paid.'; primary.hidden = true;
+    }
+    if (openCount() === 0 && !drawing) { setCaller('BOARD’S FULL', 'Game on. Jim runs the draw.', 'var(--kit-dark)', ''); }
+  }
+  function onCell(n) {
+    if (drawing || stranger) return;
+    const c = cells[n - 1]; if (c.state !== 'open' || c.mine) return;
+    if (selected.has(n)) selected.delete(n); else if (selected.size < 5) selected.add(n); else { say('You can hold 5 lines in this break.'); return; }
+    cellEl(n).setAttribute('aria-pressed', selected.has(n) ? 'true' : 'false'); mode = 'claim'; renderBar();
+  }
+  function say(t) { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 20); }
+  function setCaller(place, text, colour, path) {
+    callerPlace.textContent = place; callerText.textContent = text; caller.style.setProperty('--call', colour); callerPath.setAttribute('d', path);
+    document.getElementById('callerGlyph').style.display = path ? '' : 'none';
+    caller.classList.add('in'); caller.removeAttribute('aria-hidden');
+  }
+
+  primary.addEventListener('click', () => {
+    if (mode === 'claim') {
+      const picked = [...selected].sort((a, b) => a - b);
+      for (const n of picked) { Object.assign(cells[n - 1], { state: 'taken', mine: 'unsent', holder: 'you' }); }
+      selected.clear();
+      picked.forEach((n, i) => {
+        const el = cellEl(n), c = cells[n - 1];
+        el.setAttribute('aria-pressed', 'false'); el.dataset.state = 'taken'; el.dataset.mine = 'unsent'; el.setAttribute('aria-label', label(c)); paint(el, c);
+        if (!reduced() && i < 5) setTimeout(() => { el.classList.add('land', 'flash'); setTimeout(() => el.classList.remove('land', 'flash'), 500); }, i * 50);
+      });
+      mode = 'pay'; renderBar(); say(`You have line${picked.length > 1 ? 's' : ''} ${picked.join(' and ')}. Pay Jim $${picked.length * 5}.`);
+    } else if (mode === 'pay') {
+      for (const c of mine()) if (c.mine === 'unsent') c.mine = 'sent';
+      for (const c of mine()) { const el = cellEl(c.n); el.dataset.mine = c.mine; el.setAttribute('aria-label', label(c)); }
+      mode = 'sent'; renderBar(); say('Sent. Jim will tick you off when it arrives.');
+    }
+  });
+  document.getElementById('tick').addEventListener('click', () => {
+    const cand = cells.filter(c => c.state === 'taken');
+    if (!cand.length) { say('Nothing to tick: claim some lines first.'); return; }
+    cand.slice(0, 5).forEach((c, i) => setTimeout(() => {
+      c.state = 'paid'; if (c.mine) c.mine = 'paid';
+      const el = cellEl(c.n); el.dataset.state = 'paid'; if (c.mine) el.dataset.mine = 'paid'; el.setAttribute('aria-label', label(c)); paint(el, c);
+      if (!reduced()) { el.classList.add('seat'); setTimeout(() => el.classList.remove('seat'), 400); }
+      if (mine().length && mine().every(m => m.mine === 'paid')) { mode = 'paid'; say(`Jim ticked you paid: line${mine().length > 1 ? 's' : ''} ${mine().map(m => m.n).join(' and ')}.`); }
+      renderBar();
+    }, reduced() ? 0 : i * 30));
+  });
+  document.getElementById('others').addEventListener('click', () => {
+    const open = cells.filter(c => c.state === 'open' && !selected.has(c.n)).sort(() => Math.random() - 0.5).slice(0, 10);
+    open.forEach((c, i) => {
+      c.holder = NAMES[Math.floor(Math.random() * NAMES.length)]; c.state = i % 2 ? 'paid' : 'taken';
+      const el = cellEl(c.n); el.dataset.state = c.state; el.setAttribute('aria-label', label(c)); paint(el, c);
+      // others arriving are quiet: the flight fades in, no squash, no flash
+      if (!reduced() && i < 8) { el.querySelector('.flight').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, delay: i * 30, fill: 'backwards' }); }
+    });
+    renderBar();
+  });
+
+  // ---------- the draw ----------
+  const wait = ms => new Promise(r => setTimeout(r, skip || reduced() ? 0 : ms));
+  function center(n) { const el = cellEl(n), r = el.getBoundingClientRect(), p = document.getElementById('phone').getBoundingClientRect(); return { x: r.left - p.left + r.width / 2, y: r.top - p.top + r.height / 2, el }; }
+  function throwDart(n) {
+    return new Promise(resolve => {
+      const { x, y, el } = center(n);
+      if (skip || reduced()) { resolve(el); return; }
+      const sx = 390 + 40, sy = 664 - 60, ang = Math.atan2(y - sy, x - sx) * 180 / Math.PI, dur = 260, t0 = performance.now();
+      dart.style.opacity = '1';
+      const ease = t => t * t * t; // accelerates into the board
+      const step = now => {
+        const t = Math.min(1, (now - t0) / dur), e = ease(t);
+        dart.style.transform = `translate(${sx + (x - sx) * e - 56}px, ${sy + (y - sy) * e - 7}px) rotate(${ang}deg)`;
+        if (t < 1) requestAnimationFrame(step); else { dart.style.opacity = '0'; resolve(el); }
+      };
+      requestAnimationFrame(step);
+    });
+  }
+  async function runDraw() {
+    if (drawing) return; drawing = true; skip = false; skipBtn.hidden = false; hideCaller();
+    const taken = cells.filter(c => c.state !== 'open').map(c => c.n);
+    const order = taken.slice().sort(() => Math.random() - 0.5);
+    deal.innerHTML = order.map(n => `<span>${n}</span>`).join('');
+    board.classList.add('dim'); // house lights down
+    const per = Math.min(60, 1400 / Math.max(1, order.length));
+    for (let i = 0; i < order.length; i++) { deal.children[i].classList.add('in'); await wait(per); }
+    say(`Order read out. ${order.length} lines in the draw.`);
+    const places = [[order[2], 3, 'THIRD PLACE', 300], [order[1], 2, 'SECOND PLACE', 300], [order[0], 1, 'TOP SPOT', 800]];
+    for (const [n, place, placeText, beat] of places) {
+      if (!n) continue;
+      await wait(beat);
+      // resolved after the beat, so the viewer's standing at the moment of the call decides what the call carries
+      const c = cells[n - 1], f = stranger ? null : flightOf(c);
+      const who = stranger ? '' : (c.holder === 'you' ? '@mamadou' : '@' + c.holder);
+      const el = await throwDart(n);
+      el.dataset.won = String(place);
+      if (!el.querySelector('.bull')) { const b = document.createElement('span'); b.className = 'bull'; el.insertBefore(b, el.querySelector('.num')); }
+      el.setAttribute('aria-label', `Line ${n}, ${place === 1 ? 'top spot' : place === 2 ? 'second place' : 'third place'}`);
+      if (!reduced() && !skip) { el.animate([{ transform: 'scale(1)' }, { transform: `scale(.94) translate(${place === 1 ? 4 : 2}px, 0)` }, { transform: 'scale(1)' }], { duration: 220, easing: 'ease-out' }); }
+      setCaller(placeText, `Line ${n}${who ? '. ' + who : ''} takes ${place === 1 ? 'the top spot.' : 'it.'}`, f ? f.fc : 'var(--kit-dark)', f ? f.path : '');
+      say(callerText.textContent);
+      el.scrollIntoView({ block: 'nearest', behavior: skip || reduced() ? 'auto' : 'smooth' });
+      await wait(900);
+    }
+    board.classList.remove('dim'); skipBtn.hidden = true; drawing = false;
+  }
+  document.getElementById('draw').addEventListener('click', runDraw);
+  skipBtn.addEventListener('click', () => { skip = true; });
+  document.getElementById('reset').addEventListener('click', seed);
+  document.getElementById('reduced').addEventListener('change', e => { document.documentElement.dataset.reduced = e.target.checked ? '1' : ''; });
+  const mineToggle = document.getElementById('mineToggle');
+  mineToggle.addEventListener('click', () => { const on = mineToggle.getAttribute('aria-pressed') !== 'true'; mineToggle.setAttribute('aria-pressed', String(on)); board.classList.toggle('mine', on); renderYouHave(); });
+  function renderYouHave() {
+    const m = mine().map(c => c.n); const p = document.getElementById('youhave');
+    p.hidden = stranger || m.length === 0; if (p.hidden) { board.classList.remove('mine'); mineToggle.setAttribute('aria-pressed', 'false'); return; }
+    const list = m.length === 1 ? String(m[0]) : m.slice(0, -1).join(', ') + ' and ' + m[m.length - 1];
+    mineToggle.textContent = `You have ${list}. ${mineToggle.getAttribute('aria-pressed') === 'true' ? 'Show everyone' : 'Show mine'}`;
+  }
+  document.getElementById('stranger').addEventListener('change', e => {
+    stranger = e.target.checked; document.getElementById('who').textContent = stranger ? 'Not signed in' : 'Signed in as @mamadou';
+    const won = [...board.querySelectorAll('.cell[data-won]')].map(el => [el.dataset.n, el.dataset.won]);
+    render(); renderBar(); hideCaller();
+    won.forEach(([n, w]) => { const el = cellEl(n); el.dataset.won = w; const b = document.createElement('span'); b.className = 'bull'; el.insertBefore(b, el.querySelector('.num')); });
+  });
+  seed();
+})();
+</script>
+</body>
+</html>
