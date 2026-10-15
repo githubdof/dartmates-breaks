@@ -2,7 +2,7 @@ import type { HeatStep, Kit } from "@/domain/flights";
 import { kitVars } from "@/components/grid/grid";
 import { lampLayer } from "@/components/grid/lamp";
 import { thumbColumns } from "@/components/grid/layout";
-import { ringWidth, thumbFillers, type ThumbTone } from "./kit-thumb-model";
+import { discPercent, ringWidth, thumbFillers, type ThumbTone } from "./kit-thumb-model";
 
 const FACE: Record<ThumbTone["tone"], string> = {
   open: "var(--board-cream)",
@@ -38,7 +38,7 @@ export function KitThumb({ cells, kit, heat, size }: { cells: readonly ThumbTone
             {c.tone === "taken" && <span className="absolute inset-x-0 bottom-0 h-[18%]" style={{ background: "var(--kit-light)", borderTop: "1px solid var(--board-ink)" }} />}
             {c.tone === "reserved" && <span className="absolute inset-0 border border-[var(--board-steel)]" />}
             {c.place !== null && (
-              <span className="block aspect-square w-[48%] rounded-full" style={{ background: "var(--board-cream)", border: `${ringWidth(c.place, cellPx)}px ${RING[c.place].style} ${RING[c.place].colour}` }} />
+              <span className="block aspect-square rounded-full" style={{ width: `${discPercent(cellPx)}%`, background: "var(--board-cream)", border: `${ringWidth(c.place, cellPx)}px ${RING[c.place].style} ${RING[c.place].colour}` }} />
             )}
           </span>
         ))}

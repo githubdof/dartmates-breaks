@@ -28,3 +28,9 @@ export const thumbFillers = (n: number, cols: number) => (n % cols === 0 ? 0 : c
  */
 export const ringWidth = (place: 1 | 2 | 3, cellPx: number) =>
   Math.max(place === 1 ? 3 : 1, Math.round(cellPx * 0.05 * 100) / 100);
+
+/**
+ * The place disc's width, in % of the cell: 48 % as the board's thumbnails draw it (recorded ruling 20), widened to
+ * 64 % below 16 px cells (the feed card and the landing hero), where 48 % leaves no cream inside the 3 px double ring.
+ */
+export const discPercent = (cellPx: number) => (cellPx < 16 ? 64 : 48);

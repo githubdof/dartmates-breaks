@@ -5,7 +5,7 @@ import { FLIGHT_COLOURS, LAMP } from "@/domain/flights";
 import { kitVars } from "@/components/grid/grid";
 import { lampLayer } from "@/components/grid/lamp";
 import { KitThumb } from "./kit-thumb";
-import { kitThumbCells, ringWidth, thumbFillers } from "./kit-thumb-model";
+import { discPercent, kitThumbCells, ringWidth, thumbFillers } from "./kit-thumb-model";
 
 describe("kitThumbCells", () => {
   it("keeps line state only: sent folds into taken, bonus lines drop unless placed, a placed line is won", () => {
@@ -39,6 +39,15 @@ describe("kitThumbCells", () => {
     expect(ringWidth(1, 40)).toBe(3);
     expect(ringWidth(1, 100)).toBe(5);
     expect(ringWidth(2, 100)).toBe(5);
+  });
+  it("widens the place disc to 64 % below 16 px cells, so a cream centre survives the 3 px double ring", () => {
+    // Feed card (96 px / 8 = 12 px cells) and landing hero (112 / 8 = 14): at 48 % the disc is 5.8 or 6.7 px, which
+    // two 3 px ring bands fill entirely (measured in the Task 20 e2e). At 64 % the centre is 1.7 or 3 px.
+    expect(discPercent(12)).toBe(64);
+    expect(discPercent(15.9)).toBe(64);
+    expect(discPercent(16)).toBe(48);
+    expect(discPercent(40)).toBe(48);
+    for (const cell of [12, 14]) expect(cell * discPercent(cell) / 100 - 2 * ringWidth(1, cell)).toBeGreaterThanOrEqual(1);
   });
   it("completes the last row with empty slots", () => {
     expect(thumbFillers(50, 8)).toBe(6);
