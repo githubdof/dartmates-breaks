@@ -1,0 +1,44 @@
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import { withTx } from "../../../../../tests/helpers/db";
+import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../../../tests/helpers/fixtures";
+import { claimLines, markPaid } from "@/domain/lines/commands";
+import type { Tx } from "@/db/client";
+import type { Caller } from "@/domain/types";
+import { GET } from "./route";
+
+// The route reads through db.transaction; here that runs inside the test's own transaction, which rolls back.
+// withTx (tests/helpers/db.ts) imports this same db, so the mock must never break it: with no test transaction
+// current, db.transaction is the real one (recorded panel fix ruling 7).
+let current: Tx | null = null;
+vi.mock("@/db/client", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/db/client")>();
+  return { ...real, db: { transaction: <T>(fn: (tx: Tx) => Promise<T>) => (current ? fn(current) : real.db.transaction(fn)) } };
+});
+afterEach(() => { current = null; });
+
+const get = (id: string) => GET(new Request(`http://localhost/b/${id}/og`), { params: Promise.resolve({ id }) });
+const as = (u: { id: string }, role: Caller["role"] = "member"): Caller => ({ id: u.id, role, onboarded: true, banned: false });
+
+describe("GET /b/{id}/og (recorded ruling 25)", () => {
+  it("answers a 1200 × 630 PNG for an open, a closed and a ran break, and 404 for a draft", async () => {
+    await withTx(async (tx) => {
+      current = tx;
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      const open = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      const closed = await openBreakWithLines(tx, { hostId: host.id, lineCount: 2 });
+      await claimLines(tx, as(buyer), { breakId: closed.id, numbers: [1, 2], batchId: randomUUID() });
+      for (const number of [1, 2]) await markPaid(tx, as(host, "host"), { breakId: closed.id, number, expectedOwnerId: buyer.id });
+      const ran = await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
+      for (const id of [open.id, closed.id, ran.id]) {
+        const r = await get(id);
+        expect(r.status, id).toBe(200);
+        expect(r.headers.get("content-type")).toBe("image/png");
+        const png = Buffer.from(await r.arrayBuffer());
+        expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630]);
+      }
+      const draft = await makeBreak(tx, { hostId: host.id });
+      expect((await get(draft.id)).status).toBe(404);
+    });
+  }, 60_000);
+});
