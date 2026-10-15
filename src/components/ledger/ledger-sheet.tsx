@@ -28,6 +28,8 @@ export type LedgerSheetProps = {
   hostName: string;
   /** The viewer is the host (an admin is not): "You started the draw." */
   selfIsHost?: boolean;
+  /** The host record, then any stall line, under the paid count (Mosaic §9): counts only. */
+  record?: readonly string[];
 };
 
 const UNDO_MS = 8000;
@@ -134,6 +136,9 @@ export function LedgerSheet(p: LedgerSheetProps) {
         <div className="space-y-2">
           <p className="font-condensed text-headline font-semibold tabular" data-testid="paid-count">{p.counts.paid} of {p.counts.total} paid</p>
           <FillBar total={p.counts.total} paid={p.counts.paid} taken={p.counts.taken} />
+          {p.record?.map((line, i) => (
+            <p key={line} className="text-small text-ink-2" data-testid={i === 0 ? "ledger-record" : "ledger-stall"}>{line}</p>
+          ))}
         </div>
         <label className="block">
           <span className="sr-only">Search buyers</span>

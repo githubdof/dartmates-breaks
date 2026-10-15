@@ -95,13 +95,16 @@ test("a host profile shows public figures, the open breaks and a past count, and
   const visitor = await (await browser.newContext()).newPage();
   await visitor.goto(`/h/${handle}`);
   await expect(visitor.getByRole("heading", { level: 1 })).toHaveText(`@${handle}`);
-  await expect(visitor.getByTestId("profile-trust")).toHaveText("New host. No breaks run yet.");
+  await expect(visitor.getByTestId("host-record")).toHaveText("No breaks run yet.");
+  await expect(visitor.getByTestId("host-stall")).toHaveCount(0);
   await expect(visitor.getByTestId("profile-since")).toContainText("On Breaks since");
   await expect(visitor.getByTestId("break-card")).toHaveCount(1);
   await expect(visitor.getByText(`Profile draft ${run}`)).toHaveCount(0);
   await expect(visitor.getByTestId("profile-past")).toHaveText("No past breaks yet.");
   await expect(visitor.getByText("@e2e.test")).toHaveCount(0);
   await expect(visitor.getByText("e2e-host")).toHaveCount(0);
+  // The profile is public: kit faces only, never a flight.
+  await expect(visitor.locator("[data-flight]")).toHaveCount(0);
   expect((await visitor.goto("/h/nobody_here_x"))?.status()).toBe(404);
 });
 
@@ -115,6 +118,9 @@ test("the landing page leads with the newest ran break and links to the feed", a
   await expect(buyer.getByTestId("pay-amount")).toContainText("$10");
   await host.reload();
   await host.getByTestId("host-tools").click();
+  // The ledger header carries the host record under the paid count (Mosaic §9): nothing has run yet.
+  await expect(host.getByTestId("ledger-record")).toHaveText("No breaks run yet.");
+  await expect(host.getByTestId("ledger-stall")).toHaveCount(0);
   await host.getByTestId("ledger-paid").click();
   await host.getByTestId("run-draw").click();
   await host.getByTestId("finish-draw").click();
@@ -132,6 +138,9 @@ test("the landing page leads with the newest ran break and links to the feed", a
   await expect(hero.locator("[data-flight]")).toHaveCount(0);
   await visitor.getByTestId("browse-breaks").click();
   await expect(visitor).toHaveURL(/\/breaks$/);
+  // The host record counts the run and its verified draw.
+  await visitor.goto(`/h/nh${run}`);
+  await expect(visitor.getByTestId("host-record")).toHaveText(/^1 break run since [A-Z][a-z]{2} \d{4}\. 1 draw verified\.$/);
 });
 
 test("My lines shows what a buyer holds, reopens the pay block, and gives lines back", async ({ browser }) => {

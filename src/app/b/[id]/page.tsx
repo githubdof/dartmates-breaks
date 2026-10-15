@@ -18,7 +18,7 @@ import { DetailsFold } from "@/components/break/details-fold";
 import { BreakInteractive } from "@/components/break/break-interactive";
 import { bonusGoesWith, commitmentShort, payeeFor } from "@/components/break/pay-copy";
 import { onboardingHref, parsePick } from "@/components/break/selection";
-import { closesText, hostedByText, hostLabel, mediaText, payWithinText, perPersonText, pickingText, prizeLines, trustText, youHaveText } from "@/components/break/frame-copy";
+import { closesText, hostedByText, hostLabel, hostRecordLines, mediaText, payWithinText, perPersonText, pickingText, prizeLines, trustText, youHaveText } from "@/components/break/frame-copy";
 import { KitSwatch } from "@/components/kit-swatch";
 import { HostTools } from "@/components/ledger/host-tools";
 import type { LedgerRowView } from "@/components/ledger/ledger-view";
@@ -159,6 +159,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
               bonus={{ used: grid.cells.filter((c) => c.bonus).length, max: bonusAllowance(b.lineCount) }}
               hostName={hostName}
               selfIsHost={!!caller && caller.id === b.hostId}
+              record={hostRecordLines(trust, now)}
             />
           )}
         </div>

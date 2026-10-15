@@ -43,13 +43,6 @@ export function hostRecordText(t: { breaksRun: number; drawsVerified: number; si
   return `${t.breaksRun} ${plural(t.breaksRun, "break", "breaks")} run since ${formatMonthYear(t.since)}. ${t.drawsVerified} ${plural(t.drawsVerified, "draw", "draws")} verified.`;
 }
 
-/** Retired with the profile's move to the wall (Plan C Task 15b): hostRecordText replaces it. */
-export function profileTrustText(t: { breaksRun: number; since: Date }): string {
-  if (t.breaksRun === 0) return "New host. No breaks run yet.";
-  if (t.breaksRun < 5) return `New host. ${t.breaksRun} ${plural(t.breaksRun, "break", "breaks")} run.`;
-  return `${t.breaksRun} breaks run since ${formatMonthYear(t.since)}.`;
-}
-
 /** The platform §9 stall line, written as the first design writes it: no em-dash, no retired state word. */
 export const stallText = (days: number) => `Closed ${days} ${plural(days, "day", "days")} ago, not drawn yet.`;
 
