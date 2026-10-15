@@ -47,6 +47,8 @@ deferred or recorded under the one-round fix-loop rule (recorded ruling 8).
 - The copy audit's remaining gaps: JSX prose after a `;` followed by an uppercase word or a line break is dropped; the "0" token for an interpolation could read "{handle} wins line {n}" as a win total; hex entities other than `&#x27;` (such as `&#x2019;`) are not decoded, and in JSX text one ends the segment it sits in.
 - The flight picker keeps eight columns at 360, so its cells are 41 px there (44.75 at 390, as §8 states); the 44 pt floor holds at 390 only.
 - The size pass on `/b/[id]` first-load JS (see Budget below).
+- After Skip, focus moves to Replay with `preventScroll: true` (Mosaic §7 "focus moves to Replay"); Replay now sits under the full order, so on a 50-line board a keyboard user's focus lands about 2,000 px off-screen. Fix: let Skip's focus scroll and keep `preventScroll` only for the reveal's natural end (`reveal.tsx`).
+- "Only N lines are open." in `src/domain/lines/commands.ts` is a count outside the "N to go" form and outside the copy audit's reach; needs a copy ruling against Mosaic §9.
 
 ## Fix-loop records (one round, then record)
 
