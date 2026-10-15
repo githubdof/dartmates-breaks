@@ -30,16 +30,23 @@ deferred or recorded under the one-round fix-loop rule (recorded ruling 8).
 ## Parked findings
 
 - The Mosaic spec §7 keyframe list named ten keyframes with `press` among them; the implementation uses eleven (adds `squash-throw`, offsets 36.36 % against `squash`'s 40 %, and `fadeout`, the paid ghost's step-end fade) and does press as a transform transition. Spec §7 amended in place, both named.
-- The Replay/Skip row sits above the headline on the result page; §8 lists "full order, Replay, Share, Skip".
 - `FEED_SORTS` still contains the dead "filling" sort.
-- The OG route loads winner handles and item names it never uses, and a missing font gives an uncaught 500.
-- The flight picker's cells are about 43.6/44.6 px rather than 44.75 (no board bleed), and the focus ring is painted over by the next cell.
-- The kit thumbnail's cells inline their own 1 px steel wire instead of the `.thumb-frame > .bc` rule.
+- The kit thumbnail's cells inline their own 1 px steel wire instead of the `.thumb-frame > .bc` rule. Left in the fix wave: the rule needs the `bc` class, which also brings `contain: paint` and `container-type: inline-size` to the thumbnail cells, so it does not apply cleanly.
 - `stalledSince` ignores breaks stuck in `drawing`.
 - A give-back that throws keeps its numbers recorded (deliberate, bounded to the buyer's own lines).
 - Replay is a silent no-op under reduced motion (spec-conformant, no feedback).
 - The result route had no axe coverage; Task 20 added it (anonymous and holder, reduced motion, the reveal at its end): no violation.
 - Mosaic §10 wording on prize places aligned with `placesOf` (a list that need not be contiguous, lowest place first, top spot last); amended in place.
+
+### Recorded by the fix wave (whole-branch review), not fixed
+
+- The host record's "draws verified" counts a fake-beacon draw, which verifies locally. Test-only: `BEACON=fake` is refused on every deploy (`assertDeployEnv`, and `beacon.ts` on Vercel), so a production database gets one only if test data is copied into it.
+- A winning bonus line sits after line N in the landing hero's thumbnail (`kitThumbCells` keeps a placed bonus line), with no "Bonus" row as on the board.
+- The thumbnail's top spot under 16 px cells still waits for the single-ring spec ruling proposed under E2E (Task 20) below.
+- The tautological `ENDED` test in `reveal-clock.test.ts` stays (it pins the constant, not the hook's use of it); `FINAL` is gone, the hook reads `ENDED`.
+- The copy audit's remaining gaps: JSX prose after a `;` followed by an uppercase word or a line break is dropped; the "0" token for an interpolation could read "{handle} wins line {n}" as a win total; hex entities other than `&#x27;` (such as `&#x2019;`) are not decoded, and in JSX text one ends the segment it sits in.
+- The flight picker keeps eight columns at 360, so its cells are 41 px there (44.75 at 390, as §8 states); the 44 pt floor holds at 390 only.
+- The size pass on `/b/[id]` first-load JS (see Budget below).
 
 ## Fix-loop records (one round, then record)
 
@@ -56,7 +63,7 @@ hit and changed copy once; nothing else needed a decision.
   - `src/domain/breaks/feed.ts`: `FEED_SORTS` still contains "filling": a dead sort the UI no longer offers; dead code, left as is until a ruling.
   - `src/components/break/claim-bar-state.ts:39,41` and `src/domain/errors.ts:28,29`: "You can hold N in this break." and "Hosts can hold N in their own break.": the limit messages use "hold" where the spec's holding line says "You have …". The retired phrase is "You hold …", which these do not match; rewording them touches domain error tests and Task 16 files, so it needs a ruling.
   - The caller copy set has no handle-less call, by design.
-  - Reach of the rules: the caps, heat, streak, level, winnings and "his" rules read all `.ts` and `.tsx` copy; the caps rule reads only `.tsx` and the copy modules (`*-copy.ts`, `share-text`, `claim-bar-state`, `reveal-plan`, `board-moments`, `selection`, `status-word`, `domain/breaks/og.ts`), so a new copy module with another name must be added to `COPY_MODULE`. Word text beside a JSX expression is read ("Drawing {n} lines"); copy assembled from a variable (`{label}`) is read where the variable is defined.
+  - Reach of the rules: the caps, heat, streak, level, winnings and "his" rules read all `.ts` and `.tsx` copy; the caps rule reads only `.tsx` and the copy modules (`*-copy.ts`, `share-text`, `claim-bar-state`, `reveal-plan`, `board-moments`, `selection`, `status-word`, `domain/breaks/og.ts`), so a new copy module with another name must be added to `COPY_MODULE`. Since the fix wave, the "N to go" (retired counts, "N spots left" included) and state-word literal rules read the copy modules too, share text among them. Word text beside a JSX expression is read ("Drawing {n} lines"); copy assembled from a variable (`{label}`) is read where the variable is defined.
 
 ### Render tests (Task 18)
 - `MyBreakCard`'s error, offline and disabled states (Plan B test backlog) need a click and a failed server action;
