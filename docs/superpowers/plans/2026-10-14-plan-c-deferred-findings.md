@@ -38,7 +38,7 @@ deferred or recorded under the one-round fix-loop rule (recorded ruling 8).
 - `stalledSince` ignores breaks stuck in `drawing`.
 - A give-back that throws keeps its numbers recorded (deliberate, bounded to the buyer's own lines).
 - Replay is a silent no-op under reduced motion (spec-conformant, no feedback).
-- The result route has no axe coverage yet (Task 20 adds it).
+- The result route had no axe coverage; Task 20 added it (anonymous and holder, reduced motion, the reveal at its end): no violation.
 - Mosaic §10 wording on prize places aligned with `placesOf` (a list that need not be contiguous, lowest place first, top spot last); amended in place.
 
 ## Fix-loop records (one round, then record)
@@ -66,9 +66,24 @@ hit and changed copy once; nothing else needed a decision.
 
 ### Axe (Task 20)
 
+- None.
+
 ### E2E (Task 20)
 
+- None. One app fix in the round: `src/components/kit-thumb.tsx`: on the feed card (12 px cells) and the landing hero
+  (14 px) the top spot's 48 % disc was filled entirely by its 3 px double ring (cream centre measured 0 px); the disc is
+  now 64 % below 16 px cells (`discPercent`), centre 1.7 and 3 px, pinned by `kit-thumb.test.ts` and the density e2e.
+
 ## Budget (Mosaic §11, Task 20)
+
+- before: css 8620, js 125685; after: css 11628, js 133937; +3008 B CSS, +8252 B JS
+- JS over the 2048 B limit by 6204 B (gzip, first-load JS of `/b/[id]`, base 42fbdd3 against 3e75b77). Where it went:
+  two new shared chunks, the Mosaic cell (`Cell`, `cellLabel`, the flight colours and shapes; 3136 B) and the board
+  (`Grid`, `cellMoments`, `boardMoments`, `lampLayer`, the layout tiers; 3458 B); the page chunk +1236 B (the island's
+  moments wiring, the caller banner, "This is your flight"); +418 B in the shared UI chunk. No unused code, duplicate or
+  server-only import was found in these chunks (no contrast maths, no OG or reveal code on the break page), so no local
+  fix fits one round without removing spec'd behaviour. It needs a ruling: raise the JS allowance for Mosaic, or plan a
+  size pass (for example, lazy-loading the moment layers and the caller banner until the first moment).
 
 ## Open bug reports (not yet reproduced)
 
