@@ -90,6 +90,7 @@
   .cell[data-won] .bull { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; transform: translate(-50%, -50%); border-radius: 50%; background: var(--sisal); border: 2.5px solid var(--green); }
   .cell[data-won="1"] .bull { border-color: var(--red); box-shadow: 0 0 0 1.5px var(--sisal), 0 0 0 3px var(--red); }
   .cell[data-won="3"] .bull { border-style: dashed; }
+  .cell[data-won="1"] .num { font-size: 14px; } /* under 56 px cells the top-spot number is 14 px inside the double ring */
   .cell[data-won] .flight { right: 2px; top: 2px; width: 10px; height: 10px; }
   .cell[data-won] .flight path { fill: var(--fc); stroke: var(--sisal); stroke-width: 1; }
   .cell.land .flight { animation: drop 160ms cubic-bezier(.3,.7,.3,1) both; }
