@@ -19,7 +19,7 @@ function keyframes(src: string): Map<string, string> {
 describe("per-cell motion is CSS on transform and opacity only (Mosaic §7, Global Constraints: Motion)", () => {
   it("animates no other property in any of the board's keyframes", () => {
     const frames = keyframes(css);
-    for (const name of ["land", "squash", "glint", "fadein", "set", "seat", "pull", "strike"]) expect(frames.has(name), name).toBe(true);
+    for (const name of ["land", "squash", "glint", "fadein", "set", "seat", "pull", "strike", "squash-throw", "shake"]) expect(frames.has(name), name).toBe(true);
     for (const [name, body] of frames) {
       const props = [...body.matchAll(/([\w-]+)\s*:/g)].map((m) => m[1]);
       for (const p of props) expect(["transform", "translate", "scale", "opacity", "animation-timing-function"], `${name}: ${p}`).toContain(p);
@@ -63,5 +63,12 @@ describe("per-cell motion is CSS on transform and opacity only (Mosaic §7, Glob
     expect(css).toContain("[data-lights=\"down\"] .bc-dim { opacity: 0.55; }");
     expect(css).toContain("[data-lights=\"down\"] [data-won] > .bc-dim { opacity: 0; transition: none; }");
     expect(css).toMatch(/\.bc-dim \{[^}]*transition: opacity var\(--dur-lights\)/);
+  });
+  it("has retired the first design's deal and lift (§4)", () => {
+    expect(css).not.toContain("--animate-deal");
+    expect(css).not.toContain("--animate-lift");
+  });
+  it("lifts the house lights after Skip with one fade of at most --dur-reduced (§7 Skip)", () => {
+    expect(css).toContain("[data-skip] .bc-dim { transition-duration: var(--dur-reduced); }");
   });
 });

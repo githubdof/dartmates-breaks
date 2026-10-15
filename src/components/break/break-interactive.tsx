@@ -15,7 +15,7 @@ import { BoardLegend } from "@/components/board-legend";
 import { useBoardMoments } from "@/components/grid/use-board-moments";
 import { prefersReducedMotion } from "@/lib/motion";
 import { CallerBanner } from "./caller-banner";
-import { BOARD_FULL_CALL, boardFullAnnouncement, fullBoardKey, withCall } from "./caller-copy";
+import { BOARD_FULL_CALL, boardFullAnnouncement, drawStartAnnouncement, drawStartCall, fullBoardKey, withCall } from "./caller-copy";
 import { SegmentedControl } from "@/components/segmented-control";
 import { clampStep } from "@/components/stepper-math";
 import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
@@ -103,7 +103,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   // Board fills: null until the once-per-viewer flag is read (the banner renders after hydration only).
   const [fullPlay, setFullPlay] = useState<boolean | null>(null);
   const fullRead = useRef<string | null>(null);
-  // The board-fills call said in this commit: the reconcile effect for the same props joins it to what it says.
+  // The caller's call said in this commit (board fills or draw starts): the reconcile effect for the same props joins it
+  // to what it says.
   const fullCall = useRef<string | null>(null);
   // The live region: `n` re-keys the message so the same words twice (one taken cell tapped twice) are announced twice.
   const [announce, setAnnounce] = useState({ text: initial.note ?? "", n: 0 });
@@ -266,6 +267,22 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     }
   }, [p.status, p.breakId, p.hostName]);
 
+  // Draw starts (Mosaic §7): "Jim is stepping up to the oche." It drops in only when the draw starts while this page
+  // is open (animate on change, never on mount); a later visit shows it still. No pulse, no ambient motion. A layout
+  // effect, like board fills, so the call reaches `fullCall` before the reconcile effect of the same refresh reads it.
+  const [drawPlay, setDrawPlay] = useState(false);
+  const lastStatus = useRef(p.status);
+  useLayoutEffect(() => {
+    if (lastStatus.current === p.status) return;
+    const was = lastStatus.current;
+    lastStatus.current = p.status;
+    if (p.status !== "drawing" || was === "drawing") return;
+    setDrawPlay(!prefersReducedMotion());
+    const call = drawStartAnnouncement(p.hostName);
+    fullCall.current = call;
+    say(call);
+  }, [p.status, p.hostName]);
+
   useEffect(() => () => { if (sheetTimer.current !== null) window.clearTimeout(sheetTimer.current); }, []);
 
   // The taken-cell popover closes on the next tap anywhere or on Escape.
@@ -412,6 +429,9 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       {/* Between the board and the legend (recorded ruling 22). */}
       {p.status === "filled" && fullPlay !== null && (
         <div className="mt-3"><CallerBanner text={BOARD_FULL_CALL} rule="var(--kit-dark)" play={fullPlay} /></div>
+      )}
+      {p.status === "drawing" && (
+        <div className="mt-3"><CallerBanner text={drawStartCall(p.hostName)} rule="var(--kit-dark)" play={drawPlay} /></div>
       )}
       {/* 12 px of frame, then the legend's 8 px gap (Mosaic §8 budget). The legend shows the board's view: while the
           viewer's own last lines drain it stays the member legend with their flight, then turns with the board. */}

@@ -43,6 +43,17 @@ describe("revealPlan: the totals (Review Focus 4)", () => {
     // Prize ranks need not be contiguous: a 3rd-place prize with no 2nd throws 3rd, then the top spot.
     expect(throwOrder([7, 2, 5], [1, 3])).toEqual([{ place: 3, number: 5 }, { place: 1, number: 7 }]);
   });
+  it("times non-contiguous places as two throws: 3rd, then the top spot, 2910 ms after the set-up", () => {
+    const plan = revealPlan(order50, [1, 3]);
+    expect(plan.total - setupMs(50)).toBe(2910); // 780 + 550 + 1280 + 300
+    expect(at(plan, "throw").map((s) => [s.place, s.number])).toEqual([[3, 9], [1, 23]]);
+  });
+  it("plans an empty order as the lights going down and up, with no chip and no throw", () => {
+    const plan = revealPlan([], [1, 2, 3]);
+    expect(plan.steps.map((s) => s.kind)).toEqual(["lights-down", "lights-up"]);
+    expect(plan.total).toBe(setupMs(0) + MOTION.lights);
+    expect(revealStateAt(plan, Number.POSITIVE_INFINITY)).toEqual({ lights: false, chips: 0, landed: [], banner: { kind: "setup" }, done: true });
+  });
 });
 
 describe("revealStateAt: what the board shows at a time", () => {
@@ -53,7 +64,10 @@ describe("revealStateAt: what the board shows at a time", () => {
     const firstLand = at(plan, "land")[0].at;
     expect(revealStateAt(plan, firstLand - 1).landed).toEqual([]);
     expect(revealStateAt(plan, firstLand)).toMatchObject({ lights: true, landed: [9], banner: { kind: "call", place: 3, number: 9 } });
+    expect(revealStateAt(plan, at(plan, "lights-up")[0].at - 1).lights).toBe(true);
     expect(revealStateAt(plan, at(plan, "lights-up")[0].at).lights).toBe(false);
+    expect(revealStateAt(plan, plan.total - 1).done).toBe(false);
+    expect(revealStateAt(plan, plan.total).done).toBe(true);
   });
   it("Skip is the final state, reached in one step: every bull in the DOM, the lights up, the top-spot call", () => {
     const final = revealStateAt(plan, Number.POSITIVE_INFINITY);

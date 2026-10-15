@@ -13,19 +13,6 @@
   padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 
-@theme {
-  --animate-deal: deal 240ms ease-out both;
-  --animate-lift: lift 300ms ease-out forwards;
-  @keyframes deal {
-    from { opacity: 0; transform: translateY(-16px) scale(0.9); }
-    to { opacity: 1; transform: none; }
-  }
-  @keyframes lift {
-    from { transform: none; }
-    to { transform: translateY(-6px) scale(1.12); }
-  }
-}
-
 @layer base {
   html {
     background-color: var(--paper);
@@ -322,3 +309,19 @@ button[data-cell][data-state="open"]:not([aria-disabled="true"]):active { transf
 [data-lights="down"] .bc-dim { opacity: 0.55; }
 [data-lights="down"] [data-won] > .bc-dim { opacity: 0; transition: none; }
 [data-lights="down"] [data-mine] > .bc-in > .bc-glyph { z-index: 3; }
+
+/* ---- The reveal's impact (spec §7): only the targeted cell changes during a throw. ---- */
+/* Skip: the final state at once; the lights lift in one fade of at most --dur-reduced (recorded ruling 35). */
+[data-skip] .bc-dim { transition-duration: var(--dur-reduced); }
+/* Impact: the cell (not the board) squashes, settles, then shakes one cycle on x. */
+[data-impact] { contain: none; z-index: 1; animation: squash-throw calc(var(--dur-squash) + var(--dur-throw-settle)) linear both, shake var(--dur-shake) linear calc(var(--dur-squash) + var(--dur-throw-settle)) both; }
+[data-impact="1"] { --squash-to: 0.9; --shake: 4px; }
+[data-impact="2"], [data-impact="3"] { --squash-to: 0.92; --shake: 2px; }
+/* While the reveal plays, the result's text waits (it stays in the DOM and in the accessibility tree). */
+[data-playing] [data-reveal-text] { opacity: 0; }
+/* 36.36 % = --dur-squash / (--dur-squash + --dur-throw-settle). */
+@keyframes squash-throw { 0% { transform: scale(1); animation-timing-function: linear; } 36.36% { transform: scale(var(--squash-to, 0.92)); animation-timing-function: cubic-bezier(.3, 1.5, .5, 1); } 100% { transform: scale(1); } }
+@keyframes shake { 25% { translate: var(--shake, 2px) 0; } 75% { translate: calc(-1 * var(--shake, 2px)) 0; } 100% { translate: 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  [data-impact] { animation: none !important; }
+}

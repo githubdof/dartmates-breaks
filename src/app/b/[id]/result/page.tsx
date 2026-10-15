@@ -12,7 +12,13 @@ import { viewerZone } from "@/lib/zone";
 import { shareText } from "@/lib/share-text";
 import { LocalTime } from "@/components/local-time";
 import { CopyField } from "@/components/copy-field";
-import { dealGateScript } from "./reveal-plan";
+import { getCaller } from "@/auth/session";
+import { getBreakPage } from "@/domain/breaks/queries";
+import { shapeGrid } from "@/domain/breaks/grid";
+import { placesOf, type Place } from "@/domain/draws/places";
+import { hostLabel } from "@/components/break/frame-copy";
+import { withPlaces } from "./board-cells";
+import { dealGateScript, placeLabel, topSpotText } from "./reveal-plan";
 import { ShareButton } from "./share-button";
 import { Reveal } from "./reveal";
 import { Verify } from "./verify";
@@ -29,9 +35,26 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ResultPage({ params }: Props) {
   const { id } = await params;
   if (!isUuid(id)) notFound();
-  const res = await db.transaction((tx) => getDrawResult(tx, id));
-  if (!res) notFound();
+  const caller = await getCaller();
+  const now = new Date();
+  const data = await db.transaction(async (tx) => {
+    const res = await getDrawResult(tx, id);
+    if (!res) return null;
+    const page = await getBreakPage(tx, id);
+    return page ? { res, page } : null;
+  });
+  if (!data) notFound();
+  const { res, page } = data;
   const handleOf: Record<number, string> = Object.fromEntries(res.entries.map((e) => [e.number, e.handleAtDraw]));
+  // The viewer's view (§6): holders see flights, everyone else the host's kit. Won places are public here.
+  const grid = shapeGrid(page, caller ? { id: caller.id, role: caller.role, globalUnpaid: 0 } : null, now);
+  // The prize places (Task 6): every prize rank of 1 to 3 with its line; the reveal throws one dart per place.
+  const placed = placesOf(res.ranking, res.awards.map((a) => a.rank));
+  const places: Place[] = placed.map((x) => x.place);
+  const cells = withPlaces(grid.cells, placed);
+  const winner = res.awards.find((a) => a.rank === 1);
+  const others = res.awards.filter((a) => a.rank > 1);
+  const handle = (n: number) => (handleOf[n] ? `@${handleOf[n]}` : "");
   const publicInputs: PublicInputs = {
     breakId: id,
     version: res.draw.algorithmVersion,
@@ -59,7 +82,45 @@ export default async function ResultPage({ params }: Props) {
         </div>
       )}
       <p className="mt-4 text-small"><Link href={`/b/${id}`} className="underline underline-offset-4">{res.breakTitle}</Link></p>
-      <Reveal breakId={id} ranking={res.ranking} handleOf={handleOf} awards={res.awards} />
+      <Reveal
+        breakId={id}
+        lineCount={page.break.lineCount}
+        cells={cells}
+        kit={grid.kit}
+        heat={grid.heat}
+        order={res.ranking}
+        places={places}
+        handleOf={handleOf}
+        hostName={hostLabel(page.host)}
+        view={grid.showHolders ? "member" : "kit"}
+        headline={
+          <>
+            <h1 id="top-spot" data-testid="winner" className="font-condensed text-display font-semibold">{topSpotText(top)}</h1>
+            <p className="text-headline font-semibold">{handle(top)}</p>
+            {winner?.itemName && <p>Wins {winner.itemName}.</p>}
+            {winner && !winner.itemName && <p>Picks one of the prize choices.</p>}
+            {others.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {others.map((a) => <li key={a.rank}>{placeLabel(a.rank)} place: {a.winnerHandle ? `@${a.winnerHandle}` : "unknown"}{a.itemName ? `, ${a.itemName}` : ""}.</li>)}
+              </ul>
+            )}
+          </>
+        }
+        after={
+          <>
+            <h2 className="mt-6 text-headline font-semibold">Full order</h2>
+            <ol className="mt-2 divide-y divide-wire-2 rounded-card border border-wire bg-card">
+              {res.ranking.map((n, i) => (
+                <li key={n} className="flex min-h-11 items-center gap-3 px-4 text-small">
+                  <span className="w-20 text-ink-2">{placeLabel(i + 1)}</span>
+                  <span className="w-16 font-condensed text-grid font-semibold tabular">Line {n}</span>
+                  <span className="min-w-0 truncate">{handle(n)}</span>
+                </li>
+              ))}
+            </ol>
+          </>
+        }
+      />
       <p className="mt-4 max-w-[65ch] text-small text-ink-2">
         Ran {when(res.draw.createdAt)}. Requested by {res.hostHandle ? `@${res.hostHandle}` : "the host"}
         {res.request.onBehalfNote ? `, run by an admin: ${res.request.onBehalfNote}` : ""}.

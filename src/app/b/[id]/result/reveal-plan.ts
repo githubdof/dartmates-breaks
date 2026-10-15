@@ -2,18 +2,6 @@ import { ordinal } from "@/lib/list";
 import { MOTION, type DurationTokens } from "@/lib/motion";
 import type { Place } from "@/domain/draws/places";
 
-/**
- * Retired with the first design's deal: the old reveal.tsx still reads these until Task 12b rewrites it, and Task 12b
- * deletes them. Nothing new may use them.
- */
-export const DEAL_MS = 1500;
-export function dealDelays(count: number, total = DEAL_MS): number[] {
-  if (count <= 1) return [0];
-  const step = Math.min(120, total / count);
-  return Array.from({ length: count }, (_, i) => Math.round((count - 1 - i) * step));
-}
-export const liftDelay = (count: number) => dealDelays(count)[0] + 240;
-
 export type { Place } from "@/domain/draws/places";
 export type RevealStep = { at: number; kind: "lights-down" | "chip" | "beat" | "throw" | "land" | "call" | "lights-up"; number?: number; place?: Place };
 export type RevealPlan = { steps: RevealStep[]; total: number };
