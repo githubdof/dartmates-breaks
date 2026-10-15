@@ -3,7 +3,10 @@ import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../tests/helpers/fixtures";
 import { breaks, hostProfiles } from "@/db/schema";
-import { draftForEdit, hostProfile, hostTrust, isGeneratedInstructions, lastBreakDefaults, listHostBreaks } from "./queries";
+import { draftForEdit, getBreakPage, hostProfile, hostTrust, isGeneratedInstructions, lastBreakDefaults, listHostBreaks } from "./queries";
+import { shapeGrid } from "./grid";
+import { DEFAULT_KIT } from "@/domain/flights";
+import type { Tx } from "@/db/client";
 import { createDraft } from "./commands";
 import { randomUUID } from "node:crypto";
 import { claimLines, markPaid, addBonusLine } from "@/domain/lines/commands";
@@ -160,5 +163,42 @@ describe("draftForEdit", () => {
     expect(isGeneratedInstructions("Venmo @Jim. PayPal paypal.me/Jim. Leave the note blank.")).toBe(true);
     expect(isGeneratedInstructions("Leave the note blank.")).toBe(true);
     expect(isGeneratedInstructions("Zelle only. Leave the note blank.")).toBe(false);
+  });
+});
+
+const setKit = (tx: Tx, hostId: string, dark: string, light: string) =>
+  tx.execute(sql`insert into host_profiles (user_id, kit_dark, kit_light) values (${hostId}::uuid, ${dark}, ${light})
+    on conflict (user_id) do update set kit_dark = excluded.kit_dark, kit_light = excluded.kit_light`);
+
+describe("the break page model carries the kit and the heat (Task 5 contract, Mosaic §4 Heat, §6)", () => {
+  it("is the same public kit and step for every viewer, and step 4 from Closed on", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx); const stranger = await makeUser(tx);
+      await setKit(tx, host.id, "plum", "lime");
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      await claimLines(tx, asCaller(buyer), { breakId: b.id, numbers: [1, 2], batchId: randomUUID() });
+      const now = new Date();
+      const page = (await getBreakPage(tx, b.id))!;
+      const viewers = [
+        null,
+        { id: stranger.id, role: "member" as const, globalUnpaid: 0 },
+        { id: buyer.id, role: "member" as const, globalUnpaid: 2 },
+        { id: host.id, role: "host" as const, globalUnpaid: 0 },
+      ];
+      for (const viewer of viewers) {
+        const g = shapeGrid(page, viewer, now);
+        expect(g.kit).toEqual({ dark: "plum", light: "lime" });
+        expect(g.heat).toBe(2);
+      }
+      await claimLines(tx, asCaller(buyer), { breakId: b.id, numbers: [3, 4], batchId: randomUUID() });
+      for (const number of [1, 2, 3, 4]) await markPaid(tx, asCaller(host, "host"), { breakId: b.id, number, expectedOwnerId: buyer.id });
+      const closed = (await getBreakPage(tx, b.id))!;
+      expect(closed.break.status).toBe("filled");
+      expect(shapeGrid(closed, null, now).heat).toBe(4);
+      // A host who never chose: the default kit.
+      const other = await makeUser(tx, { role: "host" });
+      const plain = await openBreakWithLines(tx, { hostId: other.id, lineCount: 4 });
+      expect(shapeGrid((await getBreakPage(tx, plain.id))!, null, now)).toMatchObject({ kit: DEFAULT_KIT, heat: 0 });
+    });
   });
 });

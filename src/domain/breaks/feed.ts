@@ -1,6 +1,7 @@
-import { sql, eq, and, asc, desc, inArray, isNull, isNotNull, type SQL } from "drizzle-orm";
+import { sql, eq, and, asc, desc, inArray, isNull, isNotNull, lte, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { breaks, draws, hostProfiles, lines, users } from "@/db/schema";
+import { breaks, draws, hostProfiles, lines, prizes, users } from "@/db/schema";
+import { placesOf, type Place } from "@/domain/draws/places";
 import { heatStep, kitFor, type HeatStep, type Kit } from "@/domain/flights";
 import type { CellState } from "./grid";
 
@@ -86,14 +87,34 @@ export async function feedHosts(tx: Tx): Promise<{ handle: string }[]> {
   return rows.flatMap((r) => (r.handle ? [{ handle: r.handle }] : []));
 }
 
-export type LatestRan = { breakId: string; title: string; lineCount: number; topLine: number; ranAt: Date };
+export type LatestRan = {
+  breakId: string; title: string; lineCount: number; topLine: number; ranAt: Date;
+  kit: Kit; heat: HeatStep;
+  /** The black bull cells: each prize place (1 to 3) and the line that took it (placesOf). */
+  places: { number: number; place: Place }[];
+  /** Line state only, as on feed cards (feedThumbs): no owner is selected. */
+  cells: ThumbCell[];
+};
 
-/** The landing hero (design §5.2): the most recent main break that ran, read from its active (not voided) draw; never a banned host's. */
+/** The landing hero (Mosaic §8): the most recent main break that ran, read from its active (not voided) draw; never a banned host's. */
 export async function latestRanBreak(tx: Tx): Promise<LatestRan | null> {
-  const [r] = await tx.select({ breakId: breaks.id, title: breaks.title, lineCount: breaks.lineCount, ranking: draws.ranking, ranAt: draws.createdAt })
+  const [r] = await tx.select({
+    breakId: breaks.id, title: breaks.title, lineCount: breaks.lineCount, ranking: draws.ranking, ranAt: draws.createdAt,
+    kitDark: hostProfiles.kitDark, kitLight: hostProfiles.kitLight,
+  })
     .from(draws).innerJoin(breaks, eq(breaks.id, draws.breakId)).innerJoin(users, eq(users.id, breaks.hostId))
+    .leftJoin(hostProfiles, eq(hostProfiles.userId, breaks.hostId))
     .where(and(isNull(draws.voidedAt), eq(breaks.status, "drawn"), eq(breaks.kind, "main"), isNull(users.bannedAt)))
     .orderBy(desc(draws.createdAt), desc(draws.id)).limit(1);
   if (!r || r.ranking.length === 0) return null;
-  return { breakId: r.breakId, title: r.title, lineCount: r.lineCount, topLine: r.ranking[0], ranAt: r.ranAt };
+  const ranks = await tx.selectDistinct({ rank: prizes.rank }).from(prizes)
+    .where(and(eq(prizes.breakId, r.breakId), lte(prizes.rank, 3))).orderBy(asc(prizes.rank));
+  const cells = (await feedThumbs(tx, [r.breakId])).get(r.breakId) ?? [];
+  return {
+    breakId: r.breakId, title: r.title, lineCount: r.lineCount, topLine: r.ranking[0], ranAt: r.ranAt,
+    kit: kitFor({ kitDark: r.kitDark, kitLight: r.kitLight }),
+    heat: heatStep(0, r.lineCount, true), // a ran break is past Closed: the lamp is frozen at its top step
+    places: placesOf(r.ranking, ranks.map((x) => x.rank)),
+    cells,
+  };
 }

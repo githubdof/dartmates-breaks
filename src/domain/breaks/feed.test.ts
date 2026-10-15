@@ -194,3 +194,30 @@ describe("kit and heat on feed cards (Mosaic §6, §10)", () => {
     });
   });
 });
+
+const setKit = (tx: Tx, hostId: string, dark: string, light: string) =>
+  tx.execute(sql`insert into host_profiles (user_id, kit_dark, kit_light) values (${hostId}::uuid, ${dark}, ${light})
+    on conflict (user_id) do update set kit_dark = excluded.kit_dark, kit_light = excluded.kit_light`);
+const setFlight = (tx: Tx, userId: string, colour: string, shape: string) =>
+  tx.execute(sql`update users set flight_colour = ${colour}, flight_shape = ${shape} where id = ${userId}::uuid`);
+/** Nothing a flight could be read from: the key itself, and the colour and shape words these tests give the members. */
+const NO_FLIGHT = /flight|pink|slim|orange|pear/i;
+
+describe("the landing hero in the host's kit (Mosaic §6, §8, §10; Review Focus 1)", () => {
+  it("latestRanBreak carries the kit, heat 4, the prize places and the thumb cells, and no flight", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      await setKit(tx, host.id, "petrol", "sky");
+      await setFlight(tx, buyer.id, "pink", "slim");
+      await setFlight(tx, host.id, "orange", "pear");
+      const d = await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id], lineCount: 4 });
+      const hero = (await latestRanBreak(tx))!;
+      expect(hero).toMatchObject({ breakId: d.id, topLine: d.ranking[0], kit: { dark: "petrol", light: "sky" }, heat: 4 });
+      // The fixture's break has one prize, the top spot, so it has one place.
+      expect(hero.places).toEqual([{ number: d.ranking[0], place: 1 }]);
+      expect(hero.cells).toEqual([1, 2, 3, 4].map((number) => ({ number, state: "paid", bonus: false })));
+      expect(JSON.stringify(hero)).not.toMatch(NO_FLIGHT);
+      expect(JSON.stringify(hero)).not.toContain(buyer.id);
+    });
+  });
+});
