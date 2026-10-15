@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, lineRows } from "../../../tests/helpers/fixtures";
-import { createDraft, openBreak, updateDraft } from "./commands";
+import { createDraft, openBreak, updateDraft, updateHostKit } from "./commands";
 import { getBreakPage } from "./queries";
 import { breaks, breakSecrets, events, hostProfiles } from "@/db/schema";
 import { InvalidInput, NotAuthorized, NotOpen } from "@/domain/errors";
@@ -211,6 +211,53 @@ describe("updateDraft", () => {
       const { breakId } = await createDraft(tx, asHost(host), input);
       await expect(updateDraft(tx, asHost(host), breakId, { ...input, lineCount: 51 })).rejects.toBeInstanceOf(InvalidInput);
       await expect(updateDraft(tx, asHost(host), breakId, { ...input, claimMode: "random_only" as never })).rejects.toBeInstanceOf(InvalidInput);
+    });
+  });
+});
+
+describe("updateHostKit", () => {
+  const kitEvents = (tx: Parameters<Parameters<typeof withTx>[0]>[0], id: string) =>
+    tx.select().from(events).where(sql`${events.actorId} = ${id} and ${events.type} = 'host.profile_updated'`);
+  const profile = async (tx: Parameters<Parameters<typeof withTx>[0]>[0], id: string) =>
+    (await tx.select().from(hostProfiles).where(sql`${hostProfiles.userId} = ${id}`))[0];
+
+  it("creates the profile row when there is none and logs that the kit changed", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      await updateHostKit(tx, asHost(host), { dark: "petrol", light: "pink" });
+      expect(await profile(tx, host.id)).toMatchObject({ kitDark: "petrol", kitLight: "pink", paymentHandles: {} });
+      expect((await kitEvents(tx, host.id)).map((e) => e.payload)).toEqual([{ changed: ["kit"] }]);
+    });
+  });
+  it("keeps the payment handles, logs each change, and does nothing when the kit is unchanged", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      await createDraft(tx, asHost(host), { ...input, paymentHandles: { venmo: "@Jim-R" } });
+      await updateHostKit(tx, asHost(host), { dark: "petrol", light: "pink" });
+      await updateHostKit(tx, asHost(host), { dark: "plum", light: "sky" });
+      await updateHostKit(tx, asHost(host), { dark: "plum", light: "sky" });
+      expect(await profile(tx, host.id)).toMatchObject({ kitDark: "plum", kitLight: "sky", paymentHandles: { venmo: "@Jim-R" } });
+      const payloads = (await kitEvents(tx, host.id)).map((e) => e.payload);
+      expect(payloads).toEqual([{ changed: ["kit"] }, { changed: ["kit"] }]); // never the colours (recorded ruling 10)
+    });
+  });
+  it("refuses a colour outside the set or in the wrong tier, and stores nothing", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      await expect(updateHostKit(tx, asHost(host), { dark: "yellow", light: "pink" })).rejects.toBeInstanceOf(InvalidInput);
+      await expect(updateHostKit(tx, asHost(host), { dark: "blue", light: "plum" })).rejects.toBeInstanceOf(InvalidInput);
+      await expect(updateHostKit(tx, asHost(host), { dark: "blue", light: "red" as never })).rejects.toThrow("Choose a dark colour and a light colour for your kit");
+      expect(await profile(tx, host.id)).toBeUndefined();
+    });
+  });
+  it("is for hosts and admins only, and never for a banned host", async () => {
+    await withTx(async (tx) => {
+      const member = await makeUser(tx);
+      const host = await makeUser(tx, { role: "host" });
+      await expect(updateHostKit(tx, asMember(member), { dark: "blue", light: "yellow" })).rejects.toBeInstanceOf(NotAuthorized);
+      await expect(updateHostKit(tx, { ...asHost(host), banned: true }, { dark: "blue", light: "yellow" })).rejects.toThrow(/suspended/);
+      await updateHostKit(tx, { ...asHost(host), role: "admin" }, { dark: "petrol", light: "sky" });
+      expect(await kitEvents(tx, host.id)).toHaveLength(1);
     });
   });
 });
