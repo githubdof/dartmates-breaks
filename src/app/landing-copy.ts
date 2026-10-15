@@ -16,9 +16,3 @@ export function ranText(ranAt: Date, now: Date, tz: string): string {
     : { month: "short", day: "numeric", year: "numeric" };
   return `Ran on ${new Intl.DateTimeFormat("en-US", { timeZone: tz, ...options }).format(ranAt)}.`;
 }
-
-/** The hero grid's numbers: every numbered line, plus the winning line when it is a bonus line above N. */
-export function heroNumbers(lineCount: number, topLine: number): number[] {
-  const numbers = Array.from({ length: lineCount }, (_, i) => i + 1);
-  return topLine > lineCount ? [...numbers, topLine] : numbers;
-}

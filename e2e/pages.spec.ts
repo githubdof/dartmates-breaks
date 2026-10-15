@@ -61,14 +61,21 @@ test("the feed lists an open break and never a draft; the host filter and sorts 
   const visitor = await (await browser.newContext()).newPage();
   await visitor.goto(`/breaks?host=${handle}`);
   const card = visitor.getByTestId("break-card").filter({ hasText: `Feed open ${run}` });
-  await expect(card).toContainText("4 of 4 left");
+  await expect(card).toContainText("4 to go");
+  // The kit view only: a framed thumbnail with no flight on any cell.
+  await expect(card.getByTestId("thumb")).toBeVisible();
+  await expect(card.locator("[data-flight]")).toHaveCount(0);
   await expect(card).toContainText("$5 a line");
   await expect(card).toContainText(`Hosted by @${handle}. New host.`);
   await expect(visitor.getByText(`Feed draft ${run}`)).toHaveCount(0);
   await expect(visitor.getByTestId("host-filter")).toHaveValue(handle);
-  await visitor.getByRole("radio", { name: "Almost full" }).click();
+  await expect(visitor.getByRole("radio", { name: "Filling fast" })).toHaveCount(0);
+  await visitor.getByRole("radio", { name: "Closest to full" }).click();
   await expect(visitor).toHaveURL(new RegExp(`/breaks\\?sort=almost&host=${handle}$`));
-  await expect(visitor.getByRole("radio", { name: "Almost full" })).toHaveAttribute("aria-checked", "true");
+  await expect(visitor.getByRole("radio", { name: "Closest to full" })).toHaveAttribute("aria-checked", "true");
+  // A link from before Mosaic still opens: the retired sort falls back to Newest.
+  await visitor.goto(`/breaks?sort=filling&host=${handle}`);
+  await expect(visitor.getByRole("radio", { name: "Newest" })).toHaveAttribute("aria-checked", "true");
   await card.click();
   await expect(visitor).toHaveURL(url);
   await visitor.getByTestId("host-line").click();
@@ -120,6 +127,9 @@ test("the landing page leads with the newest ran break and links to the feed", a
   await expect(hero).toContainText("Anyone can check the draw.");
   await expect(hero).toHaveAttribute("href", `${new URL(url).pathname}/result`);
   await expect(visitor.getByText("Hosting on Facebook now? Breaks is invite-only for hosts.", { exact: true })).toBeVisible();
+  // The kit board with its bull: one won cell, ringed as the top spot, and no flight anywhere.
+  await expect(hero.locator('[data-tone="won"][data-place="1"]')).toHaveCount(1);
+  await expect(hero.locator("[data-flight]")).toHaveCount(0);
   await visitor.getByTestId("browse-breaks").click();
   await expect(visitor).toHaveURL(/\/breaks$/);
 });

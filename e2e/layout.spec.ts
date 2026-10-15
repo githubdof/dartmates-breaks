@@ -100,7 +100,7 @@ for (const [width, cols] of [[390, 8], [360, 7], [320, 6], [1024, 10]] as const)
 test("theme-color is the wall on wall routes and paper elsewhere (Mosaic §8)", async ({ browser }) => {
   const page = await anonymous(browser, 390, 664);
   // Each wall route joins this list in the task that puts it on the wall (Task 8, Task 15a, Task 15b; the result page's wall theme color is checked in journey 2 by Task 13; recorded ruling 12).
-  const wall: string[] = [url];
+  const wall: string[] = [url, "/", "/breaks"];
   for (const path of wall) {
     await page.goto(path);
     await expect(page.locator('meta[name="theme-color"]'), path).toHaveAttribute("content", "#17161A");
