@@ -53,7 +53,9 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   // 3. Buyer A finds it in the feed, takes the next two lines, and pays later from My lines.
   const a = await as(browser, `j2a${run}@e2e.test`);
   await a.goto(`/breaks?host=${hostHandle}`);
-  await a.getByTestId("break-card").filter({ hasText: `J2 ${run}` }).click();
+  const feedCard = a.getByTestId("break-card").filter({ hasText: `J2 ${run}` });
+  await expect(feedCard).toContainText("4 to go"); // the checkout count, never "4 of 4 left"
+  await feedCard.click();
   await a.waitForURL(url);
   await expect(a.getByTestId("cell-1")).toHaveAttribute("aria-disabled", "true"); // straight fill: no picking
   await a.getByRole("button", { name: "Increase Number of lines" }).click();
@@ -140,9 +142,10 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await winner.goto("/me");
   await expect(winner.getByTestId("my-break").filter({ hasText: `J2 ${run}` }).getByTestId("my-state")).toHaveText(`Won. Tell ${hostHandle} your choice.`);
 
-  // 8. The result page for a first-time viewer: the reveal on the board, Skip hands focus to Replay, Replay plays it
-  //    again, Share falls back to a selectable field when the clipboard is blocked. A paused clock keeps the reveal on
-  //    screen: install() alone lets time run, and a 4-line, two-prize reveal ends in about 3.3 s, so Skip would race it.
+  // 8. The result page for a first-time viewer: Skip ends the reveal on its last call with the bulls on the board and
+  //    hands focus to Replay; Replay plays it again; Share falls back to a selectable field when the clipboard is
+  //    blocked. A paused clock keeps the reveal on screen: install() alone lets time run, and a 4-line, two-prize reveal
+  //    ends in about 3.3 s, so Skip would race it (the layout spec's pattern).
   const viewer = a;
   await viewer.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("blocked")) } });
@@ -170,8 +173,11 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await viewer.getByTestId("reveal-skip").click();
   await expect(viewer.locator("[data-won]")).toHaveCount(2);
   await expect(viewer.locator("[data-lights=down]")).toHaveCount(0);
-  await expect(viewer.getByTestId("caller")).toContainText("takes the top spot.");
+  // The caller copy (Mosaic §7): always the handle, never "You", never the prize.
+  await expect(viewer.getByTestId("caller")).toHaveText(/^Line \d+\. @\S+ takes the top spot\.$/);
   await expect(viewer.getByTestId("reveal-replay")).toBeFocused();
+  // Two prizes, two black bulls on the visible board (the deal layer's chips, aria-hidden, hold no won cell).
+  await expect(viewer.locator("[data-won]:visible")).toHaveCount(2);
   const chipsAfter = await viewer.getByTestId("deal").locator("li").allTextContents();
   expect(chipsAfter.slice(0, chipsAtThrow.length)).toEqual(chipsAtThrow);
   // The board and its frame as the reveal left them: compared with a returning viewer's below. Every cell, the hit

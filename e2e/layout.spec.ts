@@ -1,6 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { gotoReady, loginAs } from "./helpers";
+import { composeBreak, gotoReady, loginAs } from "./helpers";
+import { ageClaims } from "./db";
 
 // The design's layout and accessibility claims, checked in a real browser (no jsdom). One 50-line open break
 // serves the whole file; it is created through the composer exactly as journey-1 creates its break.
@@ -251,6 +252,22 @@ test("Enter in the composer never opens a break", async ({ browser }) => {
   await expect(host.getByTestId("edit-draft")).toBeVisible();
 });
 
+/** A 2-line break the host runs to the end, for the result page: one buyer takes both lines and is ticked paid. */
+async function ranBreak(browser: Browser, host: Page): Promise<{ url: string; buyer: Page }> {
+  const ranUrl = await composeBreak(host, { title: `Layout ran ${run}`, lineCount: 2 });
+  const buyer = await signedIn(browser, `lr${run}@e2e.test`);
+  await gotoReady(buyer, ranUrl);
+  await buyer.getByTestId("claim-rest").click();
+  await expect(buyer.getByTestId("pay-amount")).toContainText("$10");
+  await host.goto(ranUrl);
+  await host.getByTestId("host-tools").click();
+  await host.getByTestId("ledger-paid").click();
+  await host.getByTestId("run-draw").click();
+  await host.getByTestId("finish-draw").click();
+  await expect(host.getByTestId("ledger-result")).toBeVisible();
+  return { url: ranUrl, buyer };
+}
+
 async function axeViolations(page: Page, where: string): Promise<string[]> {
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   return r.violations.map((v) => `${where} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
@@ -280,5 +297,19 @@ test("axe finds no WCAG 2.1 A or AA violation on the main pages, the pay sheet a
   await host.getByTestId("host-tools").click();
   await expect(host.getByTestId("ledger")).toBeVisible();
   found.push(...(await axeViolations(host, "host ledger")));
+  // The host's break view with an overdue line (Mosaic §5, §11): the layout buyer's lines 3 and 9, claimed 30 h ago
+  // on a 24 h window. This is the file's last test, so moving the claims back changes nothing for the others.
+  await ageClaims(url.split("/b/")[1], [3, 9], 30);
+  await host.goto(url);
+  await expect(host.getByTestId("cell-3")).toHaveAttribute("aria-label", "Line 3, taken, overdue");
+  found.push(...(await axeViolations(host, "host break view with an overdue line")));
+  // The result page, in the kit view (a stranger) and the member view (a holder), with the reveal at its end.
+  const ran = await ranBreak(browser, host);
+  for (const [who, page] of [["anonymous", anon], ["holder", ran.buyer]] as const) {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`${ran.url}/result`);
+    await expect(page.getByTestId("winner")).toContainText("Top spot: line");
+    found.push(...(await axeViolations(page, `${who} result page`)));
+  }
   expect(found).toEqual([]);
 });
