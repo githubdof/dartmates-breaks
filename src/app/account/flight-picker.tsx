@@ -25,12 +25,15 @@ export function FlightPicker({ current }: { current: Flight }) {
             {preview.row.map((c) => <Cell key={c.number} cell={c} px={44} />)}
           </div>
         </div>
-        <div className="grid grid-cols-8 border-t border-l border-[var(--board-steel)]">
+        {/* Each cell 44.75 px at 390, as the board's (§8; the 44 pt floor): eight cells and nine 1 px wires are 367 px,
+            4.5 px into each 16 px gutter (the board's bleed, recorded ruling 33). */}
+        <div data-testid="flight-grid" className="-mx-[4.5px] grid grid-cols-8 border-t border-l border-[var(--board-steel)]">
           {GRID.flat().map((f) => {
             const checked = pick.colour === f.colour && pick.shape === f.shape;
             return (
+              // Focused: above its neighbours, so the next cell does not paint over the ring (WCAG 2.4.7, 2.4.11).
               <label key={`${f.colour}-${f.shape}`}
-                className={`relative flex aspect-square cursor-pointer items-center justify-center border-r border-b border-[var(--board-steel)] bg-[var(--board-cream)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-green ${checked ? "shadow-[inset_0_0_0_2px_var(--board-cream),inset_0_0_0_4px_var(--board-ink),inset_0_0_0_6px_var(--board-cream)]" : ""}`}>
+                className={`relative flex aspect-square cursor-pointer items-center justify-center border-r border-b border-[var(--board-steel)] bg-[var(--board-cream)] has-[:focus-visible]:z-10 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-green ${checked ? "shadow-[inset_0_0_0_2px_var(--board-cream),inset_0_0_0_4px_var(--board-ink),inset_0_0_0_6px_var(--board-cream)]" : ""}`}>
                 <input type="radio" name="flight" value={`${f.colour}-${f.shape}`} checked={checked} onChange={() => setPick(f)}
                   data-testid={`flight-${f.colour}-${f.shape}`} className="absolute inset-0 m-0 cursor-pointer appearance-none opacity-0" />
                 <FlightGlyph flight={f} size={20} />

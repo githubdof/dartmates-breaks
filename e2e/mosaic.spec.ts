@@ -278,3 +278,31 @@ test("a draft's head at 390: the Draft pill sits on the media row's line, and no
   expect(pill!.x + pill!.width).toBeLessThanOrEqual(390 - 16);
   expect(await host.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
+
+test("the flight picker at 390: eight 44.75 px cells (the 44 pt floor), nothing scrolling sideways", async ({ browser }) => {
+  const page = await newPage(browser, `mf${run}@e2e.test`, "member", { width: 390, height: 664 });
+  await page.goto("/account");
+  const cells = page.getByTestId("flight-picker").locator('label:has(input[name="flight"])');
+  await expect(cells).toHaveCount(32);
+  // A cell is its face plus its 1 px right wire (border-box): 45.75 wide, a 44.75 px face, as the board's (§8).
+  const geo = await cells.evaluateAll((els) => els.slice(0, 2).map((e) => {
+    const r = e.getBoundingClientRect();
+    return { x: r.x, width: r.width, face: r.width - parseFloat(getComputedStyle(e).borderRightWidth) };
+  }));
+  expect(geo[0].face).toBeGreaterThanOrEqual(44);
+  expect(geo[0].face).toBeCloseTo(44.75, 1);
+  expect(geo[1].x - geo[0].x).toBeCloseTo(45.75, 1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+test("the flight picker's focused cell rises above its neighbours, so its ring is never painted over (WCAG 2.4.7 / 2.4.11)", async ({ browser }) => {
+  const page = await newPage(browser, `mg${run}@e2e.test`, "member", { width: 390, height: 664 });
+  await page.goto("/account");
+  const grid = page.getByTestId("flight-picker");
+  // Keyboard focus moves within the radio group: the focused cell's label stacks above the next cell.
+  const checked = grid.locator("input:checked");
+  await checked.focus();
+  await page.keyboard.press("ArrowRight");
+  const z = await grid.locator("input:focus-visible").evaluate((input) => getComputedStyle(input.closest("label")!).zIndex);
+  expect(z).toBe("10");
+});
