@@ -210,3 +210,27 @@ html:has([data-wall]) footer {
   /* Focus on the board: a 2 px ink outline over a 4 px cream ring, so one band always contrasts (Mosaic §5). */
   .bc:focus-visible { outline: 2px solid var(--board-ink); outline-offset: 0; box-shadow: 0 0 0 4px var(--board-cream); z-index: 10; }
 }
+
+/* ---------- The board (Mosaic §4, §5). ---------- */
+@layer components {
+  /* Wire: each cell's own 1 px steel shadow over a 1 px gap, so empty last-row slots show --board-wall-2, not wire.
+     The rows pull 3.5 px into each gutter (BOARD_BLEED): at 390 the board is 365 px, eight 44.75 px cells on 1 px wires
+     (recorded ruling 33). The group keeps the column's width, so its container queries still pick eight columns. */
+  .board-frame, .board-wire { gap: 1px; background: var(--board-wall-2); margin-inline: -3.5px; }
+  .board-frame > .bc:not(:focus-visible), .board-wire > .bc:not(:focus-visible) { box-shadow: 0 0 0 1px var(--board-steel); }
+  /* The kit is the surround: 1 px steel, the 6 px numbers ring, 4 px kit dark, a 1 px kit-light pinstripe. Spread into the
+     page gutter (15.5 px of its 16 px with the bleed), never border or padding: a 12 px border would leave 334 px and
+     columnsFor would drop to 7 columns. */
+  .board-frame {
+    box-shadow: 0 0 0 1px var(--board-steel), 0 0 0 7px var(--board-ring), 0 0 0 11px var(--kit-dark), 0 0 0 12px var(--kit-light);
+  }
+  /* The lamp: behind the board, to the screen edge at 390 and 360 (LAMP_POSITION, recorded ruling 18). Opacity only, and only on a step change. */
+  .board-lamp { position: absolute; inset: -32px -16px; pointer-events: none; transition: opacity var(--dur-lamp) var(--ease-inout, ease-in-out); }
+  /* Thumbnails (feed, hero, profile): a 6 px frame, 1 px steel, 4 px kit dark, 1 px kit light. */
+  .thumb-frame {
+    gap: 1px; background: var(--board-wall-2);
+    box-shadow: 0 0 0 1px var(--board-steel), 0 0 0 5px var(--kit-dark), 0 0 0 6px var(--kit-light);
+  }
+  .thumb-frame > .bc { box-shadow: 0 0 0 1px var(--board-steel); }
+  .board-lamp.thumb-lamp { inset: -12px; }
+}

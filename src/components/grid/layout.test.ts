@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { gridTier, columnsFor, nextFocusIndex, thumbColumns, GRID_COLS, GRID_MAX_W } from "./layout";
+import { gridTier, columnsFor, nextFocusIndex, thumbColumns, boardGeometry, GRID_COLS, GRID_MAX_W } from "./layout";
 
 describe("grid columns (design §4)", () => {
   it("tiers by line count", () => {
@@ -31,5 +31,15 @@ describe("grid columns (design §4)", () => {
   });
   it("sizes thumbnails as a near-square", () => {
     expect([2, 6, 12, 50, 55].map(thumbColumns)).toEqual([2, 3, 4, 8, 8]);
+  });
+  it("the board at 390 and 360 (Mosaic §5, Review Focus 5): 365 px of eight 44.75 px cells on 1 px wires, then seven 47 px cells; the 12 px frame reaches 15.5 px into the gutter", () => {
+    expect(boardGeometry(390, 50)).toEqual({ column: 358, box: 365, cols: 8, cell: 44.75, pitch: 45.75, rows: 7, height: 319.25 });
+    expect(boardGeometry(360, 50)).toEqual({ column: 328, box: 335, cols: 7, cell: 47, pitch: 48, rows: 8, height: 383 });
+    // The 44 pt floor holds at both widths, and half a pixel of gutter is left at the screen edge (3.5 px bleed + 12 px frame).
+    for (const w of [390, 360]) {
+      expect(boardGeometry(w, 50).cell).toBeGreaterThanOrEqual(44);
+      expect((w - boardGeometry(w, 50).box) / 2 - 12).toBe(0.5);
+    }
+    expect(boardGeometry(1024, 55)).toMatchObject({ column: 552, box: 559, cols: 10 });
   });
 });

@@ -74,7 +74,7 @@ for (const [width, cols] of [[390, 8], [360, 7], [320, 6], [1024, 10]] as const)
 test("theme-color is the wall on wall routes and paper elsewhere (Mosaic §8)", async ({ browser }) => {
   const page = await anonymous(browser, 390, 664);
   // Each wall route joins this list in the task that puts it on the wall (Task 8, Task 15a, Task 15b; the result page's wall theme color is checked in journey 2 by Task 13; recorded ruling 12).
-  const wall: string[] = [];
+  const wall: string[] = [url];
   for (const path of wall) {
     await page.goto(path);
     await expect(page.locator('meta[name="theme-color"]'), path).toHaveAttribute("content", "#17161A");
@@ -93,6 +93,7 @@ test("an anonymous viewer's cell names never carry a handle (D§4)", async ({ br
   expect(names.filter((n) => n.includes(buyerHandle) || n.includes("@"))).toEqual([]);
   expect(names[2]).toBe("Line 3, taken");
   // Mosaic §6: a kit-view cell renders no data-flight and no --fc custom property.
+  await expect(page.getByRole("group", { name: /^Lines/ })).toHaveAttribute("data-view", "kit");
   expect(await page.locator("[data-flight]").count()).toBe(0);
   const styles = await page.locator("[data-cell]").evaluateAll((els) => els.map((e) => e.getAttribute("style") ?? ""));
   expect(styles.filter((s) => s.includes("--fc"))).toEqual([]);
@@ -103,6 +104,7 @@ test("a signed-in viewer with no line here sees no flight and no handle either (
   await page.goto(url);
   const names = await page.locator("button[data-cell]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") ?? ""));
   expect(names.filter((n) => n.includes(buyerHandle) || n.includes("@"))).toEqual([]);
+  await expect(page.getByRole("group", { name: /^Lines/ })).toHaveAttribute("data-view", "kit");
   expect(await page.locator("[data-flight]").count()).toBe(0);
   const styles = await page.locator("[data-cell]").evaluateAll((els) => els.map((e) => e.getAttribute("style") ?? ""));
   expect(styles.filter((s) => s.includes("--fc"))).toEqual([]);

@@ -10,7 +10,8 @@ import { daysSince, formatDeadline, formatLate } from "@/lib/time";
 import { viewerZone } from "@/lib/zone";
 import { pageShare } from "@/lib/share-text";
 import { GridPreview } from "@/components/grid/grid-preview";
-import { Legend } from "@/components/legend";
+import { BoardLegend } from "@/components/board-legend";
+import type { BoardView } from "@/components/grid/cell";
 import { StatusPill } from "@/components/status-pill";
 import { CopyButton } from "@/components/copy-button";
 import { ButtonLink } from "@/components/button";
@@ -22,7 +23,11 @@ import { onboardingHref, parsePick } from "@/components/break/selection";
 import { closesText, hostLabel, leftText, perPersonText, pickingText, prizeLines, smallLineText, trustText, youHaveText } from "@/components/break/frame-copy";
 import { HostTools } from "@/components/ledger/host-tools";
 import type { LedgerRowView } from "@/components/ledger/ledger-view";
+import { wallViewport } from "@/app/wall";
 import { loadBreak } from "./load";
+
+/** The break page is on the wall from this task on: its browser chrome follows (Mosaic §8, recorded ruling 12). */
+export const viewport = wallViewport;
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ pick?: string | string[] }> };
 
@@ -57,6 +62,10 @@ export default async function BreakPage({ params, searchParams }: Props) {
   if (caller && !caller.onboarded && initialPick.length > 0) redirect(onboardingHref(id, initialPick));
   const zone = await viewerZone();
   const grid = shapeGrid(page, caller ? { id: caller.id, role: caller.role, globalUnpaid } : null, now);
+  const boardView: BoardView = grid.showHolders ? "member" : "kit";
+  // The legend draws "yours" and "paid" in the viewer's own flight: the first line they hold here (recorded ruling 20).
+  // Task 16 adds the viewer's stored flight as the fallback, once the page loads it.
+  const legendFlight = grid.cells.find((c) => c.mine && c.flight)?.flight ?? null;
 
   const status = b.status as BreakStatus;
   const hostName = hostLabel(page.host);
@@ -84,15 +93,16 @@ export default async function BreakPage({ params, searchParams }: Props) {
   }));
 
   return (
-    <main className="mx-auto max-w-[600px] px-4 pb-6 sm:px-6">
+    <main data-wall className="mx-auto max-w-[600px] px-4 pb-6 sm:px-6">
       <section className="mt-3 flex gap-3">
         <GridPreview count={b.lineCount} cells={grid.cells} />
         <div className="min-w-0 flex-1">
-          <h1 className="line-clamp-2 font-condensed text-title font-semibold">{b.title}</h1>
+          <h1 className="line-clamp-2 font-condensed text-title font-semibold text-[var(--board-text)]">{b.title}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="font-condensed text-[20px] leading-6 font-semibold tabular" data-testid="left-count">{leftText(grid.counts.open, b.lineCount)}</span>
-            <span className="text-small text-ink-2">{formatMoney(b.linePriceCents)} a line</span>
-            <StatusPill status={b.status} />
+            <span className="font-condensed text-[20px] leading-6 font-semibold tabular text-[var(--board-text)]" data-testid="left-count">{leftText(grid.counts.open, b.lineCount)}</span>
+            <span className="text-small text-[var(--board-text-2)]">{formatMoney(b.linePriceCents)} a line</span>
+            {/* The pill's paper tones (ink, green, red) sit on a cream chip until Task 10 moves the pill into the bar. */}
+            <span className="rounded-full bg-[var(--board-cream)]"><StatusPill status={b.status} /></span>
           </div>
         </div>
       </section>
@@ -109,6 +119,9 @@ export default async function BreakPage({ params, searchParams }: Props) {
         smallLine={smallLineText(status, b.paymentWindowHours, hostRef, trustText(trust))}
         hostHref={page.host.handle ? `/h/${page.host.handle}` : null}
         cells={grid.cells}
+        boardView={boardView}
+        kit={grid.kit}
+        heat={grid.heat}
         counts={grid.counts}
         signedIn={!!caller}
         allowance={grid.allowance}
@@ -122,10 +135,11 @@ export default async function BreakPage({ params, searchParams }: Props) {
         viewerIsHost={!!caller && caller.id === b.hostId}
         initialPick={initialPick}
       >
-        <div className="mt-3"><Legend /></div>
-        {youHave && <p className="mt-2 text-small" data-testid="you-have">{youHave}</p>}
+        {/* 12 px of frame, then the legend's 8 px gap (Mosaic §8 budget). */}
+        <div className="mt-5"><BoardLegend view={boardView} flight={legendFlight} kit={grid.kit} /></div>
+        {youHave && <p className="mt-2 text-small text-[var(--board-text-2)]" data-testid="you-have">{youHave}</p>}
         {b.seedCommitment && (
-          <p className="mt-1 text-small text-ink-2">Draw locked before opening. <Link href="/legal/draw" className="underline underline-offset-4">How it works</Link></p>
+          <p className="mt-1 text-small text-[var(--board-text-2)]">Draw locked before opening. <Link href="/legal/draw" className="underline underline-offset-4">How it works</Link></p>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
           {share && <CopyButton value={share} label="Share" copiedLabel="Copied" testId="share" />}

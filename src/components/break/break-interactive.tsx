@@ -4,6 +4,8 @@ import { useEffect, useMemo, useOptimistic, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Allowance, GridCell, GridCounts } from "@/domain/breaks/grid";
 import type { ClaimMode } from "@/domain/breaks/rules";
+import type { HeatStep, Kit } from "@/domain/flights";
+import type { BoardView } from "@/components/grid/cell";
 import type { ActionResult } from "@/lib/action";
 import type { BreakStatus } from "@/components/status-word";
 import { claim, claimNextAction, claimRandomAction, claimRest } from "@/app/b/[id]/actions";
@@ -37,6 +39,10 @@ export type BreakInteractiveProps = {
   /** The host's profile (/h/handle): the whole small line links there (design §5.4). Null when the host has no handle. */
   hostHref: string | null;
   cells: GridCell[];
+  /** member when the viewer sees holders (GridModel.showHolders), else kit (Mosaic §6). */
+  boardView: BoardView;
+  kit: Kit;
+  heat: HeatStep;
   counts: GridCounts;
   signedIn: boolean;
   allowance: Allowance;
@@ -282,7 +288,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     <>
       {/* One row for the small line and the Grid | List toggle: a separate row would push the grid under the bar. */}
       <div className="mt-2 flex min-h-11 items-center gap-3">
-        <p className="min-w-0 flex-1 text-small text-ink-2">
+        <p className="min-w-0 flex-1 text-small text-[var(--board-text-2)]">
           {p.hostHref ? <Link href={p.hostHref} className="inline-flex min-h-11 items-center hover:underline hover:underline-offset-4" data-testid="host-line">{p.smallLine}</Link> : p.smallLine}
         </p>
         <SegmentedControl label="Show lines as" value={view} onChange={setView} options={[{ value: "grid", label: "Grid" }, { value: "list", label: "List" }]} />
@@ -293,6 +299,9 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         {view === "grid" ? (
           <Grid
             cells={cells}
+            view={p.boardView}
+            kit={p.kit}
+            heat={p.heat}
             lineCount={p.lineCount}
             label={`Lines, ${p.counts.open} of ${p.lineCount} open`}
             selected={selectedSet}

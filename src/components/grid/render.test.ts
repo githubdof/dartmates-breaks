@@ -6,12 +6,18 @@ import type { LedgerRowView } from "@/components/ledger/ledger-view";
 import { LedgerRow } from "@/components/ledger/ledger-row";
 import { LedgerSheet } from "@/components/ledger/ledger-sheet";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { FLIGHT_COLOURS, FLIGHT_SHAPES, TOKENS, type Flight, type FlightColour, type FlightShape } from "@/domain/flights";
+import { DEFAULT_KIT, FLIGHT_COLOURS, FLIGHT_SHAPES, TOKENS, type Flight, type FlightColour, type FlightShape, type Kit } from "@/domain/flights";
 import { Cell } from "./cell";
 import { cellMetrics } from "./cell-metrics";
 import { PaperCell } from "./paper-cell";
 import { FlightSprite } from "./flight-sprite";
 import { Grid } from "./grid";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { BoardLegend } from "@/components/board-legend";
+import { GridPreview } from "./grid-preview";
+import { LAMP_POSITION, lampLayer } from "./lamp";
+import { boardGeometry, columnsFor, GRID_COLS } from "./layout";
 
 const noop = () => {};
 const html = (el: ReactElement) => renderToStaticMarkup(el);
@@ -322,5 +328,118 @@ describe("LedgerRow: state as a word, the late time in red, one Paid button with
     const listStart = h.indexOf('<ul aria-label="Buyers"');
     expect(listStart).toBeGreaterThan(h.indexOf(header![0]));
     expect(h.slice(listStart, h.indexOf("</ul>", listStart))).not.toContain("<span>Buyer</span>");
+  });
+});
+
+const css = readFileSync(fileURLToPath(new URL("../../app/globals.css", import.meta.url)), "utf8");
+const rule = (selector: string) => {
+  const start = css.indexOf(`${selector} {`);
+  expect(start).toBeGreaterThan(-1);
+  return css.slice(start, css.indexOf("}", start) + 1);
+};
+const fifty = Array.from({ length: 50 }, (_, i) => cell(i + 1, i % 5 === 1 ? { state: "taken", flight: plum } : {}));
+const plumLime: Kit = { dark: "plum", light: "lime" };
+
+describe("Board (Mosaic §4, §5): the frame, the wire, the lamp, the kit", () => {
+  it("draws the frame as one box-shadow stack into the gutter, never a border or padding", () => {
+    expect(rule(".board-frame")).toContain(
+      "box-shadow: 0 0 0 1px var(--board-steel), 0 0 0 7px var(--board-ring), 0 0 0 11px var(--kit-dark), 0 0 0 12px var(--kit-light);");
+    expect(rule(".board-frame")).not.toMatch(/border|padding/);
+    const h = html(createElement(Grid, { cells: fifty, lineCount: 50, label: "Lines, 40 to go", onPress: noop }));
+    expect(h).toContain('data-testid="board-frame"');
+    // No ancestor within 12 px of the grid may clip overflow, and the frame takes no layout space.
+    const tags = [h.match(/<div role="group"[^>]*>/)![0], h.match(/<div data-grid-rows[^>]*>/)![0]];
+    for (const t of tags) expect(t).not.toMatch(/overflow|\bp[xytblr]?-|border/);
+  });
+  it("wires cells in steel, leaves empty last-row slots in --board-wall-2, and pulls the rows 3.5 px into each gutter", () => {
+    expect(rule(".board-frame, .board-wire")).toContain("gap: 1px; background: var(--board-wall-2); margin-inline: -3.5px;");
+    expect(rule(".board-frame > .bc:not(:focus-visible), .board-wire > .bc:not(:focus-visible)")).toContain("box-shadow: 0 0 0 1px var(--board-steel);");
+  });
+  it("sets the kit on the board from palette keys", () => {
+    const def = html(createElement(Grid, { cells: fifty, lineCount: 50, label: "L" }));
+    expect(def).toContain(`--kit-dark:${FLIGHT_COLOURS[DEFAULT_KIT.dark].face};--kit-light:${FLIGHT_COLOURS[DEFAULT_KIT.light].face}`);
+    const kit = html(createElement(Grid, { cells: fifty, lineCount: 50, label: "L", kit: plumLime }));
+    expect(kit).toContain(`--kit-dark:${FLIGHT_COLOURS.plum.face};--kit-light:${FLIGHT_COLOURS.lime.face}`);
+  });
+  it("lamp: one gradient for every step, LAMP's alpha as the layer's opacity, an opacity-only transition, none without heat", () => {
+    expect(([0, 1, 2, 3, 4] as const).map((s) => lampLayer(s).opacity)).toEqual([0.06, 0.095, 0.13, 0.165, 0.2]);
+    const images = new Set(([0, 1, 2, 3, 4] as const).map((s) => lampLayer(s).backgroundImage));
+    expect([...images]).toEqual(["radial-gradient(ellipse at center, rgba(255,232,200,1), transparent 70%)"]);
+    expect(rule(".board-lamp")).toContain("transition: opacity var(--dur-lamp)");
+    expect(rule(".board-lamp")).toContain(`inset: ${LAMP_POSITION};`); // 32 px above and below, 16 px each side
+    const lit = html(createElement(Grid, { cells: fifty, lineCount: 50, label: "L", heat: 3 }));
+    expect(lit).toMatch(/<span aria-hidden="true" data-testid="lamp" class="board-lamp" style="[^"]*opacity:0.165/);
+    expect(html(createElement(Grid, { cells: fifty, lineCount: 50, label: "L" }))).not.toContain('data-testid="lamp"');
+  });
+  it("at 390 and 360: the 50-line board's classes give eight and seven columns (Review Focus 5)", () => {
+    const h = html(createElement(Grid, { cells: fifty, lineCount: 50, label: "L", onPress: noop }));
+    expect(h).toContain(GRID_COLS.l);
+    expect(h.match(/<button/g)).toHaveLength(50);
+    expect(columnsFor(50, boardGeometry(390, 50).column)).toBe(8);
+    expect(columnsFor(50, boardGeometry(360, 50).column)).toBe(7);
+  });
+  it("kit view: no cell carries data-flight or --fc, even if a flight reached the data", () => {
+    const h = html(createElement(Grid, { cells: fifty, lineCount: 50, label: "L", view: "kit", onPress: noop }));
+    expect(h).toContain('data-view="kit"');
+    expect(h).not.toContain("data-flight");
+    expect(h).not.toContain("--fc");
+    const member = html(createElement(Grid, { cells: fifty, lineCount: 50, label: "L", view: "member", onPress: noop }));
+    expect(member.match(/data-flight="plum-kite"/g)).toHaveLength(10);
+  });
+  it("kit view (the anonymous and non-holder board): a paid cell draws in the kit's dark face with the kit-paid glyph, never as an open cell", () => {
+    const paid = [cell(1), cell(2, { state: "paid", flight: plum })];
+    const kit = html(createElement(Grid, { cells: paid, lineCount: 2, label: "L", view: "kit" }));
+    expect(kit).toContain("--face:var(--kit-dark)");
+    expect(kit).toContain('data-glyph="kit-paid"');
+    expect(kit).not.toContain("data-flight");
+    expect(kit).not.toContain(FLIGHT_COLOURS.plum.face);
+  });
+  it("keeps the bonus row clear of the frame, wired but unframed", () => {
+    const h = html(createElement(Grid, { cells: [cell(1), cell(2), cell(3, { state: "paid", bonus: true, flight: yellow })], lineCount: 2, label: "L" }));
+    expect(h).toContain('class="mt-6 text-micro font-medium text-[var(--board-text-2)]">Bonus<');
+    expect(h).toMatch(/class="board-wire relative mt-1 grid/);
+  });
+});
+
+describe("BoardLegend: mini cells beside words, spaces between", () => {
+  it("member: open, taken, sent, paid, yours; sent drawn as yours, sent; paid in the viewer's colour", () => {
+    const h = html(createElement(BoardLegend, { view: "member", flight: yellow, kit: DEFAULT_KIT }));
+    expect(h).toContain('aria-label="What the cells mean"');
+    expect(h).toContain('data-testid="legend"');
+    expect([...h.matchAll(/<\/span>([a-z]+)<\/li>/g)].map((m) => m[1])).toEqual(["open", "taken", "sent", "paid", "yours"]);
+    expect(h).toContain(`--face:${FLIGHT_COLOURS.yellow.face}`);
+    expect(h).toMatch(/data-state="sent" data-size="xs" data-mine="true"/);
+    expect(h).toContain("bc-sent");
+    expect(h.match(/width:16px;height:16px/g)).toHaveLength(5);
+    expect(h).not.toContain("·");
+  });
+  it("member with no flight given (no viewer flight at all): a standard flight in the kit's dark colour", () => {
+    const h = html(createElement(BoardLegend, { view: "member", flight: null, kit: plumLime }));
+    expect(h).toContain('data-flight="plum-standard"');
+  });
+  it("kit: open, taken, paid; no flight anywhere", () => {
+    const h = html(createElement(BoardLegend, { view: "kit", flight: yellow, kit: DEFAULT_KIT }));
+    expect([...h.matchAll(/<\/span>([a-z]+)<\/li>/g)].map((m) => m[1])).toEqual(["open", "taken", "paid"]);
+    expect(h).not.toContain("data-flight");
+    expect(h).not.toContain("--fc");
+  });
+});
+
+describe("GridPreview: the kit-view thumbnail", () => {
+  it("frames the board in the kit, draws line state only, and never a flight", () => {
+    const h = html(createElement(GridPreview, { count: 50, cells: fifty, kit: plumLime, heat: 2 }));
+    expect(h).toContain('aria-hidden="true"');
+    expect(h).toContain("thumb-frame");
+    expect(h).toContain(`--kit-dark:${FLIGHT_COLOURS.plum.face}`);
+    expect(h).toContain("opacity:0.13");
+    expect(h).toContain('data-size="thumb"');
+    expect(h).not.toContain("data-flight");
+    expect(h).not.toContain("--fc");
+    expect(h.match(/class="bc /g)).toHaveLength(50);
+    expect(rule(".thumb-frame")).toContain("box-shadow: 0 0 0 1px var(--board-steel), 0 0 0 5px var(--kit-dark), 0 0 0 6px var(--kit-light);");
+  });
+  it("leaves bonus lines out and needs no cells for an empty board", () => {
+    expect(html(createElement(GridPreview, { count: 3, cells: [cell(1), cell(2), cell(3, { bonus: true, state: "paid" })] })).match(/class="bc /g)).toHaveLength(2);
+    expect(html(createElement(GridPreview, { count: 12 })).match(/class="bc /g)).toHaveLength(12);
   });
 });
