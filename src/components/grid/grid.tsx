@@ -21,7 +21,8 @@ type Props = {
   lineCount: number;
   /** e.g. "Lines, 12 to go" */
   label: string;
-  /** member when the viewer sees holders (shapeGrid's showHolders), else kit (Mosaic §6). */
+  /** member when the viewer sees holders (shapeGrid's showHolders), else kit (Mosaic §6). Defaults to kit, so a caller
+   *  that forgets it draws no flight (defence in depth: the member view must be asked for). */
   view?: BoardView;
   /** The host's surround; the default kit (Blue with Yellow) until the host picks one. */
   kit?: Kit;
@@ -48,7 +49,7 @@ type Props = {
  * box-shadow spread into the page gutter (globals.css .board-frame), so the grid keeps its full width. Bonus lines sit
  * on their own wired row below the frame (recorded ruling 18).
  */
-export function Grid({ cells, lineCount, label, view = "member", kit = DEFAULT_KIT, heat = null, selected, struck, disabledOpen = false, readOnly = false, onPress, onKeyDown, focusNumber: rovingNumber = null, moments, from }: Props) {
+export function Grid({ cells, lineCount, label, view = "kit", kit = DEFAULT_KIT, heat = null, selected, struck, disabledOpen = false, readOnly = false, onPress, onKeyDown, focusNumber: rovingNumber = null, moments, from }: Props) {
   const tier = gridTier(lineCount);
   const numbered = cells.filter((c) => !c.bonus);
   const bonus = cells.filter((c) => c.bonus);

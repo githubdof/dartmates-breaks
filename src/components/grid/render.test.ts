@@ -387,6 +387,12 @@ describe("Board (Mosaic §4, §5): the frame, the wire, the lamp, the kit", () =
     const member = html(createElement(Grid, { cells: fifty, lineCount: 50, label: "L", view: "member", onPress: noop }));
     expect(member.match(/data-flight="plum-kite"/g)).toHaveLength(10);
   });
+  it("defaults to the kit view: a caller that forgets `view` draws no flight (defence in depth)", () => {
+    const h = html(createElement(Grid, { cells: fifty, lineCount: 50, label: "L", onPress: noop }));
+    expect(h).toContain('data-view="kit"');
+    expect(h).not.toContain("data-flight");
+    expect(h).not.toContain("--fc");
+  });
   it("kit view (the anonymous and non-holder board): a paid cell draws in the kit's dark face with the kit-paid glyph, never as an open cell", () => {
     const paid = [cell(1), cell(2, { state: "paid", flight: plum })];
     const kit = html(createElement(Grid, { cells: paid, lineCount: 2, label: "L", view: "kit" }));
