@@ -21,25 +21,31 @@ const hits = (re: RegExp, list = sources) => list.filter((s) => re.test(s.text))
 // the text after a ">" or a "}" up to the next "<" or "{", so words beside an expression ("Drawing {n} lines") count.
 type Seg = { path: string; kind: "literal" | "jsx"; text: string };
 const stripComments = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
-// Groups 1-3 are string literals. In .tsx, group 4 is JSX text after ">" (a prose ";" is allowed) and group 5 is JSX text
-// after "}" (code follows a "}" far more often, so ";" stops it). An HTML entity ("We&apos;ll", which lint forces) is one token.
+// Groups 1-3 are string literals. In .tsx, group 4 is JSX text after ">" and group 5 is JSX text after "}". An HTML entity
+// ("We&apos;ll", which lint forces) is one token. A prose ";" is allowed after ">" only when it is followed by spaces and a
+// lowercase word and is not the first character, so a code tail such as "(save, null);\n return (" is not read as copy.
 const SEG_TS = /"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|`((?:[^`\\]|\\.)*)`/g;
-const SEG_TSX = /"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|`((?:[^`\\]|\\.)*)`|>((?:[^<>{}`$=|&\\]|&[a-zA-Z]+;|&#\d+;)+)(?=[<{])|\}((?:[^<>{}`$=;|&\\]|&[a-zA-Z]+;|&#\d+;)+)(?=[<{])/g;
+const SEG_TSX = /"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|`((?:[^`\\]|\\.)*)`|>(?!;)((?:;(?=[ \t]+[a-z])|[^<>{}`$=;|&\\]|&[a-zA-Z]+;|&#\d+;)+)(?=[<{])|\}((?:[^<>{}`$=;|&\\]|&[a-zA-Z]+;|&#\d+;)+)(?=[<{])/g;
+// What a viewer reads: entities decoded, curly quotes straightened, so "You&apos;ve won" and "You’ve won" meet the rules.
+const decode = (t: string) =>
+  t.replace(/&(?:apos|rsquo|lsquo|#39|#x27);|[’‘]/g, "'").replace(/&(?:quot|ldquo|rdquo|#34);|[“”]/g, '"').replace(/&nbsp;| /g, " ").replace(/&amp;/g, "&");
 // .ts files have no JSX: reading ">" or "}" text there would swallow the literals that follow an arrow or a brace.
-const segmentsOf = (s: { path: string; text: string }): Seg[] =>
-  [...stripComments(s.text).matchAll(s.path.endsWith(".tsx") ? SEG_TSX : SEG_TS)].map((m) => {
+const segmentsOf = (s: { path: string; text: string }): Seg[] => {
+  const src = stripComments(s.text);
+  return [...src.matchAll(s.path.endsWith(".tsx") ? SEG_TSX : SEG_TS)].map((m) => {
     const jsx = m[4] ?? m[5];
-    return {
-      path: s.path,
-      kind: jsx !== undefined ? "jsx" : "literal",
-      text: (m[1] ?? m[2] ?? m[3] ?? jsx ?? "").replace(/\$\{[^}]*\}/g, " "),
-    };
+    // An interpolation is a number token ("0"), so "{n} wins" and "1 in ${n}" keep the shape the rules read.
+    let text = (m[1] ?? m[2] ?? m[3] ?? jsx ?? "").replace(/\$\{[^}]*\}/g, "0");
+    if (m[5] !== undefined) text = "0" + text;
+    if (jsx !== undefined && src[(m.index ?? 0) + m[0].length] === "{") text += "0";
+    return { path: s.path, kind: jsx !== undefined ? "jsx" : "literal", text: decode(text) } as Seg;
   });
+};
 const segments = sources.flatMap(segmentsOf);
 // UI copy: components and pages, plus the domain errors that reach the UI as messages.
 const uiSegments = segments.filter((g) => /^src\/(components|app)\//.test(g.path) || g.path === "src/domain/errors.ts");
 // What a viewer reads: .tsx copy, plus the modules that build sentences for it.
-const COPY_MODULE = /(-copy|share-text|claim-bar-state|reveal-plan|board-moments|selection|status-word)\.ts$|\/breaks\/og\.ts$/;
+const COPY_MODULE = /(-copy|share-text|claim-bar-state|reveal-plan|board-moments|selection|status-word|network-note|messages|account\/actions)\.ts$|\/breaks\/og\.ts$/;
 const shown = segments.filter((g) => g.path.endsWith(".tsx") || COPY_MODULE.test(g.path));
 
 /**
@@ -162,7 +168,7 @@ describe("copy audit, Mosaic (spec §3, Plan C Global Constraints)", () => {
   it("keeps every copy module in COPY_MODULE (a new *copy*.ts fails here until it is listed)", () => {
     const unlisted = sources.map((s) => s.path).filter((p) => /copy[^/]*\.ts$/.test(p) && !COPY_MODULE.test(p));
     expect(unlisted).toEqual([]);
-    for (const known of ["src/lib/share-text.ts", "src/components/break/claim-bar-state.ts", "src/app/b/[id]/result/reveal-plan.ts", "src/components/grid/board-moments.ts", "src/components/break/selection.ts", "src/domain/breaks/og.ts"]) {
+    for (const known of ["src/lib/share-text.ts", "src/components/break/claim-bar-state.ts", "src/app/b/[id]/result/reveal-plan.ts", "src/components/grid/board-moments.ts", "src/components/break/selection.ts", "src/domain/breaks/og.ts", "src/lib/network-note.ts", "src/app/account/actions.ts", "src/app/(auth)/login/messages.ts"]) {
       expect(sources.some((s) => s.path === known), `${known} exists`).toBe(true);
       expect(COPY_MODULE.test(known), `${known} listed`).toBe(true);
     }
@@ -202,10 +208,31 @@ describe("copy audit, Mosaic (spec §3, Plan C Global Constraints)", () => {
     ].join("\n");
     const texts = segmentsOf({ path: "src/x.tsx", text: fixture }).map((g) => g.text);
     const joined = texts.join("|");
-    for (const must of ["Drawing ", " lines Filled here", " drawn ", "Streak badge", "Winnings", "You won", "Almost ", "full", "https://x.test/a", "You&apos;re on a streak", "Heating up; the &ldquo;board&rdquo; fills"]) {
+    for (const must of ["Drawing ", " lines Filled here", " drawn ", "Streak badge", "Winnings", "You won", "Almost ", "full", "https://x.test/a", "You're on a streak", "Heating up; the \"board\" fills"]) {
       expect(joined, must).toContain(must);
     }
     expect(joined).not.toMatch(/comment|heatStep/);
+  });
+  it("does not read the code after a semicolon as copy, but keeps a prose semicolon", () => {
+    const code = "const saved = () => save(account, null);\n  return (<p>x</p>);\ntype P = {\n  cold: boolean;\n  drawn: number;\n};\nconst q = <p>a</p>;";
+    const texts = segmentsOf({ path: "src/x.tsx", text: code }).map((g) => g.text);
+    expect(texts.filter((t) => /return|cold|drawn|save/.test(t)), texts.join("|")).toEqual([]);
+    const prose = segmentsOf({ path: "src/x.tsx", text: "const a = <p>Heating up; the board fills</p>;" }).map((g) => g.text);
+    expect(prose).toContain("Heating up; the board fills");
+  });
+  it("decodes entities and curly apostrophes before the rules run", () => {
+    for (const jsx of ["<p>You&apos;ve won</p>", "<p>You’ve won</p>", "<p>You&#39;ve won</p>"]) {
+      const texts = segmentsOf({ path: "src/x.tsx", text: jsx }).map((g) => g.text);
+      expect(texts.some((t) => RE.winnings.test(t)), jsx).toBe(true);
+    }
+  });
+  it("reads an interpolated count as a number, so '{n} wins' and '1 in ${n}' meet the rules", () => {
+    const hit = (path: string, text: string, re: RegExp) => segmentsOf({ path, text }).some((g) => re.test(g.text));
+    expect(hit("src/x.tsx", "const a = <p>{n} wins</p>;", RE.winTotals)).toBe(true);
+    expect(hit("src/x.tsx", "const a = <p>1 in {n}</p>;", RE.oddsRatio)).toBe(true);
+    expect(hit("src/x.ts", "const a = `${n} wins`;", RE.winTotals)).toBe(true);
+    expect(hit("src/x.ts", "const a = `1 in ${n}`;", RE.oddsRatio)).toBe(true);
+    expect(hit("src/x.tsx", "const a = <p>Wins {item}.</p>;", RE.winTotals)).toBe(false);
   });
   it("reads literals in .ts files, even after an arrow or a closing brace", () => {
     const fixture = 'export const f = () => z.int({ error: "Hot pick" }).min(1, "Level up");\nconst d = () => new Intl.DateTimeFormat("en-US", {});';
@@ -218,6 +245,6 @@ describe("copy audit, Mosaic (spec §3, Plan C Global Constraints)", () => {
     expect(segments.some((g) => g.kind === "jsx" && /Hosting on Facebook now\?/.test(g.text))).toBe(true);
     expect(segments.some((g) => /heatStep/.test(g.text))).toBe(false);
     expect(segments.some((g) => g.path === "src/app/host/new/parse.ts" && /^Hours to pay/.test(g.text))).toBe(true);
-    expect(segments.some((g) => g.kind === "jsx" && /&apos;/.test(g.text))).toBe(true);
+    expect(segments.some((g) => g.kind === "jsx" && /We'll send you/.test(g.text))).toBe(true);
   });
 });
