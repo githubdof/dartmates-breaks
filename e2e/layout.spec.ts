@@ -61,6 +61,32 @@ test("at 360 × 640 the legend sits at the fold (D§5.4)", async ({ browser }) =
   expect(legend!.y).toBeLessThanOrEqual(640);
 });
 
+test("the bar counts open lines as 'N to go' beside the action, and the media row reads '50 lines, $5 a line' (Mosaic §8)", async ({ browser }) => {
+  const page = await anonymous(browser, 390, 664);
+  await page.goto(url);
+  await expect(page.getByTestId("media-row")).toHaveText("50 lines, $5 a line");
+  const toGo = page.getByTestId("to-go");
+  await expect(toGo).toHaveText(/^\d+ to go$/);
+  const n = Number((await toGo.textContent())!.split(" ")[0]);
+  await expect(page.getByRole("group", { name: `Lines, ${n} to go` })).toBeVisible();
+  await expect(page.getByTestId("bar-meta")).toContainText("Open");
+  await expect(page.getByText(/of 50 left/)).toHaveCount(0);
+  await expect(page.getByText("You hold", { exact: false })).toHaveCount(0);
+});
+
+test("a holder's 'You have …' line sits under the legend and above the bar at 390 × 664 (Mosaic §8)", async ({ browser }) => {
+  const page = await (await browser.newContext({ viewport: { width: 390, height: 664 }, isMobile: true, hasTouch: true })).newPage();
+  await loginAs(page, `${buyerHandle}@e2e.test`);
+  await page.goto(url);
+  const line = page.getByTestId("you-have");
+  await expect(line).toHaveText("You have 3 and 9.");
+  const legend = await page.getByRole("list", { name: "What the cells mean" }).boundingBox();
+  const box = await line.boundingBox();
+  const bar = await page.locator("[data-sticky-bar]").boundingBox();
+  expect(box!.y).toBeGreaterThanOrEqual(legend!.y + legend!.height);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(bar!.y);
+});
+
 for (const [width, cols] of [[390, 8], [360, 7], [320, 6], [1024, 10]] as const) {
   test(`shows ${cols} grid columns at ${width} wide (D§4)`, async ({ browser }) => {
     const page = await anonymous(browser, width, 800);
@@ -208,7 +234,8 @@ test("Enter in the composer never opens a break", async ({ browser }) => {
   await host.locator("input[name=title]").press("Enter");
   await host.waitForURL(/\/b\//);
   await expect(host.getByTestId("composer-open")).toHaveCount(0);
-  await expect(host.getByText("Draft", { exact: true }).first()).toBeVisible();
+  // A draft has no claim bar, so no pill (Mosaic §8): the host's "Edit draft" is what marks it.
+  await expect(host.getByTestId("edit-draft")).toBeVisible();
 });
 
 async function axeViolations(page: Page, where: string): Promise<string[]> {

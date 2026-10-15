@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useEffect, useMemo, useOptimistic, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Allowance, GridCell, GridCounts } from "@/domain/breaks/grid";
@@ -18,7 +17,8 @@ import { ClaimBar } from "./claim-bar";
 import { LineList } from "./line-list";
 import { PaySheet } from "./pay-sheet";
 import { nextPendingOwe } from "./pay-copy";
-import { barShown, claimBar, failureNote, limitText, sentNote } from "./claim-bar-state";
+import { barCheckout, barShown, claimBar, failureNote, limitText, sentNote } from "./claim-bar-state";
+import { toGoText } from "./frame-copy";
 import { cellNote, isRepeat, isSelectable, loginHref, onboardingHref, outcomeText, reconcileSelection, selectionAnnouncement, takenAnnouncement, toggleSelection } from "./selection";
 import { useAutoRefresh } from "./use-auto-refresh";
 import { usePaySheet, type Owe } from "./use-pay-sheet";
@@ -34,10 +34,8 @@ export type BreakInteractiveProps = {
   lineCount: number;
   title: string;
   shareUrl: string;
-  /** smallLineText: "Pay within 24 hours. Hosted by @jim. New host." (the pay window only while open). It shares one row with the Grid | List toggle (pixel budget). */
-  smallLine: string;
-  /** The host's profile (/h/handle): the whole small line links there (design §5.4). Null when the host has no handle. */
-  hostHref: string | null;
+  /** The legend and the "You have …" line: directly under the board, inside the 390 × 664 budget (Mosaic §8). */
+  underBoard?: React.ReactNode;
   cells: GridCell[];
   /** member when the viewer sees holders (GridModel.showHolders), else kit (Mosaic §6). */
   boardView: BoardView;
@@ -286,16 +284,10 @@ export function BreakInteractive(p: BreakInteractiveProps) {
 
   return (
     <>
-      {/* One row for the small line and the Grid | List toggle: a separate row would push the grid under the bar. */}
-      <div className="mt-2 flex min-h-11 items-center gap-3">
-        <p className="min-w-0 flex-1 text-small text-[var(--board-text-2)]">
-          {p.hostHref ? <Link href={p.hostHref} className="inline-flex min-h-11 items-center hover:underline hover:underline-offset-4" data-testid="host-line">{p.smallLine}</Link> : p.smallLine}
-        </p>
-        <SegmentedControl label="Show lines as" value={view} onChange={setView} options={[{ value: "grid", label: "Grid" }, { value: "list", label: "List" }]} />
-      </div>
       {/* Only when the bar renders: an idle host with nothing to do gets no bar, and the link would go nowhere. */}
       {barShown(bar) && <a href="#claim-bar" className="sr-only focus:not-sr-only focus:inline-flex focus:min-h-11 focus:items-center focus:px-2 focus:text-small focus:text-[var(--board-text)] focus:underline">Skip to claim bar</a>}
-      <div ref={gridWrap} className="relative mt-3">
+      {/* 12 px gap, then the 12 px frame drawn into it (Mosaic §8 budget). */}
+      <div ref={gridWrap} className="relative mt-6">
         {view === "grid" ? (
           <Grid
             cells={cells}
@@ -303,7 +295,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
             kit={p.kit}
             heat={p.heat}
             lineCount={p.lineCount}
-            label={`Lines, ${p.counts.open} of ${p.lineCount} open`}
+            label={`Lines, ${toGoText(p.counts.open)}`}
             selected={selectedSet}
             struck={struckSet}
             disabledOpen={selected.length >= p.allowance.remaining}
@@ -322,11 +314,18 @@ export function BreakInteractive(p: BreakInteractiveProps) {
           </p>
         )}
       </div>
+      {p.underBoard}
+      {/* Grid | List stands (first design §5.4); the budget has no row for it above the board, so it sits here (recorded ruling 23). */}
+      <div className="mt-3 flex min-h-11 items-center justify-end">
+        <SegmentedControl label="Show lines as" value={view} onChange={setView} options={[{ value: "grid", label: "Grid" }, { value: "list", label: "List" }]} />
+      </div>
       {note && <p className="mt-2 inline-block rounded bg-[var(--board-cream)] px-2 py-1 text-small text-red" data-testid="bar-note">{note}</p>}
       <p role="status" aria-live="polite" className="sr-only"><span key={announce.n}>{announce.text}</span></p>
       {p.children}
       <ClaimBar
         bar={bar}
+        status={p.status}
+        toGo={barCheckout({ status: p.status, openCount: p.counts.open })}
         pending={pending}
         count={stepCount}
         onCount={(n) => { setCount(n); claimer.newBatch(); }}

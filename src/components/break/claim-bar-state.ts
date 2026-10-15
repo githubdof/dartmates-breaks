@@ -5,6 +5,7 @@ import type { ActionFailure } from "@/lib/action-result";
 import { formatMoney } from "@/lib/money";
 import { plural } from "@/lib/list";
 import { selectionSummary } from "./selection";
+import { toGoText } from "./frame-copy";
 
 export type BarInput = {
   status: BreakStatus;
@@ -113,4 +114,9 @@ export function claimBar(i: BarInput): Bar {
   const lastN = i.openCount > 0 && i.openCount <= 5 && i.allowance.remaining >= i.openCount ? i.openCount : null;
   const stepper = i.claimMode === "pick_or_random" && max > 0 ? { max, action: "random" as const } : null;
   return { kind: "idle", note, stepper, lastN, hint: limit ?? (i.claimMode === "pick_only" ? "Tap the open lines you want." : null), signIn: false };
+}
+
+/** The checkout count beside the bar's action: "12 to go" while the break is open, else nothing (recorded ruling 23). */
+export function barCheckout(i: Pick<BarInput, "status" | "openCount">): string | null {
+  return i.status === "open" ? toGoText(i.openCount) : null;
 }

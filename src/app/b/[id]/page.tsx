@@ -9,10 +9,8 @@ import { formatMoney } from "@/lib/money";
 import { daysSince, formatDeadline, formatLate } from "@/lib/time";
 import { viewerZone } from "@/lib/zone";
 import { pageShare } from "@/lib/share-text";
-import { GridPreview } from "@/components/grid/grid-preview";
 import { BoardLegend } from "@/components/board-legend";
 import type { BoardView } from "@/components/grid/cell";
-import { StatusPill } from "@/components/status-pill";
 import { CopyButton } from "@/components/copy-button";
 import { ButtonLink } from "@/components/button";
 import type { BreakStatus } from "@/components/status-word";
@@ -20,7 +18,8 @@ import { DetailsFold } from "@/components/break/details-fold";
 import { BreakInteractive } from "@/components/break/break-interactive";
 import { bonusGoesWith, commitmentShort, payeeFor } from "@/components/break/pay-copy";
 import { onboardingHref, parsePick } from "@/components/break/selection";
-import { closesText, hostLabel, leftText, perPersonText, pickingText, prizeLines, smallLineText, trustText, youHaveText } from "@/components/break/frame-copy";
+import { closesText, hostedByText, hostLabel, mediaText, perPersonText, pickingText, prizeLines, trustText, youHaveText } from "@/components/break/frame-copy";
+import { KitSwatch } from "@/components/kit-swatch";
 import { HostTools } from "@/components/ledger/host-tools";
 import type { LedgerRowView } from "@/components/ledger/ledger-view";
 import { wallViewport } from "@/app/wall";
@@ -94,17 +93,19 @@ export default async function BreakPage({ params, searchParams }: Props) {
 
   return (
     <main data-wall className="mx-auto max-w-[600px] px-4 pb-6 sm:px-6">
-      <section className="mt-3 flex gap-3">
-        <GridPreview count={b.lineCount} cells={grid.cells} kit={grid.kit} heat={grid.heat} />
-        <div className="min-w-0 flex-1">
-          <h1 className="line-clamp-2 font-condensed text-title font-semibold text-[var(--board-text)]">{b.title}</h1>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="font-condensed text-[20px] leading-6 font-semibold tabular text-[var(--board-text)]" data-testid="left-count">{leftText(grid.counts.open, b.lineCount)}</span>
-            <span className="text-small text-[var(--board-text-2)]">{formatMoney(b.linePriceCents)} a line</span>
-            {/* The pill's paper tones (ink, green, red) sit on a cream chip until Task 10 moves the pill into the bar. */}
-            <span className="rounded-full bg-[var(--board-cream)]"><StatusPill status={b.status} /></span>
-          </div>
-        </div>
+      {/* Mosaic §8: the title in Big Shoulders, two lines at most; one 24 px media row; no thumbnail while there are no photos. */}
+      <section className="mt-3">
+        <h1 className="line-clamp-2 font-shoulders text-wall-title font-extrabold text-[var(--board-text)]">{b.title}</h1>
+        <p className="mt-1 flex min-h-6 flex-wrap items-center gap-x-3 text-small">
+          <span className="text-[var(--board-text-2)]" data-testid="media-row">{mediaText(b.lineCount, b.linePriceCents)}</span>
+          {page.host.handle ? (
+            <Link href={`/h/${page.host.handle}`} data-testid="host-line" className="inline-flex items-center gap-1.5 text-[var(--board-text-3)] hover:underline hover:underline-offset-4">
+              {hostedByText(hostRef, trustText(trust))}<KitSwatch kit={grid.kit} />
+            </Link>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-[var(--board-text-3)]">{hostedByText(hostRef, trustText(trust))}<KitSwatch kit={grid.kit} /></span>
+          )}
+        </p>
       </section>
 
       {/* "See the result" lives in the bar (bar-result) on a drawn break, not in the page flow (pixel budget). */}
@@ -116,8 +117,6 @@ export default async function BreakPage({ params, searchParams }: Props) {
         lineCount={b.lineCount}
         title={b.title}
         shareUrl={url}
-        smallLine={smallLineText(status, b.paymentWindowHours, hostRef, trustText(trust))}
-        hostHref={page.host.handle ? `/h/${page.host.handle}` : null}
         cells={grid.cells}
         boardView={boardView}
         kit={grid.kit}
@@ -134,10 +133,15 @@ export default async function BreakPage({ params, searchParams }: Props) {
         closedDaysAgo={status === "filled" && b.filledAt ? daysSince(b.filledAt, now) : null}
         viewerIsHost={!!caller && caller.id === b.hostId}
         initialPick={initialPick}
+        underBoard={
+          <>
+            {/* 12 px of frame, then the legend's 8 px gap (Mosaic §8 budget). */}
+            <div className="mt-5"><BoardLegend view={boardView} flight={legendFlight} kit={grid.kit} /></div>
+            {/* Plain text in this plan; it becomes the Show mine toggle in the game-structure plan (recorded ruling 1). */}
+            {youHave && <p className="mt-1 text-small text-[var(--board-text-2)]" data-testid="you-have">{youHave}</p>}
+          </>
+        }
       >
-        {/* 12 px of frame, then the legend's 8 px gap (Mosaic §8 budget). */}
-        <div className="mt-5"><BoardLegend view={boardView} flight={legendFlight} kit={grid.kit} /></div>
-        {youHave && <p className="mt-2 text-small text-[var(--board-text-2)]" data-testid="you-have">{youHave}</p>}
         {b.seedCommitment && (
           <p className="mt-1 text-small text-[var(--board-text-2)]">Draw locked before opening. <Link href="/legal/draw" className="underline underline-offset-4">How it works</Link></p>
         )}

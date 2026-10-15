@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { BoardLegend } from "@/components/board-legend";
 import { GridPreview } from "./grid-preview";
 import { LAMP_POSITION, lampLayer } from "./lamp";
+import { KitSwatch } from "@/components/kit-swatch";
 import { boardGeometry, columnsFor, GRID_COLS } from "./layout";
 
 const noop = () => {};
@@ -445,5 +446,14 @@ describe("GridPreview: the kit-view thumbnail", () => {
   it("leaves bonus lines out and needs no cells for an empty board", () => {
     expect(html(createElement(GridPreview, { count: 3, cells: [cell(1), cell(2), cell(3, { bonus: true, state: "paid" })] })).match(/class="bc /g)).toHaveLength(2);
     expect(html(createElement(GridPreview, { count: 12 })).match(/class="bc /g)).toHaveLength(12);
+  });
+});
+
+describe("KitSwatch: 20 × 10, dark | light, decorative", () => {
+  it("splits the kit's two faces and says nothing to a screen reader", () => {
+    const h = html(createElement(KitSwatch, { kit: { dark: "plum", light: "lime" } }));
+    expect(h).toContain('aria-hidden="true"');
+    expect(h).toContain("h-[10px] w-5");
+    expect(h).toContain(`linear-gradient(90deg, ${FLIGHT_COLOURS.plum.face} 50%, ${FLIGHT_COLOURS.lime.face} 50%)`);
   });
 });

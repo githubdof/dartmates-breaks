@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { closesText, hostedByText, hostLabel, leftText, orList, pastText, payWithinText, perPersonText, pickingText, prizeLines, profileTrustText, smallLineText, trustText, youHaveText } from "./frame-copy";
+import { closesText, hostedByText, hostLabel, leftText, mediaText, orList, pastText, payWithinText, perPersonText, pickingText, prizeLines, profileTrustText, smallLineText, toGoText, trustText, youHaveText } from "./frame-copy";
 
 describe("frame copy", () => {
   it("counts and deadlines read as sentences, no middle dots", () => {
@@ -7,10 +7,18 @@ describe("frame copy", () => {
     expect(payWithinText(24)).toBe("Pay within 24 hours.");
     expect(payWithinText(1)).toBe("Pay within 1 hour.");
   });
-  it("names the viewer's lines", () => {
+  it("names the viewer's lines as a sentence: \"4 and 11\", \"4, 11 and 27\", no serial comma, no dots", () => {
     expect(youHaveText([])).toBeNull();
     expect(youHaveText([4])).toBe("You have line 4.");
+    expect(youHaveText([4, 11])).toBe("You have 4 and 11.");
     expect(youHaveText([4, 11, 27])).toBe("You have 4, 11 and 27.");
+  });
+  it("counts down as \"N to go\" and names the break by size and price (Mosaic §8, §9)", () => {
+    expect(toGoText(12)).toBe("12 to go");
+    expect(toGoText(1)).toBe("1 to go");
+    expect(toGoText(0)).toBe("0 to go");
+    expect(mediaText(50, 500)).toBe("50 lines, $5 a line");
+    expect(mediaText(12, 1250)).toBe("12 lines, $12.50 a line");
   });
   it("uses the interim trust line until the reputation plan lands", () => {
     const since = new Date("2026-10-01T12:00:00Z");
