@@ -153,19 +153,24 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await expect(viewer.getByTestId("reveal-replay")).toBeFocused();
   const chipsAfter = await viewer.getByTestId("deal").locator("li").allTextContents();
   expect(chipsAfter.slice(0, chipsAtThrow.length)).toEqual(chipsAtThrow);
-  // The board and its frame as the reveal left them: compared with a returning viewer's below.
+  // The board and its frame as the reveal left them: compared with a returning viewer's below. Every cell, the hit
+  // cells included (they are the likeliest to keep residue: data-impact, contain, z-index, a fill-mode animation), with
+  // its won place, so a hit cell must equal the returning viewer's still bull.
   const boardStyles = () => viewer.evaluate(() => {
     const pick = (el: Element | null) => {
       if (!el) return "";
       const s = getComputedStyle(el);
-      return [s.backgroundColor, s.boxShadow, s.transform, s.translate, s.opacity].join("|");
+      return [s.backgroundColor, s.boxShadow, s.transform, s.translate, s.scale, s.opacity, s.contain, s.zIndex, s.animationName].join("|");
     };
     const frame = document.querySelector('[data-testid="board-frame"]');
-    return [pick(frame), ...[...document.querySelectorAll("[data-cell]:not([data-won])")].map((el) => `${el.getAttribute("data-cell")}:${pick(el)}:${pick(el.querySelector(".bc-dim"))}`)];
+    return [pick(frame), ...[...document.querySelectorAll("[data-cell]")].map((el) =>
+      `${el.getAttribute("data-cell")}:won=${el.getAttribute("data-won") ?? "-"}:impact=${el.getAttribute("data-impact") ?? "-"}:${pick(el)}:${pick(el.querySelector(".bc-dim"))}`)];
   });
   // Skip's fade runs on the compositor's clock, not the paused one: wait for every dim to reach 0 first.
   await expect.poll(() => viewer.evaluate(() => [...document.querySelectorAll(".bc-dim")].every((d) => getComputedStyle(d).opacity === "0"))).toBe(true);
   const afterReveal = await boardStyles();
+  // The two hit cells are in the check, at their final state: won (top spot and 2nd), no impact left on them.
+  expect(afterReveal.filter((r) => /:won=[12]:impact=-:/.test(r))).toHaveLength(2);
   // Replay plays it again from house lights down.
   await viewer.getByTestId("reveal-replay").click();
   await expect(viewer.getByTestId("reveal-skip")).toBeVisible();

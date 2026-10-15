@@ -8,7 +8,9 @@ import { Button } from "@/components/button";
 import { MOTION, prefersReducedMotion } from "@/lib/motion";
 import type { ResultCell } from "./board-cells";
 import { DART_TIP, dartAngle, dartAt, easeIn } from "./dart";
-import { bannerText, placeCall, revealPlan, revealStateAt, seenKey } from "./reveal-plan";
+import { bannerText, placeCall, revealPlan, revealStateAt } from "./reveal-plan";
+import { readGate } from "./reveal-clock";
+import { useRevealClock } from "./use-reveal-clock";
 
 type Props = {
   breakId: string;
@@ -30,8 +32,6 @@ type Props = {
   after: ReactNode;
 };
 
-const FINAL = Number.POSITIVE_INFINITY;
-
 /**
  * The result page's reveal (Mosaic §7). The final state is server-rendered and readable without JavaScript. The
  * reveal plays once per viewer (Replay afterwards); reduced motion never plays it. Per-cell motion is CSS; the dart's
@@ -39,24 +39,24 @@ const FINAL = Number.POSITIVE_INFINITY;
  */
 export function Reveal(p: Props) {
   const plan = useMemo(() => revealPlan(p.order, p.places), [p.order, p.places]);
-  const [t, setT] = useState(FINAL);
   const [canReplay, setCanReplay] = useState(false);
   const [ready, setReady] = useState(false);
   const [said, setSaid] = useState({ text: "", n: 0 });
   // Skip lifts the lights in one short fade (data-skip); the chips stay as the scorer's column once read out.
   const [skipped, setSkipped] = useState(false);
   const [played, setPlayed] = useState(false);
+  // The impacts' own timers (each clears its cell's data-impact); the run's timers live in useRevealClock.
   const timers = useRef<number[]>([]);
   const raf = useRef<number | null>(null);
   const stage = useRef<HTMLDivElement>(null);
   const dart = useRef<SVGSVGElement>(null);
   const replayRef = useRef<HTMLDivElement>(null);
   const focusReplay = useRef(false);
-  const playing = Number.isFinite(t);
-  const s = revealStateAt(plan, t);
+  const gate = useRef<string | null>(null);
 
   const cellEl = (n: number) => stage.current?.querySelector<HTMLElement>(`[data-cell="${n}"]`) ?? null;
 
+  /** A run ended early or restarted: the dart, the impacts and their timers go with it. */
   const stop = () => {
     timers.current.forEach((id) => window.clearTimeout(id));
     timers.current.length = 0;
@@ -95,47 +95,43 @@ export function Reveal(p: Props) {
     timers.current.push(window.setTimeout(() => { delete target.dataset.impact; }, MOTION.squash + MOTION.throwSettle + MOTION.shake));
   };
 
+  const clock = useRevealClock(plan, {
+    onStep: (x) => {
+      if (x.kind === "throw") throwDart(x.number as number);
+      if (x.kind === "land") impact(x.number as number, x.place as Place);
+      if (x.kind === "call") setSaid((v) => ({ text: placeCall(x.place as Place, x.number as number, p.handleOf[x.number as number]), n: v.n + 1 }));
+    },
+    onEnd: () => { focusReplay.current = true; },
+    onStop: stop,
+  });
+  const { t } = clock;
+  const playing = Number.isFinite(t);
+  const s = revealStateAt(plan, t);
+
   const play = () => {
-    stop();
     setSkipped(false);
     setPlayed(true);
-    setT(0);
-    for (const at of [...new Set(plan.steps.map((x) => x.at))].filter((x) => x > 0)) {
-      timers.current.push(window.setTimeout(() => {
-        setT(at);
-        for (const x of plan.steps) {
-          if (x.at !== at) continue;
-          if (x.kind === "throw") throwDart(x.number as number);
-          if (x.kind === "land") impact(x.number as number, x.place as Place);
-          if (x.kind === "call") setSaid((v) => ({ text: placeCall(x.place as Place, x.number as number, p.handleOf[x.number as number]), n: v.n + 1 }));
-        }
-      }, at));
-    }
-    timers.current.push(window.setTimeout(() => { focusReplay.current = true; setT(FINAL); }, plan.total));
+    clock.play();
   };
   /** Skip: the final state in the same frame, every bull in the DOM, the lights up in one short fade; focus goes to Replay. */
-  const skip = () => { focusReplay.current = true; stop(); setSkipped(true); setT(FINAL); };
+  const skip = () => { focusReplay.current = true; setSkipped(true); clock.skip(); };
 
   const playRef = useRef(play);
   playRef.current = play;
-  const stopRef = useRef(stop);
-  stopRef.current = stop;
 
-  // Before paint, so neither a hard load (the gate script) nor a client navigation shows the result before the lights go down.
+  // Before paint, so neither a hard load (the gate script) nor a client navigation shows the result before the lights go
+  // down. Read once per break (readGate): Strict Mode's re-run of this effect keeps the first run's decision, and the
+  // run's own effect (useRevealClock) restarts the clock it cancelled.
   useLayoutEffect(() => {
-    let seen = true;
-    try {
-      seen = window.localStorage.getItem(seenKey(p.breakId)) === "1";
-      window.localStorage.setItem(seenKey(p.breakId), "1");
-    } catch {
-      seen = true; // storage blocked: never force the reveal
-    }
+    let store: Pick<Storage, "getItem" | "setItem">;
+    try { store = window.localStorage; } catch { store = { getItem: () => "1", setItem: () => {} }; }
+    const gateSays = readGate(gate, p.breakId, store, prefersReducedMotion());
+    if (gateSays === null) return;
     setCanReplay(true);
-    if (!seen && !prefersReducedMotion()) playRef.current();
+    if (gateSays === "play") playRef.current();
     setReady(true);
   }, [p.breakId]);
   useLayoutEffect(() => { if (ready) delete document.documentElement.dataset.deal; }, [ready]);
-  useEffect(() => () => stopRef.current(), []);
   useEffect(() => {
     if (playing || !focusReplay.current) return;
     focusReplay.current = false;
