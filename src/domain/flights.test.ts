@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { contrast, luminance } from "@/lib/contrast";
 import {
   DARK_COLOURS, DEFAULT_KIT, FLIGHT_COLOURS, FLIGHT_SHAPES, LAMP, LIGHT_COLOURS, TOKENS,
@@ -116,5 +117,18 @@ describe("heat (Mosaic §4)", () => {
     const alphas = parsed.map((m) => Number(m[4]));
     for (let i = 1; i < alphas.length; i++) expect(alphas[i]).toBeGreaterThan(alphas[i - 1]);
     expect(Math.max(...alphas)).toBeLessThanOrEqual(0.2);
+  });
+});
+
+describe("the stored keys match migration 0004", () => {
+  it("has the palette's keys in its CHECK lists and its random defaults", () => {
+    const text = readFileSync(new URL("../db/migrations/0004_flights_kits.sql", import.meta.url), "utf8");
+    const list = (name: string) => text.match(new RegExp(`"${name}" CHECK \\([^)]* in \\(([^)]*)\\)\\)`))?.[1].split(",").map((s) => s.trim().replace(/'/g, ""));
+    expect(list("users_flight_colour_chk")).toEqual(Object.keys(FLIGHT_COLOURS));
+    expect(list("users_flight_shape_chk")).toEqual(Object.keys(FLIGHT_SHAPES));
+    expect(list("host_profiles_kit_dark_chk")).toEqual(DARK_COLOURS);
+    expect(list("host_profiles_kit_light_chk")).toEqual(LIGHT_COLOURS);
+    const defaults = [...text.matchAll(/array\[([^\]]*)\]/g)].map((m) => m[1].split(",").map((s) => s.trim().replace(/'/g, "")));
+    expect(defaults).toEqual([Object.keys(FLIGHT_COLOURS), Object.keys(FLIGHT_SHAPES)]);
   });
 });

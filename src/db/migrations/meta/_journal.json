@@ -29,6 +29,13 @@
       "when": 1792006190308,
       "tag": "0003_rate_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792042187357,
+      "tag": "0004_flights_kits",
+      "breakpoints": true
     }
   ]
 }
