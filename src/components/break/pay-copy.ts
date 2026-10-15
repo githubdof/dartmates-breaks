@@ -35,6 +35,15 @@ export const commitmentShort = (c: string | null) => (c ? c.slice(0, 12) : null)
 type OweShape = { numbers: number[]; cents: number; payByIso: string | null; payByFallback: string | null; late: boolean; bonusLost?: number[] };
 
 /** The provisional amount shown before refreshed props land: what was owed, plus the lines just got. Nothing got, nothing provisional. */
+/**
+ * What the buyer owes once a claim got `got` (the claim announcement's "Pay Jim $N"): the owe shown, plus the lines
+ * it does not hold yet. When the refreshed props landed first, the owe already holds them and nothing is added twice.
+ */
+export function owedAfterClaim(base: { numbers: readonly number[]; cents: number } | null, got: readonly number[], priceCents: number): number {
+  const held = new Set(base?.numbers ?? []);
+  return (base?.cents ?? 0) + got.filter((n) => !held.has(n)).length * priceCents;
+}
+
 export function nextPendingOwe(base: OweShape | null, got: readonly number[], priceCents: number): OweShape | null {
   if (got.length === 0) return null;
   return {

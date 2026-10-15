@@ -13,7 +13,7 @@ const LIME = { colour: "lime", shape: "standard" } as const;
 const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, flight: null, ...o });
 const board = (n: number, f: (c: GridCell) => Partial<GridCell> = () => ({})) => Array.from({ length: n }, (_, i) => { const c = cell(i + 1); return { ...c, ...f(c) }; });
 const snap = (cells: readonly GridCell[], o: Partial<BoardSnap> = {}): BoardSnap => ({ cells, view: "member", struck: [], ...o });
-const fresh = (s: BoardSnap): MomentState => ({ snap: s, moments: new Map(), from: new Map(), landed: [] });
+const fresh = (s: BoardSnap): MomentState => { const none = new Map<number, CellMoment>(); return { snap: s, moments: none, from: new Map(), landed: [], played: none }; };
 const moving = (m: ReadonlyMap<number, CellMoment>) => [...m].filter(([, x]) => x !== "still").sort(([a], [b]) => a - b);
 
 describe("boardMoments: cellMoments over the server's cells", () => {
@@ -74,6 +74,22 @@ describe("the pending claim: the drop never depends on render order (recorded ru
     // A change that does move replaces the map, as before.
     const released = stepMoments(s1, { ...after, cells: after.cells.map((c) => (c.number === 4 ? cell(4) : c)) }, null);
     expect(moving(released.moments)).toEqual([[4, "release"]]);
+  });
+  it("an unchanged refresh with nothing in play builds no map (so the hook arms no timer)", () => {
+    const s0 = fresh(before);
+    const s1 = stepMoments(s0, { ...before, cells: before.cells.map((c) => ({ ...c })) }, null);
+    expect(s1.moments).toBe(s0.moments);
+    expect(s1.played).toBe(s0.played);
+    expect(s1.snap.cells).not.toBe(before.cells); // the new snap is kept for the next diff
+  });
+  it("`played` is the map the moving diff produced: the guard keeps it, so the landing count never restarts", () => {
+    const s1 = stepMoments(fresh(before), after, { numbers: [2, 4] });
+    expect(s1.played).toBe(s1.moments);
+    const overdue = stepMoments(s1, { ...after, cells: after.cells.map((c) => (c.number === 6 ? { ...c, overdue: true } : c)) }, null);
+    expect(overdue.moments).not.toBe(s1.moments); // cell 6 snapped to still in a new map
+    expect(overdue.played).toBe(s1.played);
+    const released = stepMoments(s1, { ...after, cells: after.cells.map((c) => (c.number === 4 ? cell(4) : c)) }, null);
+    expect(released.played).toBe(released.moments); // a moving diff starts a new run
   });
   it("with no claim pending, cells that turn the viewer's play nothing", () => {
     expect(moving(stepMoments(fresh(before), after, null).moments)).toEqual([]);

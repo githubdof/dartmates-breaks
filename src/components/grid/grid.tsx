@@ -9,7 +9,7 @@ import { momentOrder } from "./board-moments";
 import { GRID_COLS, GRID_MAX_W, gridTier } from "./layout";
 
 /** A board cell: the server's GridCell plus, on the result page only, its place (public there, Mosaic §5). */
-export type BoardCell = GridCell & { place?: 1 | 2 | 3 | null };
+export type BoardCell = GridCell & { place?: 1 | 2 | 3 | null; optimistic?: boolean };
 
 /** --kit-dark and --kit-light from the kit's palette keys: the frame and the kit view's faces read them. */
 export function kitVars(kit: Kit): CSSProperties {

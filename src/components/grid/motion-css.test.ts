@@ -29,6 +29,32 @@ describe("per-cell motion is CSS on transform and opacity only (Mosaic §7, Glob
   it("never transitions a background or a colour", () => {
     expect(css).not.toMatch(/transition(-property)?\s*:[^;]*(background|color)/);
   });
+  it("draws each ghost while its moment plays and hides it once the moment ends (§7 Paid: the old ink holds only until the fade ends)", () => {
+    const frames = keyframes(css);
+    /** Opacity of a keyframe at progress p (from/to only, linear between). */
+    const opacityAt = (name: string, p: number) => {
+      const body = frames.get(name) ?? "";
+      const from = Number(/from\s*\{[^}]*opacity:\s*([\d.]+)/.exec(body)?.[1]);
+      const to = Number(/to\s*\{[^}]*opacity:\s*([\d.]+)/.exec(body)?.[1]);
+      return from + (to - from) * p;
+    };
+    /** Timing functions at x outside the before phase: step-start is 1 everywhere (even at 0), step-end only at 1; easings keep 0 and 1. */
+    const ease = (fn: string, x: number) => (fn === "step-start" ? 1 : fn === "step-end" ? (x >= 1 ? 1 : 0) : x);
+    for (const moment of ["sent", "paid", "paid-undo"]) {
+      const rule = new RegExp(`\\[data-moment="${moment}"\\] > \\.bc-ghost \\{[^}]*animation:\\s*([^;]+);`).exec(css)?.[1] ?? "";
+      expect(rule, moment).not.toBe("");
+      const name = rule.trim().split(/\s+/)[0];
+      const fn = (/(step-start|step-end|ease-in-out|ease-out|ease-in|linear|var\(--ease-[a-z]+\))/.exec(rule)?.[1] ?? "linear");
+      const reverse = /\breverse\b/.test(rule);
+      // After the moment (fill forwards): iteration progress 1, directed progress 0 when reversed.
+      const end = opacityAt(name, ease(fn, reverse ? 0 : 1));
+      // Just after the moment starts: the old cell is still drawn.
+      const start = opacityAt(name, ease(fn, reverse ? 0.99 : 0.01));
+      expect(end, `${moment} ghost at the end`).toBe(0);
+      if (moment === "paid") expect(start, "paid ghost while the overlay fades").toBe(1);
+      else expect(start, `${moment} ghost at the start`).toBeGreaterThan(0.9);
+    }
+  });
   it("makes every moment instant under reduced motion (no delay, no glint, no ghost)", () => {
     const blocks = css.split("@media (prefers-reduced-motion: reduce)").slice(1);
     expect(blocks.some((b) => b.includes("[data-moment], [data-moment] *") && b.includes(".bc-glint, .bc-ghost { display: none; }"))).toBe(true);

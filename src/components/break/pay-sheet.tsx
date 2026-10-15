@@ -10,6 +10,7 @@ import { MiniCells } from "@/components/mini-cells";
 import { LocalTime } from "@/components/local-time";
 import { payLinks, type PayLink } from "@/lib/pay-links";
 import { giveBack } from "@/app/b/[id]/actions";
+import { runGiveBack } from "./give-back";
 import { outcomeText } from "./selection";
 import { giveBackPrompt, lateReleaseText, payHeadline, releaseText, retryRandomLabel, SENT_HINT, SENT_HINT_KEY } from "./pay-copy";
 import type { Owe } from "./use-pay-sheet";
@@ -30,8 +31,12 @@ type Props = {
   onRetry: (count: number) => void;
   /** `done` runs only once the server accepted it. */
   onSent: (done: () => void) => void;
-  /** The lines just given back: the next refresh announces "You gave back …" for them. */
+  /** The lines just given back, once the server accepted it. */
   onGaveBack: (numbers: number[]) => void;
+  /** Before the give-back action is called: the island records the lines, so the refresh says "You gave back …" in either render order. */
+  onGiveBackStart?: (numbers: number[]) => void;
+  /** The server refused the give-back: nothing was given back. */
+  onGiveBackRefused?: () => void;
   /** A failure from onSent or onRetry, shown here because the page behind a modal is inert. */
   error: { for: "sent" | "retry"; text: string } | null;
   pending: boolean;
@@ -83,7 +88,10 @@ export function PaySheet(p: Props) {
     startGive(async () => {
       setError(null);
       try {
-        const r = await giveBack(p.breakId, numbers);
+        const r = await runGiveBack(numbers, (n) => giveBack(p.breakId, n), {
+          onStart: (n) => p.onGiveBackStart?.(n),
+          onRefused: () => p.onGiveBackRefused?.(),
+        });
         if (r.ok) { setConfirming(false); p.onGaveBack(numbers); p.onClose(); return; }
         setError(r.message);
       } catch {

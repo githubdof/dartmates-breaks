@@ -6,6 +6,8 @@ export type CellData = Pick<GridCell, "number" | "state" | "mine" | "overdue" | 
   flight?: Flight | null;
   /** Result page only: the place is public there (Mosaic §5 accessibility). */
   place?: 1 | 2 | 3 | null;
+  /** The break page's optimistic mark while the viewer's claim is in flight: hatched, but no yours ring until it lands (§7). */
+  optimistic?: boolean;
 };
 
 const STATE_WORD: Record<CellData["state"], string> = {

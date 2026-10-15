@@ -57,6 +57,22 @@ describe("a cell plays only the moment it is given (§3: animate on change, neve
   });
 });
 
+describe("the yours ring appears at landing, never before (§7 Claim commits)", () => {
+  it("an optimistic mark (the claim in flight) draws the hatch but no ring; the landed cell draws it", () => {
+    const optimistic = html(createElement(Cell, { cell: { ...cell(4, { state: "taken", mine: true }), optimistic: true }, onPress: noop }));
+    expect(optimistic).toContain('class="bc-hatch"');
+    expect(optimistic).not.toContain('data-mark="ring"');
+    const landed = html(createElement(Cell, { cell: cell(4, { state: "taken", mine: true, flight: BLUE_KITE }), onPress: noop, moment: "drop" }));
+    expect(landed).toContain('data-mark="ring"');
+  });
+  it("Grid passes the optimistic flag through to the cell", () => {
+    const cells = [{ ...cell(1, { state: "taken", mine: true }), optimistic: true }, cell(2, { state: "taken", mine: true, flight: BLUE_KITE })];
+    const h = html(createElement(Grid, { cells, lineCount: 2, label: "Lines, 0 to go", kit: DEFAULT_KIT, onPress: noop }));
+    expect(buttonOf(h, 1)).not.toContain('data-mark="ring"');
+    expect(buttonOf(h, 2)).toContain('data-mark="ring"');
+  });
+});
+
 describe("Grid hands each cell its moment and its place in the stagger", () => {
   it("staggers the cells of one kind in line order and leaves the rest still", () => {
     const cells = [cell(1), cell(2, { state: "taken" }), cell(3), cell(4, { state: "taken" })];

@@ -90,7 +90,8 @@ export function Cell({ cell, view = "member", size = "md", px, selected = false,
       {cell.state === "reserved" && size === "md" && <span className="bc-m text-micro" data-mark="mini-label">m</span>}
       {won && <span className="bc-bull" data-place={cell.place} data-mark="bull"><span className="bc-bull-ring" /></span>}
       {/* No yours ring on a won cell: the bull and its place ring are the only extra mark (Mosaic §5, recorded ruling 19). */}
-      {cell.mine && !won && marks && <span className="bc-ring" data-ring={darkFace ? "cream-out" : "ink-out"} data-mark="ring" />}
+      {/* An optimistic mark has no ring yet: the ring appears at landing (the drop), so it never shows, hides and shows again. */}
+      {cell.mine && !won && marks && !cell.optimistic && <span className="bc-ring" data-ring={darkFace ? "cream-out" : "ink-out"} data-mark="ring" />}
       {cell.overdue && marks && <span className="bc-overdue" data-mark="overdue-edge" />}
       {selected && <span className="bc-brackets" data-mark="brackets"><i /><i /><i /><i /></span>}
       {/* Weight 600 in every state, selected included: 700 is not loaded. */}

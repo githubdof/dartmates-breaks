@@ -63,6 +63,8 @@ export type MomentState = {
   moments: ReadonlyMap<number, CellMoment>;
   from: ReadonlyMap<number, GridCell>;
   landed: readonly number[];
+  /** The map as the last moving diff produced it: the island keys the landing count on it, so a kept map never restarts it. */
+  played: ReadonlyMap<number, CellMoment>;
 };
 
 /** Whether a cell looks the same in two renders (everything a moment or the cell's drawing reads). */
@@ -75,12 +77,17 @@ const sameCell = (a: GridCell, b: GridCell) =>
  * The same props return the same state; changed props diff, with the pending claim's landed lines as `claimed`.
  * A diff that moves nothing (a fresh struck array from the claim's answer, a refresh with no change) keeps the moments
  * in play, so the drop never depends on which of the two renders first; a cell that did change snaps to still (§3).
+ * With nothing in play it only takes the new snap: no map, so the hook arms no timer. A moving diff replaces the map
+ * and starts a new run (`played`).
  */
 export function stepMoments(state: MomentState, next: BoardSnap, claim: PendingClaim | null): MomentState {
   if (state.snap.cells === next.cells && state.snap.view === next.view && state.snap.struck === next.struck) return state;
   const landed = landedClaim(state.snap.cells, next.cells, claim);
   const moments = boardMoments(state.snap, next, landed);
-  if (state.snap.view === next.view && ![...moments.values()].some((m) => m !== "still") && [...state.moments.values()].some((m) => m !== "still")) {
+  const moves = (m: ReadonlyMap<number, CellMoment>) => [...m.values()].some((x) => x !== "still");
+  if (!moves(moments)) {
+    if (!moves(state.moments)) return { ...state, snap: next, landed };
+    if (state.snap.view !== next.view) return { snap: next, moments: NO_MOMENTS, from: NO_GHOSTS, landed, played: NO_MOMENTS }; // a view switch shows the final state still
     const was = new Map(state.snap.cells.map((c) => [c.number, c]));
     const changed = next.cells.filter((c) => { const p = was.get(c.number); return !p || !sameCell(p, c); }).map((c) => c.number);
     if (changed.length === 0) return { ...state, snap: next, landed };
@@ -88,8 +95,11 @@ export function stepMoments(state: MomentState, next: BoardSnap, claim: PendingC
     for (const n of changed) kept.set(n, "still");
     return { ...state, snap: next, moments: kept, landed };
   }
-  return { snap: next, moments, from: ghostsFrom(state.snap.cells, moments), landed };
+  return { snap: next, moments, from: ghostsFrom(state.snap.cells, moments), landed, played: moments };
 }
+
+const NO_MOMENTS: ReadonlyMap<number, CellMoment> = new Map();
+const NO_GHOSTS: ReadonlyMap<number, GridCell> = new Map();
 
 /** Each cell's place in its moment's stagger, in line order, counted per kind ("--stagger-others in line order"). */
 export function momentOrder(moments: ReadonlyMap<number, CellMoment> | undefined): Map<number, number> {

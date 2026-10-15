@@ -8,7 +8,7 @@ import type { BoardView } from "@/components/grid/cell";
 import type { ActionResult } from "@/lib/action";
 import type { BreakStatus } from "@/components/status-word";
 import { claim, claimNextAction, claimRandomAction, claimRest } from "@/app/b/[id]/actions";
-import { Grid } from "@/components/grid/grid";
+import { Grid, type BoardCell } from "@/components/grid/grid";
 import { nextFocusIndex } from "@/components/grid/layout";
 import { countMoment, landingTimes, momentAnnouncements, paySheetDelay, type PendingClaim } from "@/components/grid/board-moments";
 import { useBoardMoments } from "@/components/grid/use-board-moments";
@@ -19,7 +19,7 @@ import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
 import { ClaimBar } from "./claim-bar";
 import { LineList } from "./line-list";
 import { PaySheet } from "./pay-sheet";
-import { nextPendingOwe } from "./pay-copy";
+import { nextPendingOwe, owedAfterClaim } from "./pay-copy";
 import { barCheckout, barShown, claimBar, failureNote, limitText, sentNote } from "./claim-bar-state";
 import { toGoText } from "./frame-copy";
 import { cellNote, isRepeat, isSelectable, loginHref, onboardingHref, claimAnnouncement, reconcileSelection, selectionAnnouncement, takenAnnouncement, toggleSelection } from "./selection";
@@ -65,8 +65,9 @@ type TapNote = { text: string; top: number; left: number };
 export function BreakInteractive(p: BreakInteractiveProps) {
   const router = useRouter();
   // Server props are the truth; the optimistic layer only marks lines being claimed right now.
-  const [cells, markClaimed] = useOptimistic(p.cells, (cur: GridCell[], numbers: number[]) =>
-    cur.map((c) => (numbers.includes(c.number) && c.state === "open" ? { ...c, state: "taken" as const, mine: true } : c)));
+  // An optimistic mark is hatched and mine but draws no ring: the ring appears at landing (Mosaic §7).
+  const [cells, markClaimed] = useOptimistic<BoardCell[], number[]>(p.cells, (cur, numbers) =>
+    cur.map((c) => (numbers.includes(c.number) && c.state === "open" ? { ...c, state: "taken" as const, mine: true, optimistic: true } : c)));
   // ?pick= is parsed but not trimmed on the server: keep what is still open, inside the allowance, and say what was dropped.
   const [initial] = useState(() => {
     const r = reconcileSelection(p.initialPick, p.cells, p.allowance.remaining);
@@ -123,8 +124,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       setNote(null);
       setStruck(taken);
       setOutcome({ got: r.data.got, taken });
-      const owedBefore = (p.owe ?? pay.pendingOwe)?.cents ?? 0;
-      say(claimAnnouncement(r.data.got, taken, p.hostName, owedBefore + r.data.got.length * p.priceCents));
+      say(claimAnnouncement(r.data.got, taken, p.hostName, owedAfterClaim(p.owe ?? pay.pendingOwe, r.data.got, p.priceCents)));
       if (r.data.got.length === 0) setPendingClaim(null); // none got: nothing will land
       // Built on what is already shown (a retry adds to the first claim's provisional amount); none got, none provisional.
       pay.setPendingOwe((prev) => nextPendingOwe(p.owe ?? prev, r.data.got, p.priceCents));
@@ -197,7 +197,9 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     // Paid, paid undone, released, given back, open again (Mosaic §7): own lines only where the row says so.
     const moved = momentAnnouncements(before, freshCells, hostName, gaveBack.current);
     if (moved) said.push(moved);
-    gaveBack.current = [];
+    // Keep only the give-back lines this refresh does not show yet (an unrelated refresh may land first).
+    const stillMine = new Set(freshCells.filter((c) => c.mine).map((c) => c.number));
+    gaveBack.current = gaveBack.current.filter((n) => stillMine.has(n));
     const text = said.join(" ");
     if (said.length > 0 && !isRepeat(lastSaid.current, text, Date.now())) {
       lastSaid.current = { text, at: Date.now() };
@@ -209,14 +211,15 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   useEffect(() => { if (board.landed.length > 0) setPendingClaim(null); }, [board.landed]);
 
   // The checkout count drops by one per landing. Before paint, so the count never shows the lower number first.
+  // Keyed on the run (`played`), not on the map shown: a kept map (a non-moving change mid-landing) never restarts it.
   useLayoutEffect(() => {
-    const drops = countMoment(board.moments, "drop");
+    const drops = countMoment(board.played, "drop");
     if (drops === 0 || prefersReducedMotion()) { setLanding(0); return; }
     const times = landingTimes(drops);
     setLanding(times.length);
     const ids = times.map((t) => window.setTimeout(() => setLanding((n) => Math.max(0, n - 1)), t));
     return () => ids.forEach((id) => window.clearTimeout(id));
-  }, [board.moments]);
+  }, [board.played]);
 
   useEffect(() => () => { if (sheetTimer.current !== null) window.clearTimeout(sheetTimer.current); }, []);
 
@@ -397,7 +400,10 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         retryMax={retryMax}
         onRetry={onRetry}
         onSent={pay.markSent}
-        onGaveBack={(numbers) => { gaveBack.current = numbers; pay.setPendingOwe(null); }}
+        onGaveBack={() => pay.setPendingOwe(null)}
+        /* Recorded before the action: the refresh that carries the give-back may land before its answer. */
+        onGiveBackStart={(numbers) => { gaveBack.current = numbers; }}
+        onGiveBackRefused={() => { gaveBack.current = []; }}
         error={pay.error}
         pending={pending}
       />

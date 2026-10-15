@@ -265,7 +265,7 @@ button[data-cell][data-state="open"]:not([aria-disabled="true"]):active { transf
 [data-moment="paid"] > .bc-in > .bc-face { animation: set var(--dur-set) var(--ease-out) calc(var(--i, 0) * var(--stagger-others)) both; }
 [data-moment="paid"] > .bc-in > .bc-num { animation: fadein var(--dur-set) step-end calc(var(--i, 0) * var(--stagger-others)) both; }
 [data-moment="paid"] > .bc-in > .bc-glyph { animation: fadein var(--dur-set) step-end calc(var(--i, 0) * var(--stagger-others)) both, seat var(--dur-seat) var(--ease-over) calc(var(--i, 0) * var(--stagger-others) + var(--dur-set)) both; }
-[data-moment="paid"] > .bc-ghost { z-index: 2; animation: fadein var(--dur-set) step-start calc(var(--i, 0) * var(--stagger-others)) reverse both; }
+[data-moment="paid"] > .bc-ghost { z-index: 2; animation: fadeout var(--dur-set) step-end calc(var(--i, 0) * var(--stagger-others)) both; }
 
 /* Paid undone: the ink is back at once; the old overlay (the ghost, under the number) fades out. */
 [data-moment="paid-undo"] > .bc-ghost { z-index: 0; animation: fadein var(--dur-set) var(--ease-inout) calc(var(--i, 0) * var(--stagger-others)) reverse both; }
@@ -282,6 +282,8 @@ button[data-cell][data-state="open"]:not([aria-disabled="true"]):active { transf
 @keyframes squash { 0% { transform: scale(1); animation-timing-function: linear; } 40% { transform: scale(0.96); animation-timing-function: cubic-bezier(.3, 1.5, .5, 1); } 100% { transform: scale(1); } }
 @keyframes glint { from { opacity: 1; } to { opacity: 0; } }
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+/* With step-end: 1 for the whole set, 0 the moment it ends (the paid ghost's old ink). */
+@keyframes fadeout { from { opacity: 1; } to { opacity: 0; } }
 @keyframes set { from { opacity: 0; } to { opacity: 1; } }
 @keyframes seat { from { transform: translateY(-2px); } to { transform: none; } }
 
