@@ -629,9 +629,9 @@ rule; applied to the local, `breaks_test` and `breaks_e2e` databases):
   at first sign-in, before onboarding completes, so every member has a stored flight by the time they can
   claim. The migration backfills existing rows with the same expressions, then sets both columns `NOT NULL`,
   with a `CHECK` on each set. `users.flight_chosen_at timestamptz`, nullable (null = never picked).
-- `host_profiles.kit_primary text CHECK (kit_primary in ('petrol','blue','plum'))` and
-  `host_profiles.kit_secondary text CHECK (kit_secondary in ('yellow','orange','lime','sky','pink'))`,
-  nullable, with `CHECK ((kit_primary is null) = (kit_secondary is null))`; null means the default kit (Blue
+- `host_profiles.kit_dark text CHECK (kit_dark in ('petrol','blue','plum'))` and
+  `host_profiles.kit_light text CHECK (kit_light in ('yellow','orange','lime','sky','pink'))`,
+  nullable, with `CHECK ((kit_dark is null) = (kit_light is null))`; null means the default kit (Blue
   with Yellow). `host_profiles` rows are created lazily (`breaks/commands.ts`), so `updateHostKit` upserts the
   same way.
 - `draws.verified_at timestamptz`, nullable, set when the draw is recorded if `verifyInputs`
@@ -643,7 +643,7 @@ rule; applied to the local, `breaks_test` and `breaks_e2e` databases):
   against the migration's `CHECK` lists. There is no `defaultFlight(userId)`.
 - A new `updateFlight(tx, caller, { colour, shape })` (onboarded caller; sets `flight_chosen_at`) appends
   `user.profile_updated` with `changed: ["flight"]` (never the values). A new `updateHostKit(tx, caller,
-  { primary, secondary })` (host role) appends `host.kit_changed`, matching `host.payment_handles_changed`.
+  { dark, light })` (host role) appends `host.profile_updated` with `changed: ["kit"]` (never the values).
   Input is parsed by a pure, tested function in `src/app/account/parse.ts` (platform §12 "profile update field
   allowlist"). `updateProfile` is unchanged.
 - `getBreakPage`'s lines select adds `ownerFlightColour` and `ownerFlightShape` from the existing `users` join,
