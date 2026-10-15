@@ -144,7 +144,7 @@ export type DurationTokens = { readonly [K in keyof typeof MOTION]: number };
 28. The feed: `FEED_CHIPS = ["newest", "almost"]`, the domain's `filling` sort left unused; the copy audit reads "near a kit" as the same copy segment or within two segments of it, and bans caps words with four allowlisted entries, each with its reason (share text's `CLOSED` idiom, `NFKC` in `handle-field-copy.ts`, the `en-US` locale tag, `SHA-256` and `HMAC` on the draw explainer).
 29. `/me`: "Unpaid." cards on a break that no longer asks for money say "Line 5 is not marked paid. Ask Jim about it."; Earlier is the plain history; `MyBreakCard`'s error, offline and disabled states are recorded as out of reach of render tests.
 30. `/dev/components` opens in production only with `E2E_SECRET`; this plan's deferred-findings file is created by the first task that records into it; every Plan B amendment ends "(Amended by Plan C, Mosaic spec §1.1.)".
-31. `updateHostKit` admits hosts and admins: admins may host, as `createDraft` already allows. The spec's §10 says "(host role)"; the owner confirms or amends it.
+31. `updateHostKit` admits hosts and admins: admins may host, as `createDraft` already allows. The spec's §10 is amended to match.
 32. The `/host/new` composer's preview (`GridPreview`) becomes the kit thumbnail with the board (Task 8): the one paper surface that changes, on purpose, so the host previews the board in the kit it opens in.
 33. The board at 390 is 365 px wide: the rows take `margin-inline: -3.5px` on the 358 px column, giving eight 44.75 px cells on 1 px wires (a 45.75 px pitch), and the 12 px frame stack sits 15.5 px into the 16 px gutter. The 44 pt floor is kept honestly. `columnsFor` and the group's container queries read the column, so 360 wide keeps seven columns (47 px cells). The spec's §5 "Grid" sentence is amended to match (panel fix ruling 8).
 34. Claim moments: the island records the pending claim (its numbers, or null for a random claim) before the action is called (`useClaim`'s `onStart`), so the drop never depends on whether the refreshed props or the action's answer renders first; `boardMoments` wraps `GridCell[]` with `cellViews` before `cellMoments` (panel fix ruling 9).
@@ -214,7 +214,7 @@ The Mosaic board needs its own colours, the lamp's five steps, the default kit, 
   - `globals.css`: `.font-shoulders, .caller-banner { font-variation-settings: "opsz" 72; font-weight: 800; }`, so every Big Shoulders title, count and call is drawn in the Display cut (72 is the axis maximum Step 1 prints; recorded ruling 11). No `font-optical-sizing` rule.
   - `src/app/wall.ts`: `WALL_THEME_COLOR = "#17161A"`, `PAPER_THEME_COLOR = "#F6F5F1"`, `wallViewport: Viewport = { themeColor: WALL_THEME_COLOR }`. No route exports it in this task.
   - `globals.css`: `html:has([data-wall]), html:has([data-wall]) body { background-color: var(--board-wall); }` and `html:has([data-wall]) footer { color: var(--board-text-2); }`.
-  - `e2e/layout.spec.ts`: the test "theme-color is the wall on wall routes and paper elsewhere (Mosaic §8)" with its `const wall: string[] = [];` list, which Tasks 8, 15a and 15b fill.
+  - `e2e/layout.spec.ts`: the test "theme-color is the wall on wall routes and paper elsewhere (Mosaic §8)" with its `const wall: string[] = [];` list, which Tasks 8, 15a and 15b fill (the result page's wall theme color is checked in journey 2 by Task 13).
 
 - [ ] **Step 1: Confirm the Big Shoulders export name before anything else**
 
@@ -607,10 +607,6 @@ with
   html:has([data-wall]) body {
     background-color: var(--board-wall);
   }
-  /* The shared footer sits on the wall there: its text-ink-2 would read about 2.6:1 on --board-wall. */
-  html:has([data-wall]) footer {
-    color: var(--board-text-2);
-  }
   /* Big Shoulders is one variable file with an opsz axis (10 to 72). Pin the Display cut at every size, so the 22 px
      count and the 26 px caller match the 32 px and 40 px titles (Mosaic §4 type; recorded ruling 11). */
   .font-shoulders,
@@ -618,6 +614,16 @@ with
     font-variation-settings: "opsz" 72;
     font-weight: 800;
   }
+```
+
+Append to the end of `src/app/globals.css`, outside any `@layer`:
+
+```css
+/* Unlayered on purpose: the shared footer's text-ink-2 is a utility, and utilities outrank @layer base. On the wall
+   its ink-2 would read about 2.6:1 (Mosaic §4), so wall routes give it --board-text-2. */
+html:has([data-wall]) footer {
+  color: var(--board-text-2);
+}
 ```
 
 No route sets `data-wall` in this task: Tasks 8, 13, 15a and 15b add it to the pages they restyle, because today's pages put ink text straight on the body (recorded ruling 12).
@@ -635,7 +641,7 @@ with
 ```ts
 test("theme-color is the wall on wall routes and paper elsewhere (Mosaic §8)", async ({ browser }) => {
   const page = await anonymous(browser, 390, 664);
-  // Each wall route joins this list in the task that puts it on the wall (Task 8, Task 15a, Task 15b; recorded ruling 12).
+  // Each wall route joins this list in the task that puts it on the wall (Task 8, Task 15a, Task 15b; the result page's wall theme color is checked in journey 2 by Task 13; recorded ruling 12).
   const wall: string[] = [];
   for (const path of wall) {
     await page.goto(path);
@@ -1956,13 +1962,14 @@ describe("updateHostKit", () => {
       expect(await profile(tx, host.id)).toBeUndefined();
     });
   });
-  it("is for hosts only, and never for a banned host", async () => {
+  it("is for hosts and admins only, and never for a banned host", async () => {
     await withTx(async (tx) => {
       const member = await makeUser(tx);
       const host = await makeUser(tx, { role: "host" });
       await expect(updateHostKit(tx, asMember(member), { dark: "blue", light: "yellow" })).rejects.toBeInstanceOf(NotAuthorized);
       await expect(updateHostKit(tx, { ...asHost(host), banned: true }, { dark: "blue", light: "yellow" })).rejects.toThrow(/suspended/);
-      expect(await kitEvents(tx, host.id)).toHaveLength(0);
+      await updateHostKit(tx, { ...asHost(host), role: "admin" }, { dark: "petrol", light: "sky" });
+      expect(await kitEvents(tx, host.id)).toHaveLength(1);
     });
   });
 });
@@ -3273,6 +3280,7 @@ Paper surfaces must not change (§1.1: the ledger's mini cells stay paper, ink a
 - Modify: `src/components/grid/cell-label.ts`, `src/components/grid/cell-label.test.ts`, `src/components/grid/render.test.ts`
 - Modify: `src/components/mini-cells.tsx`, `src/components/legend.tsx`, `src/components/grid/grid-preview.tsx` (import `PaperCell`)
 - Modify: `src/app/layout.tsx` (mount the sprite once), `src/app/globals.css` (the board cell block)
+- Modify: `src/components/break/line-list.tsx`, `src/components/break/selection.ts` (`cellNote`), `src/components/break/selection.test.ts`
 
 **Interfaces:**
 - Consumes: board tokens `--board-cream`, `--board-cream-2`, `--board-ink`, `--board-ink-2`, `--board-steel`, `--board-ring`, `--red`, `--green` (Task 1); `FLIGHT_COLOURS`, `FLIGHT_SHAPES`, `TOKENS`, `Flight`, `FlightColour`, `FlightShape` (Task 2); Task 3's attribute scheme (`data-state`, `data-face`, `data-mine`, `data-bonus`, `data-overdue`, `data-selected`, `data-struck`, `data-ink`, `data-mark`; recorded ruling 19); `GridCell.flight: Flight | null` (Task 5).
@@ -3688,6 +3696,26 @@ export function cellLabel(c: CellData, o: { struck?: boolean; foldSent?: boolean
 }
 ```
 
+- [ ] **Step 5b: The List view and the holder popover say "taken" too**
+
+Spec §5: other people's sent lines read "taken" on the board, in the List view and in the holder popover.
+
+In `src/components/break/line-list.tsx`, replace `{cellStateWord(c)}` with `{cellStateWord(c, { foldSent: true })}`.
+
+In `src/components/break/selection.ts`, in `cellNote`, replace both `cellStateWord(c)` with `cellStateWord(c, { foldSent: true })`.
+
+In `src/components/break/selection.test.ts`, after
+
+```ts
+    expect(cellNote(cell(9, { state: "sent", mine: true, holder: "me" }))).toBe("Line 9: yours, sent");
+```
+
+add
+
+```ts
+    expect(cellNote(cell(8, { state: "sent", holder: "mike" }))).toBe("Line 8: @mike, taken");
+```
+
 - [ ] **Step 6: The size rules as a pure function**
 
 Create `src/components/grid/cell-metrics.ts`:
@@ -4019,7 +4047,7 @@ Append to `src/app/globals.css`:
 
 - [ ] **Step 10: Run them to see them pass**
 
-Run: `pnpm test src/components/grid` (sandbox off)
+Run: `pnpm test src/components/grid src/components/break/selection.test.ts` (sandbox off)
 Expected: PASS. If an assertion fails, read the component and §5 once (fix-loop rule, recorded ruling 8):
 - If the component contradicts the spec, fix the component.
 - If the test's expectation contradicts both the markup and the spec, fix the test and say so in the commit body.
@@ -4040,7 +4068,7 @@ Expected: all green.
 - [ ] **Step 13: Commit**
 
 ```bash
-git add src/components/grid src/components/mini-cells.tsx src/components/legend.tsx src/app/layout.tsx src/app/globals.css
+git add src/components/grid src/components/mini-cells.tsx src/components/legend.tsx src/app/layout.tsx src/app/globals.css src/components/break/line-list.tsx src/components/break/selection.ts src/components/break/selection.test.ts
 git commit -m "feat(grid): mosaic cell states, flight glyphs, the yours ring and the bull" -m "render.test.ts changes on purpose: the bonus + and ink face are retired on the board (black now means won); the first design's cell moves verbatim to PaperCell for the ledger and the pay sheet."
 ```
 
@@ -4695,7 +4723,7 @@ with
         <p className="min-w-0 flex-1 text-small text-[var(--board-text-2)]">
 ```
 
-If the axe test in `e2e/layout.spec.ts` (Step 13's gates) still reports a contrast failure on an element drawn straight on the wall, give that element `text-[var(--board-text-2)]` (one round, recorded ruling 8); an element inside a paper card keeps its ink. The head's `StatusPill` already sits on a cream chip (above), and the shared footer already takes `--board-text-2` on wall routes (Task 1).
+If the axe test in `e2e/layout.spec.ts` (Step 13's gates) still reports a contrast failure on an element drawn straight on the wall, give that element `text-[var(--board-text-2)]` (one round, recorded ruling 8); an element inside a paper card keeps its ink. The head's `StatusPill` already sits on a cream chip (above), and the shared footer already takes `--board-text-2` on wall routes (Task 1's unlayered rule).
 
 - [ ] **Step 10: The density entry on `/dev/components`**
 
@@ -4807,7 +4835,7 @@ Then open an open break anonymously (kit view: bands, ink standard flights) and 
 
 Run: `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test && pnpm exec tsc --noEmit && pnpm lint && pnpm test:e2e` (sandbox off)
 Expected: all green.
-- `e2e/layout.spec.ts` still finds the legend by its name "What the cells mean", and its axe pass now covers the break page on the wall.
+- `e2e/layout.spec.ts` finds the legend by its test id `legend` (Task 3), and the list keeps its name "What the cells mean"; its axe pass now covers the break page on the wall.
 - It still counts columns on the first `[data-grid-rows]` (8, 7, 6, 10).
 - The 390 × 664 budget still holds: the frame takes no layout height, and the legend's `mt-5` replaces `mt-3` plus the frame. The 365 px board is about 6 px taller than a 358 px one would be (recorded ruling 33); if the legend no longer clears the bar, report it with the measured overlap and never shrink the cells below 44 px.
 - The theme-color test now expects the wall on the break page and paper on `/`, `/breaks` and the host profile.
@@ -7852,7 +7880,7 @@ export const placeCall = (place: Place, line: number, handle: string) => `Line $
 export function bannerText(b: Banner, c: { hostName: string; lines: number; handleOf: Record<number, string> }): string {
   if (b.kind === "setup") return setupCall(c.hostName, c.lines);
   if (b.kind === "beat") return beatCall(b.place);
-  return placeCall(b.place, b.number, c.handleOf[b.number] ?? "");
+  return placeCall(b.place, b.number, c.handleOf[b.number]);
 }
 
 export const seenKey = (breakId: string) => `breaks.reveal.${breakId}`;
@@ -8240,7 +8268,7 @@ export function Reveal(p: Props) {
           if (x.at !== at) continue;
           if (x.kind === "throw") throwDart(x.number as number);
           if (x.kind === "land") impact(x.number as number, x.place as Place);
-          if (x.kind === "call") setSaid((v) => ({ text: placeCall(x.place as Place, x.number as number, p.handleOf[x.number as number] ?? ""), n: v.n + 1 }));
+          if (x.kind === "call") setSaid((v) => ({ text: placeCall(x.place as Place, x.number as number, p.handleOf[x.number as number]), n: v.n + 1 }));
         }
       }, at));
     }
