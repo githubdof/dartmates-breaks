@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { ImageResponse } from "next/og";
 import type { OgCell, OgModel } from "@/domain/breaks/og";
 import { DEFAULT_KIT, LAMP, type Kit } from "@/domain/flights";
-import { OG_FONTS } from "./fonts";
+import { ogFonts } from "./fonts";
 import { fillerCount, OG_SIZE, ogImage } from "./image";
 
 // No PNG byte snapshots: the renderer's bytes differ across platforms (recorded ruling 25). Every status renders in two
@@ -71,7 +71,7 @@ describe("the link-preview image (Mosaic §6)", () => {
   for (const [status, o] of Object.entries(STATUSES)) {
     for (const [kitName, kit] of KITS) {
       it(`${status} in the ${kitName} kit renders a 1200 × 630 PNG`, async () => {
-        const png = Buffer.from(await new ImageResponse(ogImage(model({ ...o, kit })), { ...OG_SIZE, fonts: OG_FONTS }).arrayBuffer());
+        const png = Buffer.from(await new ImageResponse(ogImage(model({ ...o, kit })), { ...OG_SIZE, fonts: ogFonts() }).arrayBuffer());
         expect(png.subarray(1, 4).toString("ascii")).toBe("PNG");
         // The IHDR chunk: width, then height, as big-endian 32-bit integers at bytes 16 and 20.
         expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630]);

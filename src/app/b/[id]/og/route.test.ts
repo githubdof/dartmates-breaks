@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { withTx } from "../../../../../tests/helpers/db";
 import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../../../tests/helpers/fixtures";
 import { claimLines, markPaid } from "@/domain/lines/commands";
+import { drawPlacesForPreview, getDrawResult } from "@/domain/draws/queries";
+import { placesOf } from "@/domain/draws/places";
 import type { Tx } from "@/db/client";
 import type { Caller } from "@/domain/types";
 import { GET } from "./route";
@@ -37,6 +39,13 @@ describe("GET /b/{id}/og (recorded ruling 25)", () => {
         const png = Buffer.from(await r.arrayBuffer());
         expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630]);
       }
+      // The preview's draw query selects the order, the prize ranks and the time only (no handle, no item name), and
+      // its places agree with the result page's.
+      const prev = await drawPlacesForPreview(tx, ran.id);
+      expect(Object.keys(prev!).sort()).toEqual(["ranAt", "ranking", "ranks"]);
+      const full = await getDrawResult(tx, ran.id);
+      expect(placesOf(prev!.ranking, prev!.ranks)).toEqual(placesOf(full!.ranking, full!.awards.map((a) => a.rank)));
+      expect(prev!.ranAt).toEqual(full!.draw.createdAt);
       const draft = await makeBreak(tx, { hostId: host.id });
       expect((await get(draft.id)).status).toBe(404);
     });
