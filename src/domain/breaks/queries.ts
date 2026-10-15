@@ -82,6 +82,12 @@ export async function hostPaymentHandles(tx: Tx, hostId: string): Promise<{ venm
   return r?.paymentHandles ?? {};
 }
 
+/** The host's kit for /host/new's nudge: the default (Blue with Yellow) and not chosen until the host picks one. */
+export async function hostKit(tx: Tx, hostId: string): Promise<{ kit: Kit; chosen: boolean }> {
+  const [r] = await tx.select({ kitDark: hostProfiles.kitDark, kitLight: hostProfiles.kitLight }).from(hostProfiles).where(eq(hostProfiles.userId, hostId));
+  return { kit: kitFor({ kitDark: r?.kitDark ?? null, kitLight: r?.kitLight ?? null }), chosen: r?.kitDark != null };
+}
+
 export type HostBreakRow = { id: string; title: string; status: string; lineCount: number; openedAt: Date | null; paid: number; taken: number };
 
 /** The host's main breaks for /host, newest first (minis wait for their own UI). Paid and taken count numbered lines only. */

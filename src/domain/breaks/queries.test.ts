@@ -3,12 +3,12 @@ import { eq, sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../tests/helpers/fixtures";
 import { breaks, draws, drawRequests, hostProfiles } from "@/db/schema";
-import { draftForEdit, getBreakPage, hostProfile, hostTrust, isGeneratedInstructions, lastBreakDefaults, listHostBreaks } from "./queries";
+import { draftForEdit, getBreakPage, hostKit, hostProfile, hostTrust, isGeneratedInstructions, lastBreakDefaults, listHostBreaks } from "./queries";
 import { shapeGrid } from "./grid";
 import { DEFAULT_KIT } from "@/domain/flights";
 import { hostRecordText } from "@/components/break/frame-copy";
 import type { Tx } from "@/db/client";
-import { createDraft } from "./commands";
+import { createDraft, updateHostKit } from "./commands";
 import { randomUUID } from "node:crypto";
 import { claimLines, markPaid, addBonusLine } from "@/domain/lines/commands";
 import type { Caller } from "@/domain/types";
@@ -273,3 +273,14 @@ async function redrawUnverified(tx: Tx, drawId: string, hostId: string, ranAt: D
     ranking: d.ranking, resultHash: d.resultHash, runBy: d.runBy, createdAt: ranAt,
   });
 }
+
+describe("hostKit", () => {
+  it("is the default kit, not chosen, for a host without a profile or a pick; then the host's pick", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      expect(await hostKit(tx, host.id)).toEqual({ kit: DEFAULT_KIT, chosen: false });
+      await updateHostKit(tx, { id: host.id, role: "host", onboarded: true, banned: false }, { dark: "plum", light: "sky" });
+      expect(await hostKit(tx, host.id)).toEqual({ kit: { dark: "plum", light: "sky" }, chosen: true });
+    });
+  });
+});

@@ -2,6 +2,8 @@ import type { Tx } from "@/db/client";
 import type { Role } from "@/domain/types";
 import { globalUnpaidCount, ledgerByBuyer, type LedgerBuyer } from "@/domain/lines/queries";
 import { getDrawResult } from "@/domain/draws/queries";
+import { viewerFlightOf } from "@/domain/users/queries";
+import type { Flight } from "@/domain/flights";
 import { getBreakPage, hostTrust, type BreakPage, type HostTrust } from "./queries";
 import { canViewBreak, isHostView } from "./grid";
 
@@ -13,6 +15,8 @@ export type BreakView = {
   globalUnpaid: number;
   top: { line: number; handle: string | null } | null;
   ledger: LedgerBuyer[];
+  /** The viewer's own stored flight and whether they ever picked one (Mosaic §8); null when signed out. */
+  viewerFlight: { flight: Flight; chosen: boolean } | null;
 };
 
 /**
@@ -26,6 +30,7 @@ export async function readBreakView(tx: Tx, breakId: string, viewer: BreakViewer
   if (!canViewBreak(page.break.status, hostView)) return null;
   const trust = await hostTrust(tx, page.host.id);
   const globalUnpaid = viewer ? await globalUnpaidCount(tx, viewer.id) : 0;
+  const viewerFlight = viewer ? await viewerFlightOf(tx, viewer.id) : null;
   let top: BreakView["top"] = null;
   if (page.break.status === "drawn") {
     const res = await getDrawResult(tx, breakId);
@@ -34,5 +39,5 @@ export async function readBreakView(tx: Tx, breakId: string, viewer: BreakViewer
   }
   // Rows arrive in the ledger order (compareLedger); the sheet freezes that order.
   const ledger = hostView ? await ledgerByBuyer(tx, breakId, now) : [];
-  return { page, trust, globalUnpaid, top, ledger };
+  return { page, trust, globalUnpaid, top, ledger, viewerFlight };
 }
