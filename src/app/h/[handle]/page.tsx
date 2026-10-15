@@ -54,7 +54,7 @@ export default async function HostProfilePage({ params }: Props) {
       <section aria-labelledby="open-breaks" className="space-y-3">
         <h2 id="open-breaks" className="text-headline font-semibold">Open breaks</h2>
         {open.length > 0 ? (
-          <ul className="space-y-3">{open.map((b) => <BreakCard key={b.id} b={b} cells={thumbs.get(b.id) ?? []} />)}</ul>
+          <ul className="space-y-3">{open.map((b) => <BreakCard key={b.id} onPaper b={b} cells={thumbs.get(b.id) ?? []} />)}</ul>
         ) : (
           <p className="text-ink-2">No open breaks right now.</p>
         )}
