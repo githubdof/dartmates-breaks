@@ -2,6 +2,7 @@ import { test, expect, type Browser, type BrowserContext, type Page } from "@pla
 import { FLIGHT_COLOURS, FLIGHT_SHAPES } from "../src/domain/flights";
 import { composeBreak, gotoReady, loginAs } from "./helpers";
 import { setFlight, setKit } from "./db";
+import { longestMoment, MOMENT_CLEAR_MS } from "../src/components/grid/board-moments";
 
 // Mosaic's privacy and motion claims in a real browser (Plan C Review Focus 1, 2 and 5).
 const run = Date.now();
@@ -22,13 +23,22 @@ async function newPage(browser: Browser, email?: string, role: "member" | "host"
 const FLIGHT_WORDS = [...Object.values(FLIGHT_COLOURS).map((c) => c.label), ...Object.values(FLIGHT_SHAPES).map((s) => s.label)];
 
 /**
- * The accessible names that carry a handle, an "@" or a flight name: always empty. `selector` is the cells for a
- * holder's view (the host's ledger names its rows by handle, by design) and every labelled element for a stranger.
+ * Every accessible name on the page that carries a flight name, or a handle or an "@": always empty, for every viewer
+ * (Plan C Global Constraints: "no aria-label ever contains a handle or a flight name"). The one exemption is for
+ * handles inside `handleExempt` (the host's ledger names its rows' "Paid" buttons by handle, by design); flight names
+ * have no exemption anywhere.
  */
-async function badNames(page: Page, handles: string[], selector = "[data-cell]"): Promise<string[]> {
-  const names = await page.locator(selector).evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") ?? ""));
-  expect(names.length).toBeGreaterThan(0);
-  return names.filter((n) => n.includes("@") || handles.some((h) => n.includes(h)) || FLIGHT_WORDS.some((w) => new RegExp(`\\b${w}\\b`, "i").test(n)));
+async function badNames(page: Page, handles: string[], handleExempt?: string): Promise<string[]> {
+  const labels = await page.locator("[aria-label]").evaluateAll((els, exempt) => els.map((e) => ({
+    name: e.getAttribute("aria-label") ?? "",
+    exempt: !!exempt && e.closest(exempt) !== null,
+    cell: e.hasAttribute("data-cell"),
+  })), handleExempt);
+  // Never vacuous: the board's cells are among the labels read.
+  expect(labels.filter((l) => l.cell).length).toBeGreaterThan(0);
+  const flightWord = (n: string) => FLIGHT_WORDS.some((w) => new RegExp(`\\b${w}\\b`, "i").test(n));
+  const handle = (n: string) => n.includes("@") || handles.some((h) => n.includes(h));
+  return labels.filter((l) => flightWord(l.name) || (!l.exempt && handle(l.name))).map((l) => l.name);
 }
 
 /**
@@ -82,18 +92,20 @@ test("strangers see the 50-line board in the host's kit, holders see the flights
     await gotoReady(page, url);
     await expectKitView(page, 50, holders);
     expect(await badNames(page, holders)).toEqual([]);
-    expect(await badNames(page, holders, "[aria-label]")).toEqual([]);
     await expect(page.getByTestId("cell-1")).toHaveAttribute("aria-label", "Line 1, taken");
     await expect(page.getByTestId("cell-3")).toHaveAttribute("aria-label", "Line 3, paid");
   }
-  // A holder and the host see every holder's flight; the cell names still carry neither a handle nor a flight.
-  for (const page of [alice, host]) {
+  // A holder and the host see every holder's flight; no name on the page carries a flight, and none carries a handle
+  // except the host ledger's "Paid" buttons (alice has no ledger, so nothing of hers is exempt).
+  for (const [page, exempt] of [[alice, undefined], [host, '[data-testid="ledger"]']] as const) {
     await gotoReady(page, url);
     await expect(page.getByTestId("cell-1")).toHaveAttribute("data-flight", "yellow-kite");
     await expect(page.getByTestId("cell-2")).toHaveAttribute("data-flight", "yellow-kite");
     await expect(page.getByTestId("cell-3")).toHaveAttribute("data-flight", "blue-standard");
     await expect(page.getByTestId("cell-4")).not.toHaveAttribute("data-flight");
-    expect(await badNames(page, holders)).toEqual([]);
+    // The positive control for the strangers' --fc check: a member-view cell sets it inline.
+    await expect(page.getByTestId("cell-1")).toHaveAttribute("style", /--fc:/);
+    expect(await badNames(page, holders, exempt)).toEqual([]);
   }
   // The List view is text only (Mosaic §5: "List rows carry handles as text, never glyphs").
   await alice.getByRole("radio", { name: "List" }).click();
@@ -133,8 +145,14 @@ test("the first claim as a stranger animates only the claimed cells, and nothing
     }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-moment"] });
   });
   const moments = () => carol.evaluate(() => (window as unknown as { __moments: Record<string, string[]> }).__moments);
+  // Past every moment a render could start: the longest one, and the time the board keeps data-moment on a cell.
+  const settle = () => carol.waitForTimeout(Math.max(longestMoment(), MOMENT_CLEAR_MS) + 200);
 
+  // Load: the network idle, one frame, then long enough for any moment a mount effect or a frame could start.
   await gotoReady(carol, url);
+  await carol.waitForLoadState("networkidle");
+  await carol.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+  await settle();
   await expect(carol.locator("[data-flight]")).toHaveCount(0); // kit view: carol holds nothing yet
   expect(await moments()).toEqual({});
   await carol.getByTestId("cell-7").click();
@@ -142,6 +160,13 @@ test("the first claim as a stranger animates only the claimed cells, and nothing
   await carol.getByTestId("claim-submit").click();
   await expect(carol.getByTestId("pay-sheet")).toBeVisible();
   await expect(carol.getByTestId("cell-1")).toHaveAttribute("data-flight", /.+/); // now the member view
+  // The drop lands from whichever renders first, the claim's answer or the refreshed props (Task 11a). Wait for both:
+  // the drops, then the refreshed server props ("You have …" comes only from the page's props), then past any moment
+  // that last render could start, and only then read what played.
+  await expect.poll(moments).toMatchObject({ 7: ["drop"], 8: ["drop"] });
+  await expect(carol.getByTestId("you-have")).toHaveText("You have 7 and 8.");
+  await carol.waitForLoadState("networkidle");
+  await settle();
   const seen = await moments();
   expect(Object.keys(seen).sort()).toEqual(["7", "8"]);
   expect(Object.values(seen).flat().every((m) => m === "drop")).toBe(true);

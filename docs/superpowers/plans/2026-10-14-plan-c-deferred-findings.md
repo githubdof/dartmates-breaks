@@ -70,9 +70,12 @@ hit and changed copy once; nothing else needed a decision.
 
 ### E2E (Task 20)
 
-- None. One app fix in the round: `src/components/kit-thumb.tsx`: on the feed card (12 px cells) and the landing hero
-  (14 px) the top spot's 48 % disc was filled entirely by its 3 px double ring (cream centre measured 0 px); the disc is
-  now 64 % below 16 px cells (`discPercent`), centre 1.7 and 3 px, pinned by `kit-thumb.test.ts` and the density e2e.
+- `src/components/kit-thumb.tsx`, against recorded ruling 20 (the thumbnail disc at 48 %): on the feed card (12 px
+  cells) and the landing hero (14 px) the top spot's 48 % disc was filled entirely by its 3 px double ring (cream
+  centre measured 0 px). Stopgap in Task 20: the disc is 64 % below 16 px cells (`discPercent`), a cream centre of
+  1.7 and 3 px, pinned by `kit-thumb.test.ts` and the density e2e. A 1.7 px cream dot inside a 3 px double ring still
+  does not read as a double ring at 1× on feed cards. Proposed spec ruling: under 16 px cells the top spot is a single
+  2 px red ring (the thumbnail is `aria-hidden` and the card carries the text), and the stopgap goes.
 
 ## Budget (Mosaic §11, Task 20)
 
@@ -82,8 +85,12 @@ hit and changed copy once; nothing else needed a decision.
   (`Grid`, `cellMoments`, `boardMoments`, `lampLayer`, the layout tiers; 3458 B); the page chunk +1236 B (the island's
   moments wiring, the caller banner, "This is your flight"); +418 B in the shared UI chunk. No unused code, duplicate or
   server-only import was found in these chunks (no contrast maths, no OG or reveal code on the break page), so no local
-  fix fits one round without removing spec'd behaviour. It needs a ruling: raise the JS allowance for Mosaic, or plan a
-  size pass (for example, lazy-loading the moment layers and the caller banner until the first moment).
+  fix fits one round without removing spec'd behaviour. Ruling: the +8252 B is accepted, the allowance in the spec is
+  amended to the measured figure, and the size pass is deferred. Its candidates:
+  - lazy-load the moment layers and the caller banner (`next/dynamic` on the first moment; nothing plays on load), without
+    delaying the drop that lands from whichever render comes first;
+  - keep the flight glyphs and the colour table out of the kit view (strangers, most first loads, never draw a flight);
+  - compute `lampLayer` and the layout tiers on the server and pass them as props.
 
 ## Open bug reports (not yet reproduced)
 
