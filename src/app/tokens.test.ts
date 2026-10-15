@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { contrast, readTokens } from "@/lib/contrast";
 import { PAPER_THEME_COLOR, WALL_THEME_COLOR, wallViewport } from "./wall";
+import { DEFAULT_KIT, FLIGHT_COLOURS, LAMP, TOKENS } from "@/domain/flights";
 
 const read = (f: string) => readFileSync(fileURLToPath(new URL(f, import.meta.url)), "utf8");
 const css = read("./tokens.css");
@@ -116,5 +117,22 @@ describe("Mosaic board tokens (Mosaic spec §4)", () => {
     expect(fonts).toMatch(/Barlow_Condensed\(\{[^}]*weight: \["600"\]/);
     expect(fonts).toMatch(/Big_Shoulders\(\{[^}]*weight: "variable"[^}]*axes: \["opsz"\][^}]*preload: false/);
     expect(fonts).not.toMatch(/weight: \[[^\]]*"700"/);
+  });
+});
+describe("flights.ts repeats tokens.css exactly (the link preview reads no CSS variables)", () => {
+  const CSS_NAME: Record<keyof typeof TOKENS, string> = {
+    boardWall: "board-wall", boardWall2: "board-wall-2", boardCream: "board-cream", boardCream2: "board-cream-2", boardInk: "board-ink",
+    boardInk2: "board-ink-2", boardSteel: "board-steel", boardRing: "board-ring", boardText2: "board-text-2", boardText3: "board-text-3",
+    red: "red", green: "green",
+  };
+  it("has every board hex once in TOKENS", () => {
+    for (const k of Object.keys(TOKENS) as (keyof typeof TOKENS)[]) expect(TOKENS[k], k).toBe(t[CSS_NAME[k]]);
+    const named = new Set(Object.values(CSS_NAME));
+    expect(Object.keys(t).filter((k) => k.startsWith("board-") && !named.has(k))).toEqual([]);
+  });
+  it("has the lamp's steps in LAMP and the default kit in the kit tokens", () => {
+    for (const s of [0, 1, 2, 3, 4] as const) expect(LAMP[s], `lamp-${s}`).toBe(raw(`lamp-${s}`));
+    expect(t["kit-dark"]).toBe(FLIGHT_COLOURS[DEFAULT_KIT.dark].face);
+    expect(t["kit-light"]).toBe(FLIGHT_COLOURS[DEFAULT_KIT.light].face);
   });
 });
