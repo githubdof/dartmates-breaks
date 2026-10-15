@@ -27,3 +27,6 @@ playwright-report/
 
 # IDE
 .idea/
+
+# Superpowers scratch (plan ledgers, panel reports, probe scripts)
+.superpowers/
