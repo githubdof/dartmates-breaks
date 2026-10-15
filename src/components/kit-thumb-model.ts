@@ -20,3 +20,11 @@ export function kitThumbCells(cells: readonly ThumbCell[], places: readonly { nu
 
 /** Empty slots that complete the last row, drawn in --board-wall-2 and never as wire (Mosaic §5). */
 export const thumbFillers = (n: number, cols: number) => (n % cols === 0 ? 0 : cols - (n % cols));
+
+/**
+ * The place ring's width: 0.05 x the cell (spec 6), floored. A feed cell is about 11 px, where 0.05 x would be a
+ * sub-pixel line; the double ring needs 3 px to draw two bands at all (a 2 px CSS double renders solid), and the single
+ * and dashed rings keep a 1 px hairline.
+ */
+export const ringWidth = (place: 1 | 2 | 3, cellPx: number) =>
+  Math.max(place === 1 ? 3 : 1, Math.round(cellPx * 0.05 * 100) / 100);

@@ -3,7 +3,6 @@ import { db } from "@/db/client";
 import { feedThumbs, latestRanBreak, listFeed } from "@/domain/breaks/feed";
 import { viewerZone } from "@/lib/zone";
 import { ButtonLink } from "@/components/button";
-import { heatStep } from "@/domain/flights";
 import { BreakCard } from "@/components/break-card";
 import { KitThumb } from "@/components/kit-thumb";
 import { kitThumbCells } from "@/components/kit-thumb-model";
@@ -27,7 +26,7 @@ export default async function Home() {
       {hero && (
         <Link href={`/b/${hero.breakId}/result`} data-testid="hero" className="flex items-center gap-4 py-2">
           {/* The kit board of the most recent ran break with its black bulls (Mosaic §8); a ran break is closed, so the lamp is up. */}
-          <KitThumb cells={kitThumbCells(hero.cells, hero.places)} kit={hero.kit} heat={heatStep(0, hero.lineCount, true)} size={112} />
+          <KitThumb cells={kitThumbCells(hero.cells, hero.places)} kit={hero.kit} heat={hero.heat} size={112} />
           <span className="min-w-0 flex-1 space-y-1">
             <span className="block font-semibold">{hero.title}</span>
             <span className="block text-small">Top spot: line {hero.topLine}.</span>
