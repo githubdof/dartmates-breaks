@@ -1,5 +1,6 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { composeBreak, gotoReady, loginAs } from "./helpers";
+import { setFlight } from "./db";
 
 // One test per page Plan B adds. Each test makes its own users and breaks; `run` keeps them unique per run.
 const run = Date.now();
@@ -147,6 +148,7 @@ test("My lines shows what a buyer holds, reopens the pay block, and gives lines 
   const host = await as(browser, `mh${run}@e2e.test`, "host");
   const url = await composeBreak(host, { title: `Mine ${run}`, lineCount: 6 });
   const buyer = await as(browser, `mb${run}@e2e.test`);
+  await setFlight(`mb${run}`, { colour: "yellow", shape: "kite" });
   await expect(buyer.getByRole("link", { name: "My lines" })).toBeVisible(); // members get the tab bar now
   await buyer.goto(url);
   await buyer.getByTestId("cell-2").click();
@@ -159,6 +161,12 @@ test("My lines shows what a buyer holds, reopens the pay block, and gives lines 
   const card = buyer.getByTestId("my-break").filter({ hasText: `Mine ${run}` });
   await expect(card.getByTestId("my-state")).toHaveText("Unpaid.");
   await expect(card.getByTestId("my-owed")).toContainText("You owe $10.");
+  // Your own lines, in your flight, and nothing of the board's kit or heat (Mosaic §8).
+  const mine = card.getByRole("list", { name: "Your lines" }).locator("[data-flight]");
+  await expect(mine).toHaveCount(2);
+  expect(await mine.evaluateAll((els) => els.map((e) => e.getAttribute("data-flight")))).toEqual(["yellow-kite", "yellow-kite"]);
+  expect(await card.innerHTML()).not.toContain("--kit-dark");
+  await expect(card.getByTestId("lamp")).toHaveCount(0);
   await card.getByTestId("how-to-pay").click();
   await expect(buyer.getByTestId("pay-amount")).toHaveText("Send $10 to @e2e-host");
   await buyer.getByTestId("pay-sent").click();

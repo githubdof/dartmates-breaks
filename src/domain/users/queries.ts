@@ -52,3 +52,10 @@ export async function handleStatus(tx: Tx, raw: string, selfId: string): Promise
   const [r] = await tx.select({ n: sql<number>`count(*)::int` }).from(users).where(sql`lower(${users.handle}) = ${handle} and ${users.id} <> ${selfId}`);
   return { state: r.n > 0 ? "taken" : "free" };
 }
+
+/** The member's stored flight (Mosaic §4: drawn at random when the row was created, never derived from the id). */
+export async function myFlight(tx: Tx, userId: string): Promise<Flight> {
+  const [r] = await tx.select({ flightColour: users.flightColour, flightShape: users.flightShape }).from(users).where(eq(users.id, userId));
+  if (!r) throw new Error(`no user ${userId}`);
+  return flightOf(r);
+}

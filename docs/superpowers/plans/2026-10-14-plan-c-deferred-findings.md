@@ -18,3 +18,9 @@ hit and changed copy once; nothing else needed a decision.
   - `src/components/break/claim-bar-state.ts:39,41` and `src/domain/errors.ts:28,29`: "You can hold N in this break." and "Hosts can hold N in their own break.": the limit messages use "hold" where the spec's holding line says "You have …". The retired phrase is "You hold …", which these do not match; rewording them touches domain error tests and Task 16 files, so it needs a ruling.
   - The caller copy set has no handle-less call, by design.
   - Reach of the rules: the caps, heat, streak, level, winnings and "his" rules read all `.ts` and `.tsx` copy; the caps rule reads only `.tsx` and the copy modules (`*-copy.ts`, `share-text`, `claim-bar-state`, `reveal-plan`, `board-moments`, `selection`, `status-word`, `domain/breaks/og.ts`), so a new copy module with another name must be added to `COPY_MODULE`. Word text beside a JSX expression is read ("Drawing {n} lines"); copy assembled from a variable (`{label}`) is read where the variable is defined.
+
+### Render tests (Task 18)
+- `MyBreakCard`'s error, offline and disabled states (Plan B test backlog) need a click and a failed server action;
+  `react-dom/server` renders only the first state. They need an interaction test (jsdom and Testing Library, or a
+  Playwright component test), which this plan does not add. Covered today: owing, paid, ran with unsent lines, the
+  flight and the steel wire, the history row; the e2e covers the sent failure on `/me` (`layout.spec.ts`).

@@ -6,7 +6,7 @@ import { makeUser } from "../../../tests/helpers/fixtures";
 import { DEFAULT_KIT, isFlightColour, isFlightShape } from "@/domain/flights";
 import { updateFlight } from "./commands";
 import { updateHostKit } from "@/domain/breaks/commands";
-import { accountOf, viewerFlightOf } from "./queries";
+import { accountOf, myFlight, viewerFlightOf } from "./queries";
 
 describe("accountOf", () => {
   it("reads the editable account fields, or null", async () => {
@@ -34,6 +34,16 @@ describe("the flight and the kit on /account", () => {
       expect(await accountOf(tx, u.id)).toMatchObject({ flight: { colour: "plum", shape: "kite" }, flightChosen: true, kit: { dark: "petrol", light: "lime" }, kitChosen: true });
       expect(await viewerFlightOf(tx, u.id)).toEqual({ flight: { colour: "plum", shape: "kite" }, chosen: true });
       expect(await viewerFlightOf(tx, randomUUID())).toBeNull();
+    });
+  });
+});
+
+describe("myFlight", () => {
+  it("reads the member's stored flight", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      await tx.execute(sql`update users set flight_colour = 'sky', flight_shape = 'slim' where id = ${u.id}`);
+      expect(await myFlight(tx, u.id)).toEqual({ colour: "sky", shape: "slim" });
     });
   });
 });
