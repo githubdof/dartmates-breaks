@@ -149,7 +149,8 @@ export function Reveal(p: Props) {
   const called = b?.kind === "call" ? shown.find((c) => c.number === b.number) ?? null : null;
   // Member view: the winner's flight beside the handle (§6, the one exception). Kit view: text, the place's colour.
   const flight = p.view === "member" && called ? called.flight : null;
-  const rule = b?.kind !== "call" ? "var(--kit-dark)" : flight ? FLIGHT_COLOURS[flight.colour].face : b.place === 1 ? "var(--red)" : "var(--green)";
+  // Not a call: no rule, so the banner draws the host kit's dark (it sits outside the Grid's kitVars scope).
+  const rule = b?.kind !== "call" ? undefined : flight ? FLIGHT_COLOURS[flight.colour].face : b.place === 1 ? "var(--red)" : "var(--green)";
   const text = b ? bannerText(b, { hostName: p.hostName, lines: p.lineCount, handleOf: p.handleOf }) : null;
 
   return (
@@ -174,7 +175,7 @@ export function Reveal(p: Props) {
         </svg>
       </div>
       <div className="mt-4 min-h-10">
-        {text && <CallerBanner key={text} text={text} rule={rule} flight={flight} play={playing} />}
+        {text && <CallerBanner key={text} text={text} kit={p.kit} rule={rule} flight={flight} play={playing} />}
       </div>
       {(playing || played) && (
         <ol aria-hidden data-testid="deal" className="mt-3 flex min-h-7 flex-wrap gap-1">

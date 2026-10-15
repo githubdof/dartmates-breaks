@@ -435,10 +435,10 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       </div>
       {/* Between the board and the legend (recorded ruling 22). */}
       {p.status === "filled" && fullPlay !== null && (
-        <div className="mt-3"><CallerBanner text={BOARD_FULL_CALL} rule="var(--kit-dark)" play={fullPlay} /></div>
+        <div className="mt-3"><CallerBanner text={BOARD_FULL_CALL} kit={p.kit} play={fullPlay} /></div>
       )}
       {p.status === "drawing" && (
-        <div className="mt-3"><CallerBanner text={drawStartCall(p.hostName)} rule="var(--kit-dark)" play={drawPlay} /></div>
+        <div className="mt-3"><CallerBanner text={drawStartCall(p.hostName)} kit={p.kit} play={drawPlay} /></div>
       )}
       {/* 12 px of frame, then the legend's 8 px gap (Mosaic §8 budget). The legend shows the board's view: while the
           viewer's own last lines drain it stays the member legend with their flight, then turns with the board. */}

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { GridCell } from "@/domain/breaks/grid";
-import { DEFAULT_KIT } from "@/domain/flights";
+import { DEFAULT_KIT, FLIGHT_COLOURS } from "@/domain/flights";
 import { CallerBanner } from "@/components/break/caller-banner";
 import { FlightGlyph } from "@/components/flight-glyph";
 import type { CellMoment } from "./cell-moments";
@@ -113,16 +113,27 @@ describe("the lamp steps back down after a release (Mosaic §4 Heat)", () => {
 describe("the caller banner", () => {
   // The lamp's opacity step is Task 8's (lampLayer in Grid, pinned in render.test.ts).
   it("is decorative text with a rule, a glyph only when given a flight, and plays only when told", () => {
-    const still = html(createElement(CallerBanner, { text: "Board's full. Game on.", rule: "var(--kit-dark)" }));
+    const still = html(createElement(CallerBanner, { text: "Board's full. Game on.", kit: DEFAULT_KIT }));
     expect(still).toContain('data-testid="caller"');
     expect(still).toContain('aria-hidden="true"');
     expect(still).toContain("Board&#x27;s full. Game on.");
     expect(still).not.toContain("<svg");
     expect(still).not.toContain("data-play");
-    const call = html(createElement(CallerBanner, { text: "Line 23. @mike takes the top spot.", rule: "#2340C4", flight: BLUE_KITE, play: true }));
+    const call = html(createElement(CallerBanner, { text: "Line 23. @mike takes the top spot.", kit: DEFAULT_KIT, rule: "#2340C4", flight: BLUE_KITE, play: true }));
     expect(call).toContain("<svg");
     expect(call).toContain("data-play");
     expect(call).not.toContain("data-flight");
+  });
+  it("a banner that is not a call rules in the host's kit dark, resolved on the banner itself (no outer kitVars scope)", () => {
+    // Plum with Lime: the rule is plum's face, never the :root Blue a bare var(--kit-dark) falls back to outside the Grid.
+    const plum = { dark: "plum", light: "lime" } as const;
+    const h = html(createElement(CallerBanner, { text: "Board's full. Game on.", kit: plum }));
+    expect(h).toContain(`--call:${FLIGHT_COLOURS.plum.face}`);
+    expect(h).not.toContain(FLIGHT_COLOURS.blue.face);
+    expect(h).not.toContain("var(--kit-dark)");
+    // A call keeps the rule it is given (the winner's flight, or --red / --green).
+    const call = html(createElement(CallerBanner, { text: "Line 23. @mike takes the top spot.", kit: plum, rule: "var(--red)" }));
+    expect(call).toContain("--call:var(--red)");
   });
   it("draws a flight outside a cell as one filled, keylined, hidden shape", () => {
     const h = html(createElement(FlightGlyph, { flight: BLUE_KITE, size: 24, keyline: "var(--board-cream)", strokeWidth: 1.5 }));
