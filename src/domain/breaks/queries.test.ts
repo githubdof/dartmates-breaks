@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
-import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../tests/helpers/fixtures";
+import { makeUser, makeBreak, openBreakWithLines, drawnBreak, YELLOW_KITE, BLUE_STANDARD, PLUM_LIME } from "../../../tests/helpers/fixtures";
 import { breaks, draws, drawRequests, hostProfiles } from "@/db/schema";
 import { draftForEdit, getBreakPage, hostKit, hostProfile, hostTrust, isGeneratedInstructions, lastBreakDefaults, listHostBreaks } from "./queries";
 import { shapeGrid } from "./grid";
@@ -201,6 +201,29 @@ describe("the break page model carries the kit and the heat (Task 5 contract, Mo
       const other = await makeUser(tx, { role: "host" });
       const plain = await openBreakWithLines(tx, { hostId: other.id, lineCount: 4 });
       expect(shapeGrid((await getBreakPage(tx, plain.id))!, null, now)).toMatchObject({ kit: DEFAULT_KIT, heat: 0 });
+    });
+  });
+});
+
+describe("the break page model reads each holder's stored flight (Mosaic §6, Task 5 holder gate)", () => {
+  it("gives holders and the host the stored flights from the query, and a stranger none", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host", kit: PLUM_LIME });
+      const yellow = await makeUser(tx, { flight: YELLOW_KITE }); const blue = await makeUser(tx, { flight: BLUE_STANDARD });
+      const stranger = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      await claimLines(tx, asCaller(yellow), { breakId: b.id, numbers: [1, 2], batchId: randomUUID() });
+      await claimLines(tx, asCaller(blue), { breakId: b.id, numbers: [3], batchId: randomUUID() });
+      const page = (await getBreakPage(tx, b.id))!;
+      const now = new Date();
+      const flightsFor = (viewer: Parameters<typeof shapeGrid>[1]) => shapeGrid(page, viewer, now).cells.map((c) => c.flight && `${c.flight.colour}-${c.flight.shape}`);
+      for (const viewer of [{ id: yellow.id, role: "member" as const, globalUnpaid: 2 }, { id: host.id, role: "host" as const, globalUnpaid: 0 }]) {
+        expect(flightsFor(viewer)).toEqual(["yellow-kite", "yellow-kite", "blue-standard", null]);
+      }
+      for (const viewer of [null, { id: stranger.id, role: "member" as const, globalUnpaid: 0 }]) {
+        expect(flightsFor(viewer)).toEqual([null, null, null, null]);
+        expect(shapeGrid(page, viewer, now).cells.every((c) => c.holder === null)).toBe(true);
+      }
     });
   });
 });
