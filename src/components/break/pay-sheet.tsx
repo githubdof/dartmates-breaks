@@ -14,6 +14,8 @@ import { runGiveBack } from "./give-back";
 import { outcomeText } from "./selection";
 import { giveBackPrompt, lateReleaseText, payHeadline, releaseText, retryRandomLabel, SENT_HINT, SENT_HINT_KEY } from "./pay-copy";
 import type { Owe } from "./use-pay-sheet";
+import type { Flight } from "@/domain/flights";
+import { FlightGlyph } from "@/components/flight-glyph";
 
 type Props = {
   open: boolean;
@@ -42,6 +44,8 @@ type Props = {
   pending: boolean;
   /** "Pay within 24 hours." while the break is open, else null: it moved here from the page head (Mosaic §8, §1.1). */
   payWithin?: string | null;
+  /** The viewer's stored flight, on their first claim in this break while they have never picked one (§8). */
+  flightLine?: Flight | null;
 };
 
 /** Try the app; if the page is still visible after a moment (scheme blocked), open the web profile instead. */
@@ -113,6 +117,12 @@ export function PaySheet(p: Props) {
         {p.outcome && (p.outcome.got.length > 0 || p.outcome.taken.length > 0) && (
           <div className="space-y-1">
             <p className="font-semibold" data-testid="pay-outcome">{outcomeText(p.outcome.got, p.outcome.taken)}</p>
+            {p.flightLine && (
+              <p className="flex items-center gap-2 text-small" data-testid="flight-line">
+                <FlightGlyph flight={p.flightLine} size={20} />
+                <span>This is your flight. <Link href="/account" className="underline underline-offset-4">Change it in your account.</Link></span>
+              </p>
+            )}
             {retryCount > 0 && (
               <Button variant="text" onClick={() => p.onRetry(retryCount)} disabled={p.pending}>{retryRandomLabel(retryCount)}</Button>
             )}

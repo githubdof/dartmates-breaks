@@ -54,7 +54,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
   const { view, caller, now } = await loadBreak(id);
   // A missing break and someone else's draft look the same: 404.
   if (!view) notFound();
-  const { page, trust, globalUnpaid, top, ledger } = view;
+  const { page, trust, globalUnpaid, top, ledger, viewerFlight } = view;
   const b = page.break;
   const { pick } = await searchParams;
   const initialPick = parsePick(pick, b.lineCount);
@@ -64,7 +64,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
   const boardView: BoardView = grid.showHolders ? "member" : "kit";
   // The legend draws "yours" and "paid" in the viewer's own flight: the first line they hold here (recorded ruling 20).
   // Task 16 adds the viewer's stored flight as the fallback, once the page loads it.
-  const legendFlight = grid.cells.find((c) => c.mine && c.flight)?.flight ?? null;
+  const legendFlight = grid.cells.find((c) => c.mine && c.flight)?.flight ?? viewerFlight?.flight ?? null;
 
   const status = b.status as BreakStatus;
   const hostName = hostLabel(page.host);
@@ -121,6 +121,8 @@ export default async function BreakPage({ params, searchParams }: Props) {
         shareUrl={url}
         cells={grid.cells}
         boardView={boardView}
+        myFlight={viewerFlight?.flight ?? null}
+        flightChosen={viewerFlight?.chosen ?? true}
         kit={grid.kit}
         heat={grid.heat}
         counts={grid.counts}

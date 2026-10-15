@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { composeBreak, loginAs } from "./helpers";
+import { composeBreak, gotoReady, loginAs } from "./helpers";
 
 // One test per page Plan B adds. Each test makes its own users and breaks; `run` keeps them unique per run.
 const run = Date.now();
@@ -232,5 +232,64 @@ test("every visible break has a link-preview image; a draft's 404s even for its 
   expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630]);
   expect((await host.request.get(`${draft}/og`)).status()).toBe(404);
   await visitor.context().close();
+  await host.context().close();
+});
+
+test("a member picks a flight in /account; until then the first claim in a break says 'This is your flight', once per break", async ({ browser }) => {
+  const host = await as(browser, `fph${run}@e2e.test`, "host");
+  const first = await composeBreak(host, { title: `Flight A ${run}`, lineCount: 6 });
+  const second = await composeBreak(host, { title: `Flight B ${run}`, lineCount: 6 });
+  const buyer = await as(browser, `fpb${run}@e2e.test`);
+  await gotoReady(buyer, first);
+  await buyer.getByTestId("cell-1").click();
+  await buyer.getByTestId("claim-submit").click();
+  await expect(buyer.getByTestId("flight-line")).toHaveText("This is your flight. Change it in your account.");
+  await buyer.getByRole("button", { name: "I'll pay later" }).click();
+  await buyer.getByTestId("cell-2").click();
+  await buyer.getByTestId("claim-submit").click();
+  await expect(buyer.getByTestId("pay-outcome")).toHaveText("You have line 2.");
+  await expect(buyer.getByTestId("flight-line")).toHaveCount(0); // a second claim in the same break
+  await buyer.getByRole("button", { name: "I'll pay later" }).click();
+
+  await buyer.goto("/account");
+  const picker = buyer.getByTestId("flight-picker");
+  await expect(picker.locator("input[type=radio]")).toHaveCount(32);
+  await expect(picker.locator("input[type=radio]:checked")).toHaveCount(1); // the stored random flight, ringed
+  await expect(buyer.getByTestId("kit-picker")).toHaveCount(0); // members have no kit
+  await buyer.getByTestId("flight-plum-kite").check();
+  await buyer.getByTestId("flight-save").click();
+  await expect(buyer.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+  await buyer.reload();
+  await expect(buyer.getByTestId("flight-plum-kite")).toBeChecked();
+
+  await gotoReady(buyer, second);
+  await buyer.getByTestId("cell-3").click();
+  await buyer.getByTestId("claim-submit").click();
+  await expect(buyer.getByTestId("pay-outcome")).toHaveText("You have line 3.");
+  await expect(buyer.getByTestId("flight-line")).toHaveCount(0); // picked now
+  await buyer.getByRole("button", { name: "I'll pay later" }).click();
+  await expect(buyer.getByTestId("cell-3")).toHaveAttribute("data-flight", "plum-kite"); // applies everywhere at once
+  await buyer.context().close();
+  await host.context().close();
+});
+
+test("a host on the default kit is nudged from /host/new and picks a kit in /account", async ({ browser }) => {
+  const host = await as(browser, `kh${run}@e2e.test`, "host");
+  await host.goto("/host/new");
+  await expect(host.getByTestId("kit-nudge")).toContainText("Your boards wear the default kit, Blue with Yellow.");
+  await host.getByTestId("kit-nudge").getByRole("link").click();
+  await expect(host).toHaveURL(/\/account#kit$/);
+  const picker = host.getByTestId("kit-picker");
+  await expect(picker.getByTestId("kit-blue-yellow")).toBeVisible();
+  await picker.getByRole("radio", { name: "Plum", exact: true }).check();
+  await picker.getByRole("radio", { name: "Lime", exact: true }).check();
+  await expect(picker.getByTestId("kit-plum-lime")).toBeVisible();
+  await host.getByTestId("kit-save").click();
+  await expect(host.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+  await host.reload();
+  await expect(host.getByTestId("kit-picker").getByRole("radio", { name: "Plum", exact: true })).toBeChecked();
+  await expect(host.getByTestId("kit-picker").getByRole("radio", { name: "Lime", exact: true })).toBeChecked();
+  await host.goto("/host/new");
+  await expect(host.getByTestId("kit-nudge")).toHaveCount(0);
   await host.context().close();
 });

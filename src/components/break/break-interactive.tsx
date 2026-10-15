@@ -49,6 +49,9 @@ export type BreakInteractiveProps = {
   cells: GridCell[];
   /** member when the viewer sees holders (GridModel.showHolders), else kit (Mosaic §6). */
   boardView: BoardView;
+  /** The viewer's stored flight (not the per-break shape) and whether they ever picked one; null when signed out. */
+  myFlight: Flight | null;
+  flightChosen: boolean;
   kit: Kit;
   heat: HeatStep;
   counts: GridCounts;
@@ -119,6 +122,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const [tapNote, setTapNote] = useState<TapNote | null>(null);
   const [outcome, setOutcome] = useState<{ got: number[]; taken: number[] } | null>(null);
   const [justSent, setJustSent] = useState(false);
+  const [flightLine, setFlightLine] = useState<Flight | null>(null);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [count, setCount] = useState(1);
   const gridWrap = useRef<HTMLDivElement>(null);
@@ -133,7 +137,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     onNote: setNote,
     say,
     onSentOk: () => { setJustSent(true); setOutcome(null); say(sentNote(p.hostName)); },
-    onClosed: () => { restoreFocus.current = true; },
+    onClosed: () => { restoreFocus.current = true; setFlightLine(null); },
   });
 
   const finish = (r: ActionResult<ClaimData>, requested: number[]) => {
@@ -145,6 +149,9 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       setStruck(taken);
       setClaimSelection([]); // the strike now reads `struck`
       setOutcome({ got: r.data.got, taken });
+      // At most once per break: `p.cells` are the props of the render that sent this claim, so a held line means a later claim.
+      // A retry inside the same open sheet keeps the line it already showed.
+      if (!p.flightChosen && p.myFlight && r.data.got.length > 0 && !p.cells.some((c) => c.mine)) setFlightLine(p.myFlight);
       say(claimAnnouncement(r.data.got, taken, p.hostName, owedAfterClaim(p.owe ?? pay.pendingOwe, r.data.got, p.priceCents)));
       if (r.data.got.length === 0) setPendingClaim(null); // none got: nothing will land
       // Built on what is already shown (a retry adds to the first claim's provisional amount); none got, none provisional.
@@ -477,6 +484,7 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         onSent={pay.markSent}
         onGaveBack={() => pay.setPendingOwe(null)}
         payWithin={p.payWithin}
+        flightLine={flightLine}
         /* Recorded before the action: the refresh that carries the give-back may land before its answer. */
         onGiveBackStart={(numbers) => { gaveBack.current = numbers; }}
         onGiveBackRefused={() => { gaveBack.current = []; }}
