@@ -39,6 +39,19 @@
     font-size: 16px;
     line-height: 24px;
   }
+  /* Wall routes (Mosaic §8) opt in with data-wall on their <main>: html and body both take the wall, so
+     overscroll never shows paper. Every other route keeps paper from the two rules above. */
+  html:has([data-wall]),
+  html:has([data-wall]) body {
+    background-color: var(--board-wall);
+  }
+  /* Big Shoulders is one variable file with an opsz axis (10 to 72). Pin the Display cut at every size, so the 22 px
+     count and the 26 px caller match the 32 px and 40 px titles (Mosaic §4 type; recorded ruling 11). */
+  .font-shoulders,
+  .caller-banner {
+    font-variation-settings: "opsz" 72;
+    font-weight: 800;
+  }
   :focus-visible {
     outline: 2px solid var(--green);
     outline-offset: 2px;
@@ -86,4 +99,10 @@
 /* Result page: while <html data-deal> is set (pre-paint script), the final state waits under the deal layer. */
 [data-deal] [data-reveal-final] {
   visibility: hidden;
+}
+
+/* Unlayered on purpose: the shared footer's text-ink-2 is a utility, and utilities outrank @layer base. On the wall
+   its ink-2 would read about 2.6:1 (Mosaic §4), so wall routes give it --board-text-2. */
+html:has([data-wall]) footer {
+  color: var(--board-text-2);
 }

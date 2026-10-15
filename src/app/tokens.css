@@ -11,6 +11,61 @@
   --red: #C8102E;
   --bar-h: 64px;
   --tab-h: 56px;
+
+  /* Mosaic board (Mosaic spec §4). New names only: no token above changes value. */
+  --board-wall: #17161A;
+  --board-wall-2: #221F26;
+  --board-cream: #FBF7EE;
+  --board-cream-2: #EEE8DA;
+  --board-ink: #15130F;
+  --board-ink-2: #5A5246;
+  --board-steel: #7A7D84;
+  --board-ring: #0F0E0C;
+  --board-text: var(--board-cream);
+  --board-text-2: #D4CEC3;
+  --board-text-3: #B3ADA3;
+
+  /* The lamp: one warm white in five alpha steps, shared with the link preview (flights.ts LAMP). */
+  --lamp-0: rgba(255,232,200,0.06);
+  --lamp-1: rgba(255,232,200,0.095);
+  --lamp-2: rgba(255,232,200,0.13);
+  --lamp-3: rgba(255,232,200,0.165);
+  --lamp-4: rgba(255,232,200,0.20);
+
+  /* The host's kit: the default, Blue with Yellow. A break sets both on its board. */
+  --kit-dark: #2340C4;
+  --kit-light: #F7C51B;
+
+  /* Motion (Mosaic spec §4 "Space, shape, motion"). The --ease-* names also override Tailwind's ease-in and
+     ease-out utilities, which nothing uses. */
+  --dur-press: 70ms;
+  --dur-unpress: 120ms;
+  --dur-drop: 160ms;
+  --dur-squash: 80ms;
+  --dur-settle: 120ms;
+  --dur-glint: 220ms;
+  --dur-others: 120ms;
+  --dur-sent: 180ms;
+  --dur-set: 140ms;
+  --dur-seat: 100ms;
+  --dur-release: 200ms;
+  --dur-strike: 200ms;
+  --dur-banner: 180ms;
+  --dur-lights: 300ms;
+  --dur-beat: 300ms;
+  --dur-beat-top: 800ms;
+  --dur-throw: 260ms;
+  --dur-throw-settle: 140ms;
+  --dur-shake: 120ms;
+  --dur-gap: 550ms;
+  --dur-lamp: 600ms;
+  --dur-reduced: 150ms;
+  --stagger-own: 50ms;
+  --stagger-others: 30ms;
+  --ease-in: cubic-bezier(.55,0,1,.45);
+  --ease-out: cubic-bezier(.2,.7,.3,1);
+  --ease-over: cubic-bezier(.3,1.5,.5,1);
+  --ease-inout: ease-in-out;
 }
 
 @theme inline {
@@ -24,8 +79,24 @@
   --color-green: var(--green);
   --color-red: var(--red);
 
+  --color-board-wall: var(--board-wall);
+  --color-board-wall-2: var(--board-wall-2);
+  --color-board-cream: var(--board-cream);
+  --color-board-cream-2: var(--board-cream-2);
+  --color-board-ink: var(--board-ink);
+  --color-board-ink-2: var(--board-ink-2);
+  --color-board-steel: var(--board-steel);
+  --color-board-ring: var(--board-ring);
+  --color-board-text: var(--board-text);
+  --color-board-text-2: var(--board-text-2);
+  --color-board-text-3: var(--board-text-3);
+  --color-kit-dark: var(--kit-dark);
+  --color-kit-light: var(--kit-light);
+
   --font-sans: var(--font-barlow), ui-sans-serif, system-ui, sans-serif;
   --font-condensed: var(--font-barlow-condensed), var(--font-barlow), ui-sans-serif, sans-serif;
+  /* Big Shoulders 800 (Mosaic §4 type): wall titles, the caller banner, the checkout count, the result display. */
+  --font-shoulders: var(--font-big-shoulders), var(--font-barlow-condensed), ui-sans-serif, sans-serif;
 
   --text-display: 34px;
   --text-display--line-height: 36px;
@@ -41,6 +112,15 @@
   --text-small--line-height: 20px;
   --text-micro: 12px;
   --text-micro--line-height: 16px;
+  /* Mosaic §4 type table, for Big Shoulders only. */
+  --text-wall-title: 32px;
+  --text-wall-title--line-height: 32px;
+  --text-caller: 26px;
+  --text-caller--line-height: 28px;
+  --text-checkout: 22px;
+  --text-checkout--line-height: 24px;
+  --text-wall-display: 40px;
+  --text-wall-display--line-height: 40px;
 
   --radius-input: 4px;
   --radius-card: 8px;
