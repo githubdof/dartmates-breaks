@@ -542,8 +542,9 @@ Implementation: per-cell effects are CSS-only on `transform` and `opacity`; the 
 path (`requestAnimationFrame`, no library). Per-cell custom properties: `--face`, `--num`, `--fc` (three per
 cell, at most 55 cells). `contain: paint` on each cell; `will-change` only while a cell animates; at most 8
 cells animate at once outside the reveal (the house-lights dim and lift are one board class and the only
-exceptions). Keyframes: `press`, `land`, `glint`, `fadein`, `set`, `seat`, `pull`, `strike`, `squash`,
-`shake`. Reveal timing stays as pure functions in `reveal-plan.ts`. `theme-color` is set per route (§8) so
+exceptions). Keyframes: `land`, `glint`, `fadein`, `set`, `seat`, `pull`, `strike`, `squash`, `squash-throw`,
+`shake`; press is a transition on `transform`, not a keyframe. (Amended during Plan C execution.)
+Reveal timing stays as pure functions in `reveal-plan.ts`. `theme-color` is set per route (§8) so
 the in-app browser never flashes white.
 
 ## 8. Screens
@@ -662,8 +663,8 @@ rule; applied to the local, `breaks_test` and `breaks_e2e` databases):
   collision rule (§5) is applied.
 - `listFeed` adds a left join on `hostProfiles` and carries `kit` and `heat` per card; `hostProfile` carries
   `kit` only (it has no single break; its cards come from `listFeed({ hostHandle })`); `latestRanBreak` (the
-  landing hero) returns the ranking's first three places, the kit and the thumb cells, not just `topLine`;
-  `ogModel` carries `kit` and `heat` (§6).
+  landing hero) returns the ranking's prize places (from `placesOf`, a list that need not be contiguous, read lowest place first, top spot last), the kit and the thumb cells, not just `topLine`;
+  `ogModel` carries `kit` and `heat` (§6). (Amended during Plan C execution.)
 - Account deletion (platform §12 runbook): anonymisation keeps the flight columns; they are not personal data.
 
 ## 11. Accessibility and performance floor
