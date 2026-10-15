@@ -39,13 +39,25 @@ export async function getBreakPage(tx: Tx, breakId: string): Promise<BreakPage |
   };
 }
 
-/** Interim trust figures (the reputation plan replaces them): drawn breaks and member-since. */
-export async function hostTrust(tx: Tx, hostId: string): Promise<{ breaksRun: number; since: Date }> {
+export type HostTrust = { breaksRun: number; since: Date; drawsVerified: number; stalledSince: Date | null };
+
+/**
+ * The host record (Mosaic §9) and the interim trust figures. breaksRun: drawn breaks (each has an active draw, as
+ * before). since: when the first of them ran (its active draw was recorded), else when the host joined, so "N breaks
+ * run since Mar 2026" dates the runs and a host with none still has an "On Breaks since" date. drawsVerified: active
+ * draws of drawn breaks whose `verified_at` was set when the draw was recorded (verifyInputs passed), so it never
+ * exceeds breaksRun and a voided draw counts neither way. stalledSince: the oldest Closed break still waiting for its
+ * draw. Counts only: never prize totals, money or a ranking against other hosts. The id is bound as a parameter in
+ * every subquery (see hostProfile on bare column names).
+ */
+export async function hostTrust(tx: Tx, hostId: string): Promise<HostTrust> {
   const [r] = await tx.select({
-    since: users.createdAt,
+    since: sql<Date>`coalesce((select min(d.created_at) from draws d join breaks b on b.id = d.break_id where b.host_id = ${hostId}::uuid and b.status = 'drawn' and d.voided_at is null), ${users.createdAt})`.mapWith(users.createdAt),
     breaksRun: sql<number>`(select count(*)::int from breaks b where b.host_id = ${hostId}::uuid and b.status = 'drawn')`,
+    drawsVerified: sql<number>`(select count(*)::int from draws d join breaks b on b.id = d.break_id where b.host_id = ${hostId}::uuid and b.status = 'drawn' and d.voided_at is null and d.verified_at is not null)`,
+    stalledSince: sql<Date | null>`(select min(b.filled_at) from breaks b where b.host_id = ${hostId}::uuid and b.status = 'filled')`.mapWith(breaks.filledAt),
   }).from(users).where(eq(users.id, hostId));
-  return { breaksRun: r?.breaksRun ?? 0, since: r?.since ?? new Date(0) };
+  return { breaksRun: r?.breaksRun ?? 0, since: r?.since ?? new Date(0), drawsVerified: r?.drawsVerified ?? 0, stalledSince: r?.stalledSince ?? null };
 }
 
 /** Instructions built from handles ("Venmo @x. Leave the note blank.") go stale when a handle changes: forms carry only typed ones. */
@@ -82,28 +94,37 @@ export async function listHostBreaks(tx: Tx, hostId: string): Promise<HostBreakR
   }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"))).orderBy(desc(breaks.createdAt), desc(breaks.id));
 }
 
-export type HostProfile = { id: string; handle: string; displayName: string | null; since: Date; breaksRun: number; pastCount: number; kit: Kit };
+export type HostProfile = {
+  id: string; handle: string; displayName: string | null; since: Date; breaksRun: number; pastCount: number;
+  /** The host record (Mosaic §9), from hostTrust. */
+  drawsVerified: number; stalledSince: Date | null;
+  /** The host's kit, or the default (Blue with Yellow) while they have not picked one. */
+  kit: Kit;
+};
 
 /**
- * /h/{handle} (design §5.9): public figures only. Never email, payment name or payment handles. Null for an unknown
- * handle, for the SYSTEM user, and for anyone who is not a host and never listed a break (a buyer's or an admin's
- * handle is not a host profile).
+ * /h/{handle} (design §5.9, Mosaic §8): public figures only. Never email, payment name or payment handles. Null for an
+ * unknown handle, for the SYSTEM user, and for anyone who is not a host and never listed a break (a buyer's or an
+ * admin's handle is not a host profile).
  */
 export async function hostProfile(tx: Tx, handle: string): Promise<HostProfile | null> {
   const [u] = await tx.select({
-    id: users.id, handle: users.handle, displayName: users.displayName, since: users.createdAt, role: users.role,
+    id: users.id, handle: users.handle, displayName: users.displayName, role: users.role,
     kitDark: hostProfiles.kitDark, kitLight: hostProfiles.kitLight,
   }).from(users).leftJoin(hostProfiles, eq(hostProfiles.userId, users.id)).where(sql`lower(${users.handle}) = lower(${handle})`);
   if (!u || !u.handle || u.id === SYSTEM.id) return null;
   // The id is bound as a parameter, as hostTrust does. Drizzle writes a single-table select's columns unqualified,
   // so `${users.id}` inside `from breaks b` would render as a bare "id" and Postgres would read it as b.id.
   const [c] = await tx.select({
-    breaksRun: sql<number>`(select count(*)::int from breaks b where b.host_id = ${u.id}::uuid and b.status = 'drawn')`,
     pastCount: sql<number>`(select count(*)::int from breaks b where b.host_id = ${u.id}::uuid and b.kind = 'main' and b.status in ('drawn','cancelled'))`,
     listed: sql<number>`(select count(*)::int from breaks b where b.host_id = ${u.id}::uuid and b.status <> 'draft')`,
   }).from(users).where(eq(users.id, u.id));
   if (c.listed === 0 && u.role !== "host") return null;
-  return { id: u.id, handle: u.handle, displayName: u.displayName, since: u.since, breaksRun: c.breaksRun, pastCount: c.pastCount, kit: kitFor(u) };
+  const t = await hostTrust(tx, u.id);
+  return {
+    id: u.id, handle: u.handle, displayName: u.displayName, since: t.since, breaksRun: t.breaksRun, pastCount: c.pastCount,
+    drawsVerified: t.drawsVerified, stalledSince: t.stalledSince, kit: kitFor(u),
+  };
 }
 
 export type DraftForEdit = {

@@ -1,6 +1,6 @@
 import type { ClaimMode } from "@/domain/breaks/rules";
 import { joinAnd, ordinal, plural } from "@/lib/list";
-import { formatMonthYear } from "@/lib/time";
+import { daysSince, formatMonthYear } from "@/lib/time";
 import { formatMoney } from "@/lib/money";
 
 /** Retired on the break page (Mosaic §9); the feed card and the link-preview caption drop it in Plan C Tasks 15a and 14. */
@@ -35,13 +35,28 @@ export function trustText(t: { breaksRun: number; since: Date }): string {
 }
 
 /**
- * The profile's one-sentence trust line (design §5.9, interim). Never "0 breaks run"; the date only from 5 breaks on,
- * where the page drops its separate "On Breaks since" line so the date is never said twice.
+ * The host record (Mosaic §9) on the profile and in the ledger header: counts only, and no other state words.
+ * "41 breaks run since Mar 2026. 40 draws verified." Never "0 breaks run" (Plan B).
  */
+export function hostRecordText(t: { breaksRun: number; drawsVerified: number; since: Date }): string {
+  if (t.breaksRun === 0) return "No breaks run yet.";
+  return `${t.breaksRun} ${plural(t.breaksRun, "break", "breaks")} run since ${formatMonthYear(t.since)}. ${t.drawsVerified} ${plural(t.drawsVerified, "draw", "draws")} verified.`;
+}
+
+/** Retired with the profile's move to the wall (Plan C Task 15b): hostRecordText replaces it. */
 export function profileTrustText(t: { breaksRun: number; since: Date }): string {
   if (t.breaksRun === 0) return "New host. No breaks run yet.";
   if (t.breaksRun < 5) return `New host. ${t.breaksRun} ${plural(t.breaksRun, "break", "breaks")} run.`;
   return `${t.breaksRun} breaks run since ${formatMonthYear(t.since)}.`;
+}
+
+/** The platform §9 stall line, written as the first design writes it: no em-dash, no retired state word. */
+export const stallText = (days: number) => `Closed ${days} ${plural(days, "day", "days")} ago, not drawn yet.`;
+
+/** The record, then the stall line while a Closed break has waited 3 days or more for its draw: never only good news. */
+export function hostRecordLines(t: { breaksRun: number; drawsVerified: number; since: Date; stalledSince: Date | null }, now: Date): string[] {
+  const days = t.stalledSince ? daysSince(t.stalledSince, now) : null;
+  return days !== null && days >= 3 ? [hostRecordText(t), stallText(days)] : [hostRecordText(t)];
 }
 
 export const pastText = (n: number) => (n === 0 ? "No past breaks yet." : `${n} past ${plural(n, "break", "breaks")}.`);

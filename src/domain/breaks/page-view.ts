@@ -2,13 +2,14 @@ import type { Tx } from "@/db/client";
 import type { Role } from "@/domain/types";
 import { globalUnpaidCount, ledgerByBuyer, type LedgerBuyer } from "@/domain/lines/queries";
 import { getDrawResult } from "@/domain/draws/queries";
-import { getBreakPage, hostTrust, type BreakPage } from "./queries";
+import { getBreakPage, hostTrust, type BreakPage, type HostTrust } from "./queries";
 import { canViewBreak, isHostView } from "./grid";
 
 export type BreakViewer = { id: string; role: Role };
 export type BreakView = {
   page: BreakPage;
-  trust: { breaksRun: number; since: Date };
+  /** The host's trust figures and record (Mosaic §9): the small line and the ledger header both read it. */
+  trust: HostTrust;
   globalUnpaid: number;
   top: { line: number; handle: string | null } | null;
   ledger: LedgerBuyer[];

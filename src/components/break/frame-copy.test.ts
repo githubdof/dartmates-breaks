@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { closesText, hostedByText, hostLabel, leftText, mediaText, orList, pastText, payWithinText, perPersonText, pickingText, prizeLines, profileTrustText, smallLineText, toGoText, trustText, youHaveText } from "./frame-copy";
+import { closesText, hostedByText, hostLabel, leftText, mediaText, orList, pastText, payWithinText, perPersonText, pickingText, prizeLines, hostRecordLines, hostRecordText, stallText, smallLineText, toGoText, trustText, youHaveText } from "./frame-copy";
 
 describe("frame copy", () => {
   it("counts and deadlines read as sentences, no middle dots", () => {
@@ -26,10 +26,19 @@ describe("frame copy", () => {
     expect(trustText({ breaksRun: 4, since })).toBe("New host");
     expect(trustText({ breaksRun: 12, since })).toBe("12 breaks run since Oct 2026");
     expect(hostedByText("@jim", "New host")).toBe("Hosted by @jim. New host.");
-    expect(profileTrustText({ breaksRun: 0, since })).toBe("New host. No breaks run yet.");
-    expect(profileTrustText({ breaksRun: 1, since })).toBe("New host. 1 break run.");
-    expect(profileTrustText({ breaksRun: 3, since })).toBe("New host. 3 breaks run.");
-    expect(profileTrustText({ breaksRun: 12, since })).toBe("12 breaks run since Oct 2026.");
+    expect(hostRecordText({ breaksRun: 0, drawsVerified: 0, since })).toBe("No breaks run yet.");
+    expect(hostRecordText({ breaksRun: 1, drawsVerified: 1, since })).toBe("1 break run since Oct 2026. 1 draw verified.");
+    expect(hostRecordText({ breaksRun: 41, drawsVerified: 40, since })).toBe("41 breaks run since Oct 2026. 40 draws verified.");
+    expect(hostRecordText({ breaksRun: 2, drawsVerified: 0, since })).toBe("2 breaks run since Oct 2026. 0 draws verified.");
+    expect(stallText(3)).toBe("Closed 3 days ago, not drawn yet.");
+    const now = new Date("2026-10-14T12:00:00Z");
+    // The record is never only good news: a Closed break waiting 3 days or more adds the stall line under it.
+    expect(hostRecordLines({ breaksRun: 2, drawsVerified: 2, since, stalledSince: new Date("2026-10-10T11:00:00Z") }, now))
+      .toEqual(["2 breaks run since Oct 2026. 2 draws verified.", "Closed 4 days ago, not drawn yet."]);
+    expect(hostRecordLines({ breaksRun: 2, drawsVerified: 2, since, stalledSince: new Date("2026-10-12T12:00:00Z") }, now))
+      .toEqual(["2 breaks run since Oct 2026. 2 draws verified."]);
+    expect(hostRecordLines({ breaksRun: 2, drawsVerified: 2, since, stalledSince: null }, now))
+      .toEqual(["2 breaks run since Oct 2026. 2 draws verified."]);
     expect(pastText(0)).toBe("No past breaks yet.");
     expect(pastText(1)).toBe("1 past break.");
     expect(pastText(7)).toBe("7 past breaks.");

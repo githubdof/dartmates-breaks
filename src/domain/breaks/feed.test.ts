@@ -51,6 +51,20 @@ describe("listFeed", () => {
     });
   });
 
+  it("dates the host's runs as hostTrust does: from the first ran break, else from when the host joined", async () => {
+    await withTx(async (tx) => {
+      const ran = await makeUser(tx, { role: "host" }); const fresh = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      await tx.execute(sql`update users set created_at = '2025-01-10T12:00:00Z' where id in (${ran.id}, ${fresh.id})`);
+      await drawnBreak(tx, { hostId: ran.id, buyerIds: [buyer.id] });
+      await openBreakWithLines(tx, { hostId: ran.id, lineCount: 4 });
+      await openBreakWithLines(tx, { hostId: fresh.id, lineCount: 4 });
+      const [r] = await listFeed(tx, { sort: "newest", hostHandle: ran.handle, now: new Date() });
+      const [f] = await listFeed(tx, { sort: "newest", hostHandle: fresh.handle, now: new Date() });
+      expect(Date.now() - r.host.since.getTime()).toBeLessThan(3_600_000);
+      expect(f.host.since.toISOString()).toBe("2025-01-10T12:00:00.000Z");
+    });
+  });
+
   it("lists open main breaks only: never drafts, closed, ran or mini breaks", async () => {
     await withTx(async (tx) => {
       const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
