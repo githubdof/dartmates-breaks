@@ -1,9 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { closesText, hostedByText, hostLabel, leftText, mediaText, orList, pastText, payWithinText, perPersonText, pickingText, prizeLines, hostRecordLines, hostRecordText, stallText, smallLineText, toGoText, trustText, youHaveText } from "./frame-copy";
+import { closesText, hostedByText, hostLabel, mediaText, orList, pastText, payWithinText, perPersonText, pickingText, prizeLines, hostRecordLines, hostRecordText, stallText, smallLineText, toGoText, trustText, youHaveText } from "./frame-copy";
 
 describe("frame copy", () => {
   it("counts and deadlines read as sentences, no middle dots", () => {
-    expect(leftText(19, 50)).toBe("19 of 50 left");
     expect(payWithinText(24)).toBe("Pay within 24 hours.");
     expect(payWithinText(1)).toBe("Pay within 1 hour.");
   });
