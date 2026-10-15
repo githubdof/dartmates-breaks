@@ -168,6 +168,10 @@ test("a failed 'I've sent it' reports inside the pay sheet, not behind it", asyn
   await page.clock.pauseAt(new Date(Date.now() + 1000));
   await page.getByTestId("cell-21").click();
   await page.getByTestId("claim-submit").click();
+  // The paused clock also holds the page's own timers: the sheet opens at the last landing or at 400 ms (Mosaic §7
+  // Claim commits), so let the claim land (the owed button is the answer) and run the clock past that bound.
+  await expect(page.getByTestId("owed")).toBeVisible();
+  await page.clock.runFor(400);
   await expect(page.getByTestId("pay-sheet")).toBeVisible();
   // The same buyer gives the line back from a second browser context with the same session, so marking it sent
   // must now fail. A second tab in the same context took focus from `page`, and the visibility change could fire
