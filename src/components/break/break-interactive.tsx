@@ -412,7 +412,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
             kit={p.kit}
             heat={p.heat}
             lineCount={p.lineCount}
-            label={`Lines, ${toGoText(p.counts.open)}`}
+            // The count the bar shows (drops not yet landed included), so a screen reader hears what the bar says.
+            label={`Lines, ${toGoText(shownOpen)}`}
             selected={selectedSet}
             struck={struckSet}
             moments={board.moments}
