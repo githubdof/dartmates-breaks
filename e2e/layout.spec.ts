@@ -46,7 +46,7 @@ test.beforeAll(async ({ browser }) => {
 test("the whole 50-line grid and the legend sit above the claim bar at 390 × 664 (D§5.4)", async ({ browser }) => {
   const page = await anonymous(browser, 390, 664);
   await page.goto(url);
-  const legend = await page.getByRole("list", { name: "What the cells mean" }).boundingBox();
+  const legend = await page.getByTestId("legend").boundingBox();
   const bar = await page.locator("[data-sticky-bar]").boundingBox();
   expect(legend).not.toBeNull();
   expect(bar).not.toBeNull();
@@ -56,7 +56,7 @@ test("the whole 50-line grid and the legend sit above the claim bar at 390 × 66
 test("at 360 × 640 the legend sits at the fold (D§5.4)", async ({ browser }) => {
   const page = await anonymous(browser, 360, 640);
   await page.goto(url);
-  const legend = await page.getByRole("list", { name: "What the cells mean" }).boundingBox();
+  const legend = await page.getByTestId("legend").boundingBox();
   expect(legend).not.toBeNull();
   expect(legend!.y).toBeLessThanOrEqual(640);
 });

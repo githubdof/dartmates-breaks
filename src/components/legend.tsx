@@ -13,7 +13,7 @@ const ITEMS: { word: string; cell: CellData }[] = [
 /** Five swatches with words, no icons (design §4). */
 export function Legend() {
   return (
-    <ul aria-label="What the cells mean" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-micro font-medium text-ink-2">
+    <ul aria-label="What the cells mean" data-testid="legend" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-micro font-medium text-ink-2">
       {ITEMS.map((i) => (
         <li key={i.word} className="flex items-center gap-1.5">
           <span aria-hidden className="block size-4"><Cell cell={i.cell} size="xs" boxed /></span>

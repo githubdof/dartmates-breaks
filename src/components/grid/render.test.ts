@@ -14,50 +14,71 @@ const html = (el: ReactElement) => renderToStaticMarkup(el);
 const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, ...o });
 
 describe("Cell: every state has a shape and a name, not only a colour (design §4)", () => {
-  it("open: a card face, a toggle", () => {
+  // Shapes are read from data-face, data-ink and data-mark, never from class names (Plan C Task 3).
+  it("open: a card face, a toggle, no marks", () => {
     const h = html(createElement(Cell, { cell: cell(1), onPress: noop }));
     expect(h).toContain('aria-label="Line 1, open"');
     expect(h).toContain('aria-pressed="false"');
     expect(h).toContain('data-state="open"');
-    expect(h).toContain("bg-card");
+    expect(h).toContain('data-face="card"');
+    expect(h).toContain('data-ink="ink"');
+    expect(h).not.toContain("data-mark");
   });
   it("selected: pressed, the inset ring and the check", () => {
     const h = html(createElement(Cell, { cell: cell(1), selected: true, onPress: noop }));
     expect(h).toContain('aria-pressed="true"');
-    expect(h).toContain("inset_0_0_0_3px");
-    expect(h).toContain("✓");
+    expect(h).toContain('data-selected="true"');
+    expect(h).toContain('data-mark="selected-ring"');
+    expect(h).toContain('data-mark="check"');
   });
   it("taken: the hatch, disabled but focusable, no pressed state", () => {
     const h = html(createElement(Cell, { cell: cell(2, { state: "taken" }), disabled: true, onPress: noop }));
     expect(h).toContain('aria-label="Line 2, taken"');
     expect(h).toContain('aria-disabled="true"');
     expect(h).not.toContain("aria-pressed");
-    expect(h).toContain("bg-hatch");
+    expect(h).toContain('data-face="hatch"');
+    expect(h).toContain('data-ink="ink-2"');
   });
   it("sent and mine: the dashed edge and the green flag", () => {
     const h = html(createElement(Cell, { cell: cell(3, { state: "sent", mine: true }), disabled: true, onPress: noop }));
     expect(h).toContain('aria-label="Line 3, yours, sent"');
-    expect(h).toContain("border-dashed");
-    expect(h).toContain("border-t-green");
+    expect(h).toContain('data-mine="true"');
+    expect(h).toContain('data-mark="sent-edge"');
+    expect(h).toContain('data-mark="flag-green"');
   });
   it("paid and mine: the ink face, a white number and a white flag", () => {
     const h = html(createElement(Cell, { cell: cell(4, { state: "paid", mine: true }), disabled: true, onPress: noop }));
     expect(h).toContain('aria-label="Line 4, yours, paid"');
-    expect(h).toContain("bg-ink");
-    expect(h).toContain("text-card");
-    expect(h).toContain("border-t-card");
+    expect(h).toContain('data-face="ink"');
+    expect(h).toContain('data-ink="card"');
+    expect(h).toContain('data-mark="flag-card"');
   });
   it("overdue (host view): the red edge and the ! glyph", () => {
     const h = html(createElement(Cell, { cell: cell(5, { state: "taken", overdue: true }), disabled: true, onPress: noop }));
     expect(h).toContain('aria-label="Line 5, taken, overdue"');
-    expect(h).toContain("border-red");
-    expect(h).toContain(">!<");
+    expect(h).toContain('data-overdue="true"');
+    expect(h).toContain('data-mark="overdue-edge"');
+    expect(h).toContain('data-mark="overdue-glyph"');
+  });
+  it("reserved for a mini: the double rule and the m label", () => {
+    const h = html(createElement(Cell, { cell: cell(6, { state: "reserved" }) }));
+    expect(h).toContain('aria-label="Line 6, reserved for a mini"');
+    expect(h).toContain('data-state="reserved"');
+    expect(h).toContain('data-mark="reserved-rule"');
+    expect(h).toContain('data-mark="mini-label"');
+  });
+  it("struck: a selected line someone else just took", () => {
+    const h = html(createElement(Cell, { cell: cell(8, { state: "taken" }), struck: true, disabled: true, onPress: noop }));
+    expect(h).toContain('data-struck="true"');
+    expect(h).toContain('data-state="taken"');
   });
   it("bonus: the + mark; a display-only cell is an image", () => {
     const h = html(createElement(Cell, { cell: cell(51, { state: "paid", bonus: true }) }));
     expect(h).toContain('role="img"');
     expect(h).toContain('aria-label="Line 51, bonus, paid"');
-    expect(h).toContain(">+<");
+    expect(h).toContain('data-state="paid"');
+    expect(h).toContain('data-bonus="true"');
+    expect(h).toContain('data-mark="bonus-glyph"');
   });
 });
 
