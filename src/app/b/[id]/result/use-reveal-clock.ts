@@ -2,15 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ENDED, startReveal, type RevealHandlers } from "./reveal-clock";
 import type { RevealPlan } from "./reveal-plan";
 
-const FINAL = Number.POSITIVE_INFINITY;
-
 /**
  * The reveal's clock (Mosaic §7): `t` is ms since house lights down, Infinity the final state. The run's effect owns
  * the timers and returns their cancel as its cleanup, so a re-run of the effect (Strict Mode, Fast Refresh) restarts
  * the run and a real unmount stops it. `play` starts a run from house lights down; `skip` ends it at the final state.
  */
 export function useRevealClock(plan: RevealPlan, handlers: Omit<RevealHandlers, "onTime">) {
-  const [t, setT] = useState(FINAL);
+  const [t, setT] = useState<number>(ENDED.t);
   // 0: no run. Each play takes the next number, so Replay restarts the effect even from a finished run.
   const [run, setRun] = useState(0);
   const h = useRef(handlers);
@@ -31,6 +29,6 @@ export function useRevealClock(plan: RevealPlan, handlers: Omit<RevealHandlers, 
 
   const play = useCallback(() => { cancel.current?.(); setT(0); setRun((r) => r + 1); }, []);
   /** Cancel at once (no timer may land after the click), then the final state; the effect's cleanup is then a no-op. */
-  const skip = useCallback(() => { cancel.current?.(); cancel.current = null; setT(FINAL); setRun(0); }, []);
+  const skip = useCallback(() => { cancel.current?.(); cancel.current = null; setT(ENDED.t); setRun(ENDED.run); }, []);
   return { t, play, skip };
 }

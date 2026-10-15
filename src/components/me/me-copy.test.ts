@@ -45,11 +45,3 @@ describe("unpaidNote", () => {
     expect(unpaidNote([4, 5, 6], "@jim")).toBe("Lines 4, 5 and 6 are not marked paid. Ask @jim about them.");
   });
 });
-
-describe("unpaidNote", () => {
-  it("says which lines are not marked paid and who to ask", () => {
-    expect(unpaidNote([5], "Jim")).toBe("Line 5 is not marked paid. Ask Jim about it.");
-    expect(unpaidNote([5, 6], "Jim")).toBe("Lines 5 and 6 are not marked paid. Ask Jim about them.");
-    expect(unpaidNote([4, 5, 6], "@jim")).toBe("Lines 4, 5 and 6 are not marked paid. Ask @jim about them.");
-  });
-});
