@@ -227,27 +227,26 @@ Big Shoulders is sentence case, used at most three times per page, never on butt
 
 ### Heat (the lamp)
 
-A radial lamp behind the board. Its colour moves from cool when empty to warm when the break closes, along a
-straight line in OKLab (it never passes through green or magenta), fixed as five literal steps that CSS and
-the link preview share:
+A radial lamp behind the board, one warm white `rgb(255 232 200)` that only brightens: its hue never
+changes, so a new break never looks cold and nothing on the board ever reads as hot or cold. Five literal
+steps that CSS and the link preview share (owner's decision, 2026-10-14):
 
-| Step | When | Colour | OKLCH C / h |
-|---|---|---|---|
-| 0 | under 25 % claimed | `rgba(196,212,236,0.08)` | 0.038 / 258° |
-| 1 | 25 % claimed or more | `rgba(212,211,217,0.11)` | 0.008 / 291° |
-| 2 | 50 % claimed or more | `rgba(227,210,196,0.14)` | 0.026 / 60° |
-| 3 | 75 % claimed or more, up to every line claimed | `rgba(241,208,175,0.17)` | 0.057 / 66° |
-| 4 | the break is closed (every line paid) | `rgba(255,205,152,0.20)` | 0.089 / 68° |
+| Step | When | Colour |
+|---|---|---|
+| 0 | under 25 % claimed | `rgba(255,232,200,0.06)` |
+| 1 | 25 % claimed or more | `rgba(255,232,200,0.095)` |
+| 2 | 50 % claimed or more | `rgba(255,232,200,0.13)` |
+| 3 | 75 % claimed or more, up to every line claimed | `rgba(255,232,200,0.165)` |
+| 4 | the break is closed (every line paid) | `rgba(255,232,200,0.20)` |
 
 Counting: numbered lines only (bonus lines never count); claimed = taken, sent, paid or reserved for a mini,
 which matches `listFeed.open`. `heatStep(open, total, closed)` = `closed ? 4 : Math.min(3, Math.floor(4 *
 (total - open) / total))`, a pure function in `flights.ts`. `closed` is true from Closed on (closed, running
 draw, ran), so heat is frozen through the draw and after. A release steps the lamp back down. Tests pin the
 step edges (12 of 50 claimed = 0, 13 of 50 = 1, 50 of 50 claimed and not closed = 3, closed = 4) and the
-constraints: alpha at or below 0.20, OKLCH chroma at or below 0.09, and every step with chroma above 0.02
-has a hue between 40° and 90°. A step change crossfades two stacked lamp layers by `opacity` (a gradient's
-colour does not transition), over `--dur-lamp`, only when the step changes, never on mount. The lamp never
-pulses and is never labelled. Whether the lamp should brighten without changing hue is open (§13).
+constraints: one colour for every step, alpha rising monotonically and never above 0.20. A step change
+transitions the lamp layer's `opacity` over `--dur-lamp` (the gradient's colour is fixed, so one layer is
+enough), only when the step changes, never on mount. The lamp never pulses and is never labelled.
 
 ### Space, shape, motion
 
@@ -387,7 +386,8 @@ When the viewer holds lines, the line "You have 4, 11 and 27." sits under the le
 toggle: a button with `aria-pressed`, the same on every input. On, it applies the house-lights overlay (§7:
 `--board-wall` at 55 % over each cell, with your glyph above it) to every cell that is not yours; off, it
 removes it. It sets still in both directions and turns itself off when a claim commits or the reveal starts.
-The claim bar never shows "You hold …". Whether Show mine ships in the first plan is open (§13).
+The claim bar never shows "You hold …". Show mine ships in the follow-up game-structure plan, not this one
+(§13); in this plan the "You have …" line is plain text under the legend.
 
 ### Grid and list
 
@@ -674,8 +674,8 @@ rule; applied to the local, `breaks_test` and `breaks_e2e` databases):
 ## 12. Implementation notes for the planner
 
 One plan, large, 20 tasks. The first three (tokens and fonts, contrast tests, test selectors to `data-*`)
-are a reversible checkpoint; migration 0004 lands right after them, before Cell. Show mine is in task 10 only if
-the owner answers §13 yes; otherwise the "You have …" line ships as plain text.
+are a reversible checkpoint; migration 0004 lands right after them, before Cell. Show mine is not in this
+plan (§13); the "You have …" line ships as plain text in task 10.
 
 1. Board tokens as new names in `tokens.css` with `tokens.test.ts` pairs; Big Shoulders Display 800 in
    `fonts.ts` (confirm the export name first); per-route `theme-color` and wall backgrounds (Sonnet).
@@ -695,7 +695,8 @@ the owner answers §13 yes; otherwise the "You have …" line ships as plain tex
    and 360 widths; the 390 × 664 density check (Sonnet).
 9. `cellMoments(prev, next)`: a pure diff with unit tests (same view only; the view switch, a line-count
    change and unlisted transitions set still; refresh mid-animation snaps; the caps) (Opus).
-10. Claim bar: "12 to go" as a text swap, the media row, and Show mine (Sonnet).
+10. Claim bar: "12 to go" as a text swap, the media row, and the plain "You have …" line under the legend
+    (Sonnet).
 11. Claim moments on top of `cellMoments`: press, drop, squash, glint, others' fade-in, sent cross-fade, paid
     overlay and undo, release drain, sniped strike, lamp step, board fills (Opus).
 12. The reveal rewrite: draw start, house lights, chips, the neutral dart tween, bulls, the caller with the
@@ -725,15 +726,13 @@ the owner answers §13 yes; otherwise the "You have …" line ships as plain tex
 Reviews on Opus throughout. Rollout as one plan; it does not split cleanly into "world first, then people"
 because Cell and `render.test.ts` would be touched twice.
 
-## 13. Open questions for the owner
+## 13. Decisions taken by the owner (2026-10-14)
 
-- **Does Show mine ship in the first plan?** Recommended: wait. The yours ring and the "You have 4 and 11"
-  line already find your lines; Show mine is the cheapest cut if the plan runs long, and it can ship in the
-  follow-up game-structure plan. (The play lens would ship it now, since it reuses the house-lights overlay.)
-- **May a host use the same two colours as another host?** Recommended: yes. With 15 kits, uniqueness would
-  turn kits into a scarce good hosts race to claim, the kind of rarity §3 keeps out. Kits identify a break's
-  host only alongside the handle. Every host who has not chosen shares the default Blue with Yellow until
-  `/host/new` nudges them to pick.
-- **Lamp: a muted cool-to-warm move (this design) or one warm white that only brightens?** The play lens
-  prefers brightening only, since a cool start can make a new break look "cold"; the chroma cap keeps the
-  current move small.
+- **Show mine waits.** The yours ring and the "You have 4 and 11" line find your lines; the Show mine
+  toggle ships in the follow-up game-structure plan. The "You have …" line still renders under the legend
+  as plain text in this plan.
+- **Hosts may share a kit.** With 15 kits, uniqueness would turn kits into a scarce good hosts race to claim,
+  the kind of rarity §3 keeps out. Kits identify a break's host only alongside the handle. Every host who
+  has not chosen shares the default Blue with Yellow until `/host/new` nudges them to pick.
+- **The lamp only brightens.** One warm white in five alpha steps (§4 Heat); no hue change, so a new break
+  never reads as cold.
