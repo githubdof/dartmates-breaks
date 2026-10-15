@@ -3,18 +3,19 @@ import { useEffect, useLayoutEffect, useMemo, useOptimistic, useRef, useState } 
 import { useRouter } from "next/navigation";
 import type { Allowance, GridCell, GridCounts } from "@/domain/breaks/grid";
 import type { ClaimMode } from "@/domain/breaks/rules";
-import type { HeatStep, Kit } from "@/domain/flights";
+import type { Flight, HeatStep, Kit } from "@/domain/flights";
 import type { BoardView } from "@/components/grid/cell";
 import type { ActionResult } from "@/lib/action";
 import type { BreakStatus } from "@/components/status-word";
 import { claim, claimNextAction, claimRandomAction, claimRest } from "@/app/b/[id]/actions";
 import { Grid, type BoardCell } from "@/components/grid/grid";
 import { nextFocusIndex } from "@/components/grid/layout";
-import { countMoment, landingTimes, momentAnnouncements, paySheetDelay, type PendingClaim } from "@/components/grid/board-moments";
+import { countMoment, heldLegendFlight, landingTimes, momentAnnouncements, paySheetDelay, type PendingClaim } from "@/components/grid/board-moments";
+import { BoardLegend } from "@/components/board-legend";
 import { useBoardMoments } from "@/components/grid/use-board-moments";
 import { prefersReducedMotion } from "@/lib/motion";
 import { CallerBanner } from "./caller-banner";
-import { BOARD_FULL_CALL, boardFullAnnouncement, fullBoardKey } from "./caller-copy";
+import { BOARD_FULL_CALL, boardFullAnnouncement, fullBoardKey, withCall } from "./caller-copy";
 import { SegmentedControl } from "@/components/segmented-control";
 import { clampStep } from "@/components/stepper-math";
 import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
@@ -39,8 +40,10 @@ export type BreakInteractiveProps = {
   lineCount: number;
   title: string;
   shareUrl: string;
-  /** The legend and the "You have …" line: directly under the board, inside the 390 × 664 budget (Mosaic §8). */
+  /** The "You have …" line: under the legend, inside the 390 × 664 budget (Mosaic §8). */
   underBoard?: React.ReactNode;
+  /** The legend's flight: the viewer's own (recorded ruling 20). The island draws the legend, so it follows the held board. */
+  legendFlight: Flight | null;
   /** "Pay within 24 hours." while open, for the pay sheet's pay block (Mosaic §8); null once the break is not open. */
   payWithin: string | null;
   cells: GridCell[];
@@ -100,6 +103,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   // Board fills: null until the once-per-viewer flag is read (the banner renders after hydration only).
   const [fullPlay, setFullPlay] = useState<boolean | null>(null);
   const fullRead = useRef<string | null>(null);
+  // The board-fills call said in this commit: the reconcile effect for the same props joins it to what it says.
+  const fullCall = useRef<string | null>(null);
   // The live region: `n` re-keys the message so the same words twice (one taken cell tapped twice) are announced twice.
   const [announce, setAnnounce] = useState({ text: initial.note ?? "", n: 0 });
   // What was said last and when: the refresh after a refused claim would repeat its cap note (isRepeat).
@@ -191,6 +196,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   const lastCells = useRef(p.cells);
   const { cells: freshCells, allowance, hostName } = p;
   useEffect(() => {
+    const call = fullCall.current;
+    fullCall.current = null;
     if (lastCells.current === freshCells) return;
     const before = lastCells.current;
     lastCells.current = freshCells;
@@ -217,7 +224,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     // Keep only the give-back lines this refresh does not show yet (an unrelated refresh may land first).
     const stillMine = new Set(freshCells.filter((c) => c.mine).map((c) => c.number));
     gaveBack.current = gaveBack.current.filter((n) => stillMine.has(n));
-    const text = said.join(" ");
+    // The board-fills call from this commit goes first, so the one live-region message never drops it.
+    const text = withCall(call, said).join(" ");
     if (said.length > 0 && !isRepeat(lastSaid.current, text, Date.now())) {
       lastSaid.current = { text, at: Date.now() };
       setAnnounce((a) => ({ text, n: a.n + 1 }));
@@ -251,7 +259,11 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       seen = true; // storage blocked: never force the moment
     }
     setFullPlay(!seen && !prefersReducedMotion());
-    if (!seen) setAnnounce((a) => ({ text: boardFullAnnouncement(p.hostName), n: a.n + 1 }));
+    if (!seen) {
+      const call = boardFullAnnouncement(p.hostName);
+      fullCall.current = call;
+      say(call);
+    }
   }, [p.status, p.breakId, p.hostName]);
 
   useEffect(() => () => { if (sheetTimer.current !== null) window.clearTimeout(sheetTimer.current); }, []);
@@ -401,6 +413,11 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       {p.status === "filled" && fullPlay !== null && (
         <div className="mt-3"><CallerBanner text={BOARD_FULL_CALL} rule="var(--kit-dark)" play={fullPlay} /></div>
       )}
+      {/* 12 px of frame, then the legend's 8 px gap (Mosaic §8 budget). The legend shows the board's view: while the
+          viewer's own last lines drain it stays the member legend with their flight, then turns with the board. */}
+      <div className="mt-5">
+        <BoardLegend view={board.held ? board.held.view : p.boardView} flight={(board.held && heldLegendFlight(board.from)) || p.legendFlight} kit={p.kit} />
+      </div>
       {p.underBoard}
       {/* Grid | List stands (first design §5.4); the budget has no row for it above the board, so it sits here (recorded ruling 23). */}
       <div className="mt-3 flex min-h-11 items-center justify-end">

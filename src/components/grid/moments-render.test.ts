@@ -132,3 +132,15 @@ describe("the caller banner", () => {
     expect(h).not.toMatch(/aria-label|<title/);
   });
 });
+
+describe("the strike draws only on a cell shown as claimed (spec §7 Line sniped: was selected, now taken)", () => {
+  it("draws no strike on an open cell in `struck`, and draws it on a taken one", () => {
+    const open = html(createElement(Cell, { cell: cell(7), onPress: noop, struck: true }));
+    expect(open).not.toContain("bc-strike");
+    expect(open).not.toContain("data-struck");
+    expect(open).toContain('aria-label="Line 7, open"');
+    const taken = html(createElement(Cell, { cell: cell(7, { state: "taken" }), onPress: noop, struck: true }));
+    expect(taken).toContain('class="bc-strike"');
+    expect(taken).toContain('data-struck="true"');
+  });
+});

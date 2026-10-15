@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { GridCell } from "@/domain/breaks/grid";
 import { MOTION } from "@/lib/motion";
 import {
-  boardMoments, countMoment, drainCells, ghostsFrom, landedClaim, landingTimes, longestMoment, MOMENT_CLEAR_MS, momentAnnouncements, momentOrder,
+  boardMoments, countMoment, drainCells, ghostsFrom, heldLegendFlight, landedClaim, landingTimes, longestMoment, MOMENT_CLEAR_MS, momentAnnouncements, momentOrder,
   paySheetDelay, SNIPED_CAP, stepMoments, type BoardSnap, type MomentState,
 } from "./board-moments";
 import type { CellMoment } from "./cell-moments";
@@ -173,8 +173,8 @@ describe("boardMoments: what cellMoments cannot see", () => {
   });
   it("holds the member view while those lines drain: the released cells open, every other cell as it was (§7 Release)", () => {
     const before = board(4, (c) => (c.number <= 2 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : c.number === 3 ? { state: "paid", holder: "liz", flight: { colour: "yellow", shape: "pear" } } : {}));
-    const moments = new Map<number, CellMoment>([[1, "release"], [2, "release"], [3, "still"], [4, "still"]]);
-    expect(drainCells(before, moments).map((c) => [c.number, c.state, c.mine, c.flight])).toEqual([
+    const after = board(4, (c) => (c.number === 3 ? { state: "paid" } : {}));
+    expect(drainCells(before, after).map((c) => [c.number, c.state, c.mine, c.flight])).toEqual([
       [1, "open", false, null], [2, "open", false, null], [3, "paid", false, { colour: "yellow", shape: "pear" }], [4, "open", false, null],
     ]);
   });
@@ -224,5 +224,29 @@ describe("stepMoments holds the member view while the viewer's own last lines dr
     expect(stepMoments(s1, { ...after, cells: after.cells.map((c) => ({ ...c })) }, null).held).toBe(s1.held);
     const crowd = snap(board(4, (c) => (c.number === 3 ? { state: "taken" } : {})), { view: "kit" });
     expect(stepMoments(s1, crowd, null).held).toBeNull();
+  });
+});
+
+describe("fix round 1: own lines first, and releases past the cap", () => {
+  it("under MAX_MOVING the viewer's own strike takes its slot before a stranger's fade (cellMoments' own-first order)", () => {
+    const next = board(12, (c) => (c.number <= 9 ? { state: "taken", holder: "liz", flight: LIME } : {}));
+    const m = boardMoments(snap(board(12), { selected: [9] }), snap(next, { struck: [9] }), []);
+    expect(m.get(9)).toBe("sniped");
+    expect(countMoment(m, "others-in")).toBe(7);
+    expect(m.get(8)).toBe("still"); // the last stranger's fade in line order gives up its slot
+  });
+  it("the held board opens every line the viewer lost, even past the release cap: past a cap is the final state at once", () => {
+    const before = board(12, (c) => (c.number <= 10 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : {}));
+    const after = board(12);
+    const s = stepMoments(fresh(snap(before)), snap(after, { view: "kit" }), null);
+    expect(countMoment(s.moments, "release")).toBe(8);
+    expect(s.held?.cells.filter((c) => c.state !== "open")).toEqual([]);
+    expect(Object.keys(s.held ?? {}).sort()).toEqual(["cells", "view"]); // nothing else rides on the held board
+  });
+  it("the legend keeps the viewer's flight while the held board drains (the ghosts carry it)", () => {
+    const before = board(4, (c) => (c.number === 2 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : {}));
+    const s = stepMoments(fresh(snap(before)), snap(board(4), { view: "kit" }), null);
+    expect(heldLegendFlight(s.from)).toEqual(BLUE_KITE);
+    expect(heldLegendFlight(new Map())).toBeNull();
   });
 });

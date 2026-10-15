@@ -9,7 +9,6 @@ import { formatMoney } from "@/lib/money";
 import { daysSince, formatDeadline, formatLate } from "@/lib/time";
 import { viewerZone } from "@/lib/zone";
 import { pageShare } from "@/lib/share-text";
-import { BoardLegend } from "@/components/board-legend";
 import type { BoardView } from "@/components/grid/cell";
 import { StatusPill } from "@/components/status-pill";
 import { CopyButton } from "@/components/copy-button";
@@ -137,10 +136,9 @@ export default async function BreakPage({ params, searchParams }: Props) {
         viewerIsHost={!!caller && caller.id === b.hostId}
         initialPick={initialPick}
         payWithin={status === "open" ? payWithinText(b.paymentWindowHours) : null}
+        legendFlight={legendFlight}
         underBoard={
           <>
-            {/* 12 px of frame, then the legend's 8 px gap (Mosaic §8 budget). */}
-            <div className="mt-5"><BoardLegend view={boardView} flight={legendFlight} kit={grid.kit} /></div>
             {/* Plain text in this plan; it becomes the Show mine toggle in the game-structure plan (recorded ruling 1). */}
             {youHave && <p className="mt-1 text-small text-[var(--board-text-2)]" data-testid="you-have">{youHave}</p>}
           </>

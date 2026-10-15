@@ -17,7 +17,7 @@ type Props = {
   /** A fixed pixel size (legend, previews, render tests). Without it the cell fills its track and container queries size it. */
   px?: number;
   selected?: boolean;
-  /** Sniped: a selected line someone else just took (client-only, until the next tap). */
+  /** Sniped: a selected line someone else just took (client-only, until the next tap). Drawn only on a claimed cell. */
   struck?: boolean;
   disabled?: boolean;
   label?: string;
@@ -69,8 +69,11 @@ function sizeVars(size: CellSize, px: number | undefined, c: CellData): CSSVars 
 }
 
 /** One board cell (Mosaic §5). Shape carries state; the face only adds hue. Styles: the board cell block in globals.css. */
-export function Cell({ cell, view = "member", size = "md", px, selected = false, struck = false, disabled = false, label, testId, tabIndex, onPress, moment, order, from, ghost = false }: Props) {
+export function Cell({ cell, view = "member", size = "md", px, selected = false, struck: struckAsked = false, disabled = false, label, testId, tabIndex, onPress, moment, order, from, ghost = false }: Props) {
   const won = !!cell.place;
+  // The strike marks a line someone else holds (§7 Line sniped): never an open cell, even while the claim's answer
+  // has named it taken before the refreshed board shows it so. Otherwise it would draw, vanish and draw again.
+  const struck = struckAsked && (cell.state === "taken" || cell.state === "sent" || cell.state === "paid");
   const claimed = !won && (cell.state === "taken" || cell.state === "sent");
   const marks = size !== "thumb";
   const glyph = marks ? glyphOf(cell, view) : null;

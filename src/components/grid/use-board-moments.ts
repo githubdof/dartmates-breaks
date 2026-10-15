@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { GridCell } from "@/domain/breaks/grid";
 import type { CellMoment } from "./cell-moments";
 import { MOTION, prefersReducedMotion } from "@/lib/motion";
-import { MOMENT_CLEAR_MS, stepMoments, type BoardSnap, type MomentState, type PendingClaim } from "./board-moments";
+import { MOMENT_CLEAR_MS, stepMoments, type BoardSnap, type HeldBoard, type MomentState, type PendingClaim } from "./board-moments";
 
 const NONE: ReadonlyMap<number, CellMoment> = new Map();
 const NO_GHOSTS: ReadonlyMap<number, GridCell> = new Map();
@@ -14,7 +14,7 @@ type Shown = {
   /** The map the last moving change produced; it changes only when a new run of moments starts. */
   played: ReadonlyMap<number, CellMoment>;
   /** The member-view board shown while the viewer's own last lines drain, else null. */
-  held: BoardSnap | null;
+  held: HeldBoard | null;
 };
 
 /**

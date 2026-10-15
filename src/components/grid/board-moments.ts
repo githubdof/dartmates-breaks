@@ -1,4 +1,5 @@
 import type { GridCell } from "@/domain/breaks/grid";
+import type { Flight } from "@/domain/flights";
 import { MOTION } from "@/lib/motion";
 import { joinAnd } from "@/lib/list";
 import { cellMoments, cellViews, MAX_MOVING, MOMENT_CAPS, type CellMoment } from "./cell-moments";
@@ -65,14 +66,24 @@ export function boardMoments(prev: BoardSnap, next: BoardSnap, claimed: readonly
   const wanted = new Set([...prev.selected, ...next.selected, ...next.struck]);
   if (wanted.size === 0) return out;
   const was = new Map(prev.cells.map((c) => [c.number, c]));
+  const now = new Map(next.cells.map((c) => [c.number, c]));
+  const own = (n: number) => !!was.get(n)?.mine || !!now.get(n)?.mine;
   let moving = [...out.values()].filter((m) => m !== "still").length;
   let struck = 0;
   for (const c of [...next.cells].sort((a, b) => a.number - b.number)) {
     const p = was.get(c.number);
     if (!wanted.has(c.number) || !p || p.state !== "open" || p.mine || p.bonus !== c.bonus || !claimedByOther(c)) continue;
     const before = out.get(c.number) ?? "still";
-    // Over the strike's cap, or no room left on the board: the strike shows at once, and the cell sets still.
-    if (struck >= SNIPED_CAP || (before === "still" && moving >= MAX_MOVING)) { if (before !== "still") moving--; out.set(c.number, "still"); continue; }
+    // Over the strike's cap: the strike shows at once, and the cell sets still.
+    if (struck >= SNIPED_CAP) { if (before !== "still") moving--; out.set(c.number, "still"); continue; }
+    if (before === "still" && moving >= MAX_MOVING) {
+      // The strike is the viewer's own, so it goes before a stranger's moment (cellMoments' own-first order): the last
+      // stranger's moment in line order gives up its slot. With none to give up, the strike shows at once.
+      const stranger = [...out.keys()].sort((a, b) => b - a).find((n) => { const m = out.get(n); return m !== "still" && m !== "sniped" && !own(n); });
+      if (stranger === undefined) continue;
+      out.set(stranger, "still");
+      moving--;
+    }
     if (before === "still") moving++;
     struck++;
     out.set(c.number, "sniped");
@@ -92,11 +103,22 @@ export function ghostsFrom(prev: readonly GridCell[], moments: ReadonlyMap<numbe
 
 /**
  * The board shown while the viewer's own last lines drain (spec §7 Release, recorded ruling 21): the previous member-view
- * cells, with each released cell already open (its ghost drains over it). Only after --dur-release does the board
- * re-render in the kit view, still.
+ * cells, with every line the viewer lost that the new board shows open already open. Those with a release moment drain
+ * their ghost over it; those past the cap are simply open (past a cap is the final state at once). Every other cell is
+ * as it was. Only after --dur-release does the board re-render in the kit view, still.
  */
-export function drainCells(prev: readonly GridCell[], moments: ReadonlyMap<number, CellMoment>): GridCell[] {
-  return prev.map((c): GridCell => (moments.get(c.number) === "release" ? { ...c, state: "open", mine: false, holder: null, flight: null } : c));
+export function drainCells(prev: readonly GridCell[], next: readonly GridCell[]): GridCell[] {
+  const now = new Map(next.map((c) => [c.number, c]));
+  return prev.map((c): GridCell => (c.mine && now.get(c.number)?.state === "open" ? { ...c, state: "open", mine: false, holder: null, flight: null } : c));
+}
+
+/** The member-view board held while the viewer's own last lines drain: only what Grid draws. */
+export type HeldBoard = { cells: readonly GridCell[]; view: "member" };
+
+/** The viewer's flight for the legend while the board is held: the released lines' ghosts still carry it. */
+export function heldLegendFlight(from: ReadonlyMap<number, GridCell>): Flight | null {
+  for (const c of from.values()) if (c.mine && c.flight) return c.flight;
+  return null;
 }
 
 /**
@@ -111,7 +133,7 @@ export type MomentState = {
   /** The map as the last moving diff produced it: the island keys the landing count on it, so a kept map never restarts it. */
   played: ReadonlyMap<number, CellMoment>;
   /** The member-view board drawn while the viewer's own last lines drain (drainCells); null otherwise. */
-  held: BoardSnap | null;
+  held: HeldBoard | null;
 };
 
 /** Whether a cell looks the same in two renders (everything a moment or the cell's drawing reads). */
@@ -144,7 +166,7 @@ export function stepMoments(state: MomentState, next: BoardSnap, claim: PendingC
   }
   // The viewer's own last lines went (member → kit): hold the member view while they drain (spec §7 Release).
   const draining = state.snap.view === "member" && next.view === "kit" && [...moments.values()].includes("release");
-  const held: BoardSnap | null = draining ? { cells: drainCells(state.snap.cells, moments), view: "member", struck: next.struck, selected: next.selected } : null;
+  const held: HeldBoard | null = draining ? { cells: drainCells(state.snap.cells, next.cells), view: "member" } : null;
   return { snap: next, moments, from: ghostsFrom(state.snap.cells, moments), landed, played: moments, held };
 }
 
