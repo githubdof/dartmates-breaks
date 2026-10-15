@@ -211,9 +211,11 @@ nudges a host who has not.
 ### Type
 
 Barlow 400/500/600 for body and Barlow Condensed 600 for cell numbers (unchanged), plus **Big Shoulders
-Display 800** on wall routes. Five font files in the app. Big Shoulders loads weight 800 only, latin subset,
-`display: swap`, preloaded only on wall routes; task 1 confirms the family's export name in
-`next/font/google` before anything else (Google has reorganised the family).
+Display 800** on wall routes. Five font files in the app. Big Shoulders is one variable file, Display cut
+pinned, not preloaded: the `opsz` axis is fixed at its maximum (`font-variation-settings: "opsz" 72`) wherever
+Big Shoulders is drawn, so every size in the table below takes the Display cut; weight 800, latin subset,
+`display: swap`. Task 1 confirms the family's export name in `next/font/google` before anything else (Google
+has reorganised the family). (Amended by the Plan C panel fix pass.)
 
 | Role | Face | Size / line |
 |---|---|---|
@@ -289,11 +291,13 @@ The read-out chips' spacing is computed, not a token: `min(30ms, 1500ms / lines)
 
 ## 5. The grid
 
-Eight columns at 390: the grid box stays 358 px (390 − 2 × 16), cells 44.75 px including the 1 px steel
-wire, 7 rows, 313 px tall at 50 lines, so the 44 pt tap target holds. The 12 px frame is the `box-shadow`
-spread into the 16 px gutter (4 px left to the screen edge), never a border or padding: a 12 px border would
-leave 334 px and `columnsFor` would drop to 7 columns. `columnsFor` is unchanged. At 360 it is 7 columns of
-46.9 px. No ancestor within 12 px of the grid may clip overflow. Render tests at 390 and 360 assert the
+Eight columns at 390: the page column stays 358 px (390 − 2 × 16) and the board pulls 3.5 px into each
+gutter (`margin-inline: -3.5px`), so the board is 365 px wide: eight 44.75 px cells on 1 px steel wires (a
+45.75 px pitch), 7 rows, 319 px tall at 50 lines, so the 44 pt tap target holds. The 12 px frame is the
+`box-shadow` spread into the 16 px gutter (15.5 px into it, half a pixel left to the screen edge), never a
+border or padding: a 12 px border would leave 334 px and `columnsFor` would drop to 7 columns. `columnsFor` is
+unchanged and reads the 358 px column. At 360 it is 7 columns of 47 px cells. (Amended by the Plan C panel fix
+pass.) No ancestor within 12 px of the grid may clip overflow. Render tests at 390 and 360 assert the
 column count. The 50-line budget and the bonus-line rule are unchanged. Empty slots in the last row are
 `--board-wall-2`, not wire.
 
@@ -334,8 +338,9 @@ column count. The 50-line budget and the bonus-line rule are unchanged. Empty sl
 Notes on the table:
 
 - Other people's sent lines show as claimed. The member view does not distinguish sent from unsent on other
-  holders' lines (the host sees it in the ledger), and the accessible name says "taken" for them. The first
-  design's dashed sent edge is retired; your own sent lines carry the filled glyph and the sent mark.
+  holders' lines anywhere in the member view: the board, the List view and the holder popover all say
+  "taken" for them (the host sees sent in the ledger). The first design's dashed sent edge is retired; your
+  own sent lines carry the filled glyph and the sent mark.
 - Sniped is the end state of the strike in §7. It is dropped from the bar and announced; the next tap
   anywhere on the board clears it to Claimed, others.
 - The bonus ink face and "+" of the first design are retired, since black now means won; `render.test.ts`
@@ -367,9 +372,12 @@ is black in every view. Reserved and bonus are as in the member view. The link p
 without the hatch and glyph (§6).
 
 Per-break collision rule: when two holders in one break share a flight, or share a shape in a watched colour
-pair, the later one to claim is shown in that break with the next shape in the order standard → pear → kite →
-slim that is not already used by that colour or its watched pair; if all four are used, the flight shows
-unchanged. Member view only, the same for every member viewer (so screenshots agree), computed by
+pair, the later one to claim is shown in that break with the next shape in the cyclic order standard → pear →
+kite → slim, starting from the holder's own shape, that is not already used by that colour or its watched
+pair (a second blue kite shows as slim); "later" is by each holder's earliest claim in the break, ties by
+owner id; if all four are used, the flight shows unchanged. The cream knockout under a glyph is drawn only on
+hatched (taken or sent) cells. The board's group label is "Lines"; a banner that is not a call (the draw
+start, "Board's full. Game on.") carries a `--kit-dark` left rule. Member view only, the same for every member viewer (so screenshots agree), computed by
 `shapeGrid` from claim order, with nothing stored. This is not rare: with 32 flights, a break with seven
 holders shares a flight about half the time. The popover always disambiguates by handle.
 Your own lines may show the substituted shape; the yours ring still marks them, and the "This is your flight" line
@@ -602,7 +610,8 @@ the `--paper` value as `theme-color` (`/host`, `/me`, `/account`, `/host/new`, s
 
 - The checkout count "12 to go" in the bar, the feed card, the link-preview caption and anywhere else a count
   appears. "19 of 50 left" is retired.
-- The host record on `/h/{handle}` and the ledger header: "41 breaks run since March. 40 draws verified." A
+- The host record on `/h/{handle}` and the ledger header: "41 breaks run since Mar 2026. 40 draws verified."
+  (month and year via `formatMonthYear`, as Plan B's ruling 4 writes dates; "No breaks run yet." at zero). A
   break counts as run when it has an active (not voided) draw, as `hostTrust` counts today. A draw counts as
   verified when `verifyInputs` passes on its recorded inputs, the check the result page shows as "Checked"; it is
   computed once when the draw is recorded and stored as `draws.verified_at timestamptz` (migration 0004,
@@ -643,7 +652,8 @@ rule; applied to the local, `breaks_test` and `breaks_e2e` databases):
   against the migration's `CHECK` lists. There is no `defaultFlight(userId)`.
 - A new `updateFlight(tx, caller, { colour, shape })` (onboarded caller; sets `flight_chosen_at`) appends
   `user.profile_updated` with `changed: ["flight"]` (never the values). A new `updateHostKit(tx, caller,
-  { dark, light })` (host role) appends `host.profile_updated` with `changed: ["kit"]` (never the values).
+  { dark, light })` (hosts and admins, since admins may host) appends `host.profile_updated` with
+  `changed: ["kit"]` (never the values).
   Input is parsed by a pure, tested function in `src/app/account/parse.ts` (platform §12 "profile update field
   allowlist"). `updateProfile` is unchanged.
 - `getBreakPage`'s lines select adds `ownerFlightColour` and `ownerFlightShape` from the existing `users` join,

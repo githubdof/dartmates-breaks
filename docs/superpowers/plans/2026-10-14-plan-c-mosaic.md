@@ -4,7 +4,7 @@
 
 **Goal:** The board wears the Mosaic design: every member has a flight (eight colours by four dart shapes) that marks their lines and floods them with colour when the host ticks them paid; the host's two-colour kit is the board's surround; a warm lamp brightens in five steps as the board fills; a claim lands like a dart, a refused "I've sent it" stays visible, and the draw reads out its audited order then throws one straight dart per place onto the real board with the caller's banner; strangers and every public surface see the board in the host's kit, never a flight; the checkout count ("12 to go"), the host record and a plain history are the only game structure.
 
-**Architecture:** Domain first. A pure `flights.ts` module (palette, inks, kits, `heatStep`) and migration `0004_flights_kits` (random flight per user with backfill, kit columns, `draws.verified_at`). The holder gate stays `shapeGrid`: a cell's `flight` is set under exactly the condition that sets its `holder`; `ogModel`, the feed, the landing hero and the host profile carry only `kit` and `heat`. New board tokens under new names in `tokens.css` (no existing token changes value); Big Shoulders Display 800 as the fifth font file. Cell renders every §5 state shape-first from CSS custom properties (`--face`, `--num`, `--fc`); a pure `cellMoments(prev, next)` diff decides which cells animate and nothing animates on mount; the reveal is rewritten around a neutral dart tween (`requestAnimationFrame`, the only JS motion) and `reveal-plan.ts` totals pinned by tests. Paper surfaces (ledger, sheets, forms, `/host`, the claim bar) are untouched except the checkout count.
+**Architecture:** Domain first. A pure `flights.ts` module (palette, inks, kits, `heatStep`) and migration `0004_flights_kits` (random flight per user with backfill, kit columns, `draws.verified_at`). The holder gate stays `shapeGrid`: a cell's `flight` is set under exactly the condition that sets its `holder`; `ogModel`, the feed, the landing hero and the host profile carry only `kit` and `heat`. New board tokens under new names in `tokens.css` (no existing token changes value); Big Shoulders 800 as the fifth font file (one variable file, the Display cut pinned with `font-variation-settings`, not preloaded). Cell renders every §5 state shape-first from CSS custom properties (`--face`, `--num`, `--fc`); a pure `cellMoments(prev, next)` diff decides which cells animate and nothing animates on mount; the reveal is rewritten around a neutral dart tween (`requestAnimationFrame`, the only JS motion) and `reveal-plan.ts` totals pinned by tests. Paper surfaces (ledger, sheets, forms, `/host`, the claim bar) are untouched except the checkout count.
 
 **Tech Stack:** Next.js 15.5 (App Router, TypeScript, `next/og` `ImageResponse`), React 19.1, Tailwind CSS 4 via `@tailwindcss/postcss`, Drizzle ORM 0.45 + drizzle-kit 0.31, postgres-js, Supabase (Postgres, Auth), zod 4, vitest 5 (Vite 8, oxc), Playwright + `@axe-core/playwright`.
 
@@ -12,16 +12,16 @@
 
 ## Global Constraints
 
-Plan B's Global Constraints (`docs/superpowers/plans/2026-10-14-plan-b-new-pages.md`, the section of that name, including the Plan A list it carries) apply verbatim, except the eight lines the Mosaic spec §1.1 amends. Those read, from this plan on:
+Plan B's Global Constraints (`docs/superpowers/plans/2026-10-14-plan-b-new-pages.md`, the section of that name, including the Plan A list it carries) apply verbatim, except the seven Plan B lines and the platform §9 stall line that Mosaic §1.1 amends (holders with `feedThumbs` and the link preview, green and red, motion, selected, fonts, host profile; stall copy). Those read, from this plan on (Tokens and Copy below are this plan's own additions):
 
 - **Holders:** "Holders, flights and the overdue flag are decided only in `shapeGrid` on the server. A cell carries a `flight` under exactly the condition that it carries a `holder` (the break's host, an admin, or a viewer who holds a line in that break). Thumbnails (`feedThumbs`) are built from line state only and carry no flight. The link preview's guarantee is that `ogModel(page, now)` emits per cell only number, tone and, on won cells, place, plus the break's `kit` and `heat`; no holder, handle or flight (pinned by `og.test.ts`); the route never reads the session."
 - **Green and red:** "Green keeps its two meanings on paper: mine, and money the host confirmed. On the board, mine is the ink-and-cream inner ring; green marks the 2nd and 3rd place rings; red marks the top-spot ring and the host-view overdue edge. Flight faces are never red or green."
 - **Motion:** "No animation library. Per-cell motion is CSS on `transform` and `opacity` only, driven by `cellMoments` so nothing animates on mount; the one JS tween is the reveal's dart path (`requestAnimationFrame`). Everything honours `prefers-reduced-motion` (instant, or a fade of at most 150 ms)."
 - **Selected cells:** "Selected cells show the four ink corner brackets, number at weight 600; 700 is not loaded."
-- **Fonts:** `next/font/google` Barlow (400, 500, 600), Barlow Condensed (600) and Big Shoulders Display (800): five files. The BLOCKED: fonts rule applies to all three families.
+- **Fonts:** `next/font/google` Barlow (400, 500, 600), Barlow Condensed (600) and Big Shoulders (one variable file with the `opsz` axis, used at weight 800 with the Display cut pinned by `font-variation-settings: "opsz" 72`, not preloaded; recorded ruling 11): five files. The BLOCKED: fonts rule applies to all three families.
 - **Host profile public data** gains the host record counts (spec §9) and the kit.
 - **Tokens:** board tokens are new names (`--board-wall`, `--board-wall-2`, `--board-cream`, `--board-cream-2`, `--board-ink`, `--board-ink-2`, `--board-steel`, `--board-ring`, `--board-text`, `--board-text-2`, `--board-text-3`, `--lamp-0` … `--lamp-4`, `--kit-dark`, `--kit-light`) in `src/app/tokens.css`; no existing token changes value; `--paper` stays `#F6F5F1`.
-- **Copy:** the count everywhere is "N to go"; "19 of 50 left", "Filling fast", "Almost full", "You hold …" are retired; no caps chips; "the host's", never "his"; state words never in JSX text; "hot", "cold", "streak", "level", "lucky", "winnings", "You won" never appear (copy audit, Task 17).
+- **Copy:** the count everywhere is "N to go"; "19 of 50 left", "Filling fast", "Almost full", "You hold …" are retired; no caps chips; "the host's", never "his"; state words never in JSX text; the heat words (hot, heat, warm, fire, cold, on fire, filling fast), streak, level, "lucky colour", winnings, "You won" never appear (copy audit, Task 17).
 
 Added for this plan:
 
@@ -35,10 +35,10 @@ Added for this plan:
 ## Review Focus
 
 1. **A stranger can never reconstruct a buyer.** For an open break where alice holds a sent line, an overdue line and a bonus line, the anonymous and signed-in-non-holder views of `shapeGrid` carry `flight: null` and `holder: null` on every cell; `ogModel` output contains no "alice", no user id and no flight key; the feed and landing payloads contain no flight. A holder's view carries alice's flight but her handle only in the popover data the first design already allows. Tests in Task 5 (`grid.test.ts` "sets a flight exactly where it sets a holder"; `og.test.ts` "has no flight key"; `feed.test.ts` "carries kit and heat and no flight") and the Task 20 e2e privacy assertion.
-2. **Nothing animates on mount or on a view switch.** A buyer who holds no line loads a part-filled board (kit view), claims two lines, and the page re-renders in the member view: `cellMoments` yields a "drop" for exactly the two claimed cells and "still" for every other cell, including the twelve cells that changed from kit faces to flight faces. A refresh with four new third-party claims yields four "others-in" and nothing else; a refresh with nine yields eight "others-in" and one "still" (the cap). Tests in Task 9 (`cell-moments.test.ts`) and the Task 20 e2e ("the first claim as a stranger animates only the claimed cells").
+2. **Nothing animates on mount or on a view switch.** A buyer who holds no line loads a part-filled board (kit view), claims two lines, and the page re-renders in the member view: `cellMoments` yields a "drop" for exactly the two claimed cells and "still" for every other cell, including the twelve cells that changed from kit faces to flight faces. A refresh with four new third-party claims yields four "others-in" and nothing else; a refresh with nine yields eight "others-in" and one "still" (the cap). Tests in Task 9 (`cell-moments.test.ts`), Task 11a (`board-moments.test.ts`: the drop lands whichever renders first, the refreshed props or the claim's answer) and the Task 20 e2e ("the first claim as a stranger animates only the claimed cells").
 3. **Every flight face reads at 5:1 or better against its number ink, at every cell size.** `flights.test.ts` (Task 2) computes the contrast of all eight faces against their ink and fails below 5.0; `tokens.test.ts` (Task 1) pins cream text on the wall at 8:1 and the steel wire at 3:1 on cream. Render tests (Task 7) check that the number ink switches per tier.
-4. **The reveal's totals and order.** `reveal-plan.ts` (Task 12) returns the timeline for one, two and three prizes: set-up at most 1.8 s, order 3rd → 2nd → top, beats 300 / 300 / 800 ms, one prize about 1.6 s and three about 4.2 s after the read-out, Skip ending it within one frame with every bull in the DOM; the deal layer `aria-hidden`; the calls announced politely; no candidate number ever cycles (the chips appear once each, in order, and never change). Tests pin the totals and the order; the e2e checks Skip and Replay.
-5. **The board at 50 lines on a 390 × 664 phone.** Eight columns of 44.75 px cells inside the 12 px frame drawn into the gutters; the won cell under 56 px uses the 26 px disc, 10 px glyph and 14 px top-spot number; the sticky bar and the "You have …" line stay in their budget. Render tests at 390 and 360 widths (Task 8) and the `/dev/components` density check in the Task 20 e2e.
+4. **The reveal's totals and order.** `reveal-plan.ts` (Task 12a) returns the timeline for one, two and three prizes: set-up at most 1.8 s, order 3rd → 2nd → top, beats 300 / 300 / 800 ms, one prize about 1.6 s and three about 4.2 s after the read-out, Skip jumping to the final state with every bull in the DOM and the house lights lifted in one fade of at most 150 ms (`--dur-reduced`); the deal layer `aria-hidden`; the calls announced politely; no candidate number ever cycles (the chips appear once each, in order, and never change). Tests in Task 12a pin the totals, the order and the caller copy set; the Task 12b e2e (journey 2) checks Skip, Replay, the polite call and the chips.
+5. **The board at 50 lines on a 390 × 664 phone.** The board is 365 px wide (3.5 px into each gutter): eight 44.75 px cells on 1 px wires, a 45.75 px pitch, and the 12 px frame stack 15.5 px into the 16 px gutter, with nothing scrolling sideways (recorded ruling 33); the won cell under 56 px uses the 26 px disc, 10 px glyph and 14 px top-spot number; the sticky bar and the "You have …" line stay in their budget. Render and geometry tests at 390 and 360 widths (Task 8) and the `/dev/components` density check in the Task 20 e2e (the cell at 44 px or more, the pitch 45.75).
 
 ## Cross-task contracts (every writer and implementer uses these names)
 
@@ -59,7 +59,7 @@ export function flightOf(u: { flightColour: string; flightShape: string }): Flig
 export type HeatStep = 0 | 1 | 2 | 3 | 4;
 export function heatStep(open: number, total: number, closed: boolean): HeatStep;
 export const LAMP: Record<HeatStep, string>; // the five rgba strings of spec §4
-export const TOKENS: { boardWall: "#17161A"; boardCream: "#FBF7EE"; boardInk: "#15130F"; boardSteel: "#7A7D84"; boardRing: "#0F0E0C"; /* … every board hex once */ };
+export const TOKENS: { readonly boardWall: "#17161A"; readonly boardWall2: "#221F26"; readonly boardCream: "#FBF7EE"; readonly boardCream2: "#EEE8DA"; readonly boardInk: "#15130F"; readonly boardInk2: "#5A5246"; readonly boardSteel: "#7A7D84"; readonly boardRing: "#0F0E0C"; readonly boardText2: "#D4CEC3"; readonly boardText3: "#B3ADA3"; readonly red: "#C8102E"; readonly green: "#1E7A4C" }; // as written in Task 2 Step 3
 
 // src/domain/breaks/grid.ts (Task 5): GridCell gains
 flight: Flight | null;      // set under exactly the condition that sets holder
@@ -70,28 +70,28 @@ kit: Kit; heat: HeatStep;
 kit: Kit; heat: HeatStep; cells: { number: number; tone: OgTone; place?: 1 | 2 | 3 }[]; hostedBy: string; // hostedBy from Task 14
 // ogModel(page: OgPage, now, draw?: OgDraw | null): OgPage is line state only, with optional `places` (Task 5); OgDraw = { ranAt } (Task 14)
 
-// src/domain/users/commands.ts (Task 4)
+// src/domain/users/commands.ts (Task 4b)
 updateFlight(tx, caller, { colour: FlightColour; shape: FlightShape }): Promise<void>;   // event user.profile_updated { changed: ["flight"] }
-// src/domain/breaks/commands.ts (Task 4, beside savePaymentHandles)
+// src/domain/breaks/commands.ts (Task 4b, beside savePaymentHandles)
 updateHostKit(tx, caller, { dark: FlightColour; light: FlightColour }): Promise<void>;  // event host.profile_updated { changed: ["kit"] }
 // Events carry the changed field names, never the values (recorded ruling 10).
 
-// src/domain/draws/places.ts (Task 6; Tasks 12, 14 and 15 import it)
+// src/domain/draws/places.ts (Task 6; Tasks 12a, 12b, 13, 14 and 15a import it)
 export type Place = 1 | 2 | 3;
 export function placesOf(ranking: readonly number[], prizeRanks: readonly number[]): { number: number; place: Place }[];
 
-// src/components/grid/cell-moments.ts (Task 9)
+// src/components/grid/cell-moments.ts (Task 9; Task 11a's boardMoments wraps GridCell[] with cellViews before calling it)
 export type CellMoment = "drop" | "others-in" | "sent" | "paid" | "paid-undo" | "release" | "sniped" | "still";
 export function cellMoments(prev: readonly CellView[], next: readonly CellView[], o: { view: "member" | "kit"; prevView: "member" | "kit"; mine: readonly number[] }): Map<number, CellMoment>;
 // caps: at most 5 "drop" and 5 "sent", at most 8 "others-in", "paid", "paid-undo", "release" and "sniped" per diff, 8 cells in all (the
 // viewer's own first); a line-count change and any unlisted transition return "still"; across a view change only the viewer's own
 // "drop" (kit to member) and own "release" (member to kit) play (recorded ruling 21).
 
-// src/app/b/[id]/result/reveal-plan.ts (Task 12)
+// src/app/b/[id]/result/reveal-plan.ts (Task 12a)
 export type RevealStep = { at: number; kind: "lights-down" | "chip" | "beat" | "throw" | "land" | "call" | "lights-up"; number?: number; place?: 1 | 2 | 3 };
-export function revealPlan(order: readonly number[], places: 1 | 2 | 3, tokens?: DurationTokens): { steps: RevealStep[]; total: number }; // tokens default MOTION
+export function revealPlan(order: readonly number[], places: readonly Place[], tokens?: DurationTokens): { steps: RevealStep[]; total: number }; // places: the prize places from placesOf; tokens default MOTION
 
-// src/lib/motion.ts (Task 11): MOTION (ms numbers, one per token below), EASE, MOTION_VAR, EASE_VAR, prefersReducedMotion()
+// src/lib/motion.ts (Task 11a): MOTION (ms numbers, one per token below), EASE, MOTION_VAR, EASE_VAR, prefersReducedMotion()
 export type DurationTokens = { readonly [K in keyof typeof MOTION]: number };
 
 // Motion tokens (spec §4 "Space, shape, motion"; CSS custom properties on :root, shipped by Task 1):
@@ -104,7 +104,8 @@ export type DurationTokens = { readonly [K in keyof typeof MOTION]: number };
 // The read-out chips are min(30, 1500 / lines) ms apart, computed in reveal-plan.ts (not a token).
 
 // Test ids (new): board-frame, lamp, legend, you-have, deal, caller, reveal-skip, reveal-replay, flight-picker,
-// flight-<colour>-<shape>, kit-picker, kit-<dark>-<light>, host-record, flight-line (the "This is your flight" line).
+// flight-<colour>-<shape>, kit-picker, kit-<dark>-<light>, host-record, flight-line (the "This is your flight" line),
+// pay-within (the pay sheet's "Pay within 24 hours.").
 // Cells keep cell-<n> and data-state; your own cells carry data-mine="true"; member-view cells add
 // data-flight="<colour>-<shape>"; won cells carry data-won="1|2|3" (introduced by Task 7).
 // Migration 0004 columns: users.flight_colour text NOT NULL, users.flight_shape text NOT NULL, users.flight_chosen_at
@@ -123,26 +124,34 @@ export type DurationTokens = { readonly [K in keyof typeof MOTION]: number };
 8. Fix loops for render tests, axe and the copy audit: one round, then record and move on (Plan B rule).
 9. Kit columns and type use dark/light: `host_profiles.kit_dark` / `kit_light`, Drizzle `kitDark` / `kitLight`, `Kit = { dark, light }`, form fields `kitDark` / `kitLight`; the spec's §10 is amended to match.
 10. Events carry changed-field names, never values: a flight change appends `user.profile_updated { changed: ["flight"] }`, a kit change `host.profile_updated { changed: ["kit"] }`.
-11. Big Shoulders is one variable file: `Big_Shoulders` (next/font/google's export; there is no `Big_Shoulders_Display`) with `weight: "variable"` and `axes: ["opsz"]` (next/font accepts axes only on the variable weight), `preload: false`, `font-optical-sizing: auto`, and weight 800 set where it is used, so large titles get the Display cut. One file: the five-file budget holds.
-12. The wall is opt-in: `data-wall` on a route's `<main>`, switched on by the task that restyles the route (Task 8 the break page, Task 13 the result page, Task 15 the feed, the landing page and the host profile).
+11. Big Shoulders is one variable file: `Big_Shoulders` (next/font/google's export; there is no `Big_Shoulders_Display`) with `weight: "variable"` and `axes: ["opsz"]` (next/font accepts axes only on the variable weight), `preload: false`, and weight 800 set where it is used. The Display cut is pinned with `font-variation-settings: "opsz" 72` (the axis maximum) on `.font-shoulders` and `.caller-banner`, so the 22 px count and the 26 px caller are drawn in the same cut as the titles; there is no `font-optical-sizing: auto`. The link preview fetches the same cut as a static TTF (`opsz,wght@72,800`). One file: the five-file budget holds. The spec's §4 type line is amended to "one variable file, Display cut pinned, not preloaded" (panel fix ruling 2).
+12. The wall is opt-in: `data-wall` on a route's `<main>`, switched on by the task that restyles the route (Task 8 the break page, Task 13 the result page, Task 15a the feed and the landing page, Task 15b the host profile). The same task exports `viewport = wallViewport` from that route, so the browser chrome changes with the page and Tasks 1 to 3 leave every route's chrome as it is (panel fix ruling 15). On wall routes the shared footer takes `--board-text-2` (Task 1, panel fix ruling 18).
 13. The place rings on the cream disc are non-text marks: the 3:1 floor applies (green measures 4.98:1).
 14. The collision rule takes the next shape cyclically from the holder's own in standard, pear, kite, slim; holders are ordered by their earliest `claimed_at` in the break, ties by owner id.
 15. Error copy: "Choose one of the 32 flights", "Choose a dark colour and a light colour for your kit", "Only hosts have a kit". Shape labels: "Standard", "Kite", "Slim", "Pear".
 16. Migration 0004 has no hand SQL for the random defaults (Postgres evaluates the volatile column default once per existing row, pinned by a test); the re-declared `draws_update_guard` allowing `verified_at` is its one hand SQL. `finaliseDraw` sets `verified_at` when it records a draw; `scripts/verify-draws.ts` backfills.
 17. Places: `placesOf(ranking, prizeRanks)` (`src/domain/draws/places.ts`, Task 6) returns every prize rank of 1, 2 or 3 the break has with its line `ranking[rank - 1]`; a place with no prize is skipped. Task 5 carries the kit and heat on `listFeed` and the kit on `hostProfile`; Task 6 adds `latestRanBreak`'s places, kit, heat and cells, and pins the page model end to end.
 18. The board: the frame wraps lines 1..N only; the bonus row is wired but unframed, its label 24 px under the board. The lamp reaches 32 px above and below and 16 px to each side (`LAMP_POSITION`, Task 8), 12 px on thumbnails; it is one fixed gradient whose step is its opacity, owned by `Grid` (`heat`, test id `lamp`).
-19. Cell details: the 3rd-place dashed ring is four 60° arcs with 30° gaps; the cream glyph knockout is drawn on hatched cells only; your own won line keeps the yours ring and is named "Line 23, yours, top spot"; the sent mark sits 11 px below the centre; the number and the glyph sit at z-index 1 (the house-lights dim at 2, your own glyphs at 3 while it is down). Cell attributes: Task 3's `data-state`, `data-face`, `data-mine`, `data-bonus`, `data-overdue`, `data-selected`, `data-struck`, `data-ink` and `data-mark`, plus Task 7's `data-size`, `data-won`, `data-flight`, `data-glyph`, `data-ring`, `data-place` and the `bc-*` layer classes.
-20. Legends and thumbnails: legend mini cells are 16 px, drawn in the viewer's first held flight (a host or admin with no line: a standard flight in the kit's dark colour). Board thumbnails (`GridPreview`) and card thumbnails (`KitThumb`, 96 and 112 px, the link preview's solid drawing) show no number, glyph or hatch: claimed cells carry a kit-light band, paid cells are kit dark, won cells are black with a cream disc at 48 %. Feed cards get no card face; the profile shows a decorative 16-cell open board at lamp step 0.
+19. Cell details: the 3rd-place dashed ring is four 60° arcs with 30° gaps; the cream glyph knockout is drawn on hatched cells only (a cream halo would show on paid and won faces; the spec's §5 "every glyph" is read as every glyph on the hatch); a won cell is named by its place alone, yours included ("Line 23, top spot", as spec §5 lists the names), and draws no yours ring (the bull and its place ring are its only extra mark; panel fix ruling 3); the sent mark sits 11 px below the centre; the number and the glyph sit at z-index 1 (the house-lights dim at 2, your own glyphs at 3 while it is down). Cell attributes: Task 3's `data-state`, `data-face`, `data-mine`, `data-bonus`, `data-overdue`, `data-selected`, `data-struck`, `data-ink` and `data-mark`, plus Task 7's `data-size`, `data-won`, `data-flight`, `data-glyph`, `data-ring`, `data-place` and the `bc-*` layer classes.
+20. Legends and thumbnails: legend mini cells are 16 px, drawn in the viewer's first held flight, else the viewer's stored flight (Task 16; a host or admin with no line here sees their own colour); a standard flight in the kit's dark colour only when there is no flight at all. Board thumbnails (`GridPreview`) and card thumbnails (`KitThumb`, 96 and 112 px, the link preview's solid drawing) show no number, glyph or hatch: claimed cells carry a kit-light band, paid cells are kit dark, won cells are black with a cream disc at 48 %. Feed cards get no card face; the profile shows a decorative 16-cell open board at lamp step 0.
 21. Moments: per-moment caps plus at most 8 cells at once, the viewer's own first; across a view change only the viewer's own drop (kit to member) and own release (member to kit) play. When the viewer's own last line goes, the released cells drain over `--dur-release` first, then the board re-renders in the kit view, still. The glint starts at landing; the pay sheet opens at the last landing or at 400 ms (the cap is kept in code and tests); the claim announcement says the provisional amount; "Board's full. Game on." renders only after hydration.
-22. The caller banner is in flow: between the board and the legend on the break page, in a slot under the board on the result page; it drops 24 px on `--ease-over`; a banner that is not a call has a `--kit-dark` rule; a winner with no handle is called "Line 23 takes the top spot."; the result board's group label is "Lines".
-23. The claim bar: "N to go" only while the break is open, the status pill on every bar; the Grid | List toggle sits under the "You have …" line; "Pay within 24 hours." leaves the media row and nothing is added to the pay sheet; `leftText` stays for the feed card and the OG caption until Tasks 15 and 14; `toGoText` lives in `frame-copy.ts` (Task 10); the bar is fed `shownOpen` from Task 11 on.
+22. The caller banner is in flow: between the board and the legend on the break page, in a slot under the board on the result page; it drops 24 px on `--ease-over`; a banner that is not a call has a `--kit-dark` rule; the caller copy set is closed: every call names the entry's `handleAtDraw` (every member has a handle after onboarding), and there is no handle-less call (panel fix ruling 3); the result board's group label is "Lines".
+23. The claim bar: "N to go" only while the break is open, the status pill on every bar; the Grid | List toggle sits under the "You have …" line; "Pay within 24 hours." leaves the media row and moves to the pay sheet's pay block, above the absolute deadline (spec §8, §1.1; Task 11b; panel fix ruling 1); `leftText` stays for the feed card and the OG caption until Tasks 15a and 14; `toGoText` lives in `frame-copy.ts` (Task 10); the bar is fed `shownOpen` from Task 11a on.
 24. Paper stays paper: `MiniCells` (ledger, pay sheet) keep the first design's cell, moved verbatim to `PaperCell` (Task 7); `/me` draws your lines with the board `Cell` on the steel wire (`--wire-strong` overridden on the card, Task 18).
-25. The link preview: no PNG byte snapshots (they differ across platforms). Task 14 pins `ogModel`'s JSON per status and kit, the route's 200 with a 1200 × 630 PNG (IHDR) for each status and its 404 for a draft; one PNG per status goes to `.superpowers/` for a by-eye check and is never committed. The double ring is two bands of `max(2, round(0.05 × cell))` with a `max(1, round(w / 2))` cream gap; the "Ran Oct 14" date is formatted in `DEFAULT_TZ`. Captions: "12 to go, $5 a line", "Ran Oct 14. Anyone can check the draw.".
+25. The link preview: no PNG byte snapshots (they differ across platforms). Task 14 pins `ogModel`'s JSON per status and kit, the route's 200 with a 1200 × 630 PNG (IHDR) for each status and its 404 for a draft; one PNG per status and kit (the default and one other) goes to `.superpowers/` for a by-eye check and is never committed. The double ring is two bands of `max(2, round(0.05 × cell))` with a `max(1, round(w / 2))` cream gap; the "Ran Oct 14" date is formatted in `DEFAULT_TZ`. Captions: "12 to go, $5 a line", "Ran Oct 14. Anyone can check the draw.".
 26. `/account`: the 88 px preview cell shows Paid; the kit picker is two radio groups (`kitDark`, `kitLight`) with `kit-<dark>-<light>` on the framed four-cell preview (open, taken, paid, top spot); the `/host/new` nudge reads "Your boards wear the default kit, Blue with Yellow. Choose a kit in your account."; "This is your flight" shows while `flight_chosen_at` is null and the viewer held no line in the break before the claim (nothing new is stored).
-27. The host record: "41 breaks run since Mar 2026. 40 draws verified." (`formatMonthYear`), "No breaks run yet." at zero, the verified count always shown; the profile drops "New host" (cards and the break page keep it); the ledger header gains the record (Task 15).
-28. The feed: `FEED_CHIPS = ["newest", "almost"]`, the domain's `filling` sort left unused; the copy audit reads "near a kit" as the same copy segment or within two segments of it, and bans caps words with two allowlisted entries.
+27. The host record: "41 breaks run since Mar 2026. 40 draws verified." (`formatMonthYear`), "No breaks run yet." at zero, the verified count always shown; the profile drops "New host" (cards and the break page keep it); the ledger header gains the record (Task 15b).
+28. The feed: `FEED_CHIPS = ["newest", "almost"]`, the domain's `filling` sort left unused; the copy audit reads "near a kit" as the same copy segment or within two segments of it, and bans caps words with four allowlisted entries, each with its reason (share text's `CLOSED` idiom, `NFKC` in `handle-field-copy.ts`, the `en-US` locale tag, `SHA-256` and `HMAC` on the draw explainer).
 29. `/me`: "Unpaid." cards on a break that no longer asks for money say "Line 5 is not marked paid. Ask Jim about it."; Earlier is the plain history; `MyBreakCard`'s error, offline and disabled states are recorded as out of reach of render tests.
 30. `/dev/components` opens in production only with `E2E_SECRET`; this plan's deferred-findings file is created by the first task that records into it; every Plan B amendment ends "(Amended by Plan C, Mosaic spec §1.1.)".
+31. `updateHostKit` admits hosts and admins: admins may host, as `createDraft` already allows. The spec's §10 says "(host role)"; the owner confirms or amends it.
+32. The `/host/new` composer's preview (`GridPreview`) becomes the kit thumbnail with the board (Task 8): the one paper surface that changes, on purpose, so the host previews the board in the kit it opens in.
+33. The board at 390 is 365 px wide: the rows take `margin-inline: -3.5px` on the 358 px column, giving eight 44.75 px cells on 1 px wires (a 45.75 px pitch), and the 12 px frame stack sits 15.5 px into the 16 px gutter. The 44 pt floor is kept honestly. `columnsFor` and the group's container queries read the column, so 360 wide keeps seven columns (47 px cells). The spec's §5 "Grid" sentence is amended to match (panel fix ruling 8).
+34. Claim moments: the island records the pending claim (its numbers, or null for a random claim) before the action is called (`useClaim`'s `onStart`), so the drop never depends on whether the refreshed props or the action's answer renders first; `boardMoments` wraps `GridCell[]` with `cellViews` before `cellMoments` (panel fix ruling 9).
+35. Skip jumps to the final state and lifts the house lights with one fade of at most `--dur-reduced` (150 ms, `data-skip`), as spec §7's reduced-motion cap requires (panel fix ruling 4). The read-out chips stay under the board as the scorer's column once the reveal has played.
+36. The §11 budget is measured in Task 20 against the build this plan started from: at most 6 KB more CSS and 2 KB more JS, gzip; the numbers go in the deferred-findings file (panel fix ruling 5).
+37. The §7 never list: each item that a test can see has one (Task 11b and Task 12b: one board class, only the targeted cell animates, the chips never change, the reveal leaves no residue, every banner is in the caller copy set); the rest is a reviewer checklist line in the gate step of Tasks 11b and 12b (panel fix ruling 6).
+38. Process: Tasks 4, 11, 12 and 15 are split into halves (4a/4b, 11a/11b, 12a/12b, 15a/15b); an Opus review is a controller note under the task heading ("Reviewer: Opus"), never an implementer step; every database test run and every gate line runs with the sandbox off; Task 20 runs on Opus (panel fix rulings 11, 12, 16).
 
 ## Before any task
 
@@ -157,31 +166,35 @@ As Plan B's "Before any task", with `breaks_e2e` now required from Task 1 on (it
 | 1 | Board tokens, fonts, theme-color | Sonnet | – |
 | 2 | `flights.ts` with contrast and heat tests | Opus | – |
 | 3 | Test selectors to `data-*` | Sonnet | – |
-| 4 | Migration 0004, `updateFlight`, `updateHostKit`, `verify-draws` | Opus | 2 |
-| 5 | The holder gate: `GridCell.flight`, kit and heat in models, `ogModel`, privacy tests | Opus | 2, 4 |
-| 6 | Kit and heat through the feed, host profile, landing | Sonnet (Opus review) | 5 |
+| 4a | Migration 0004, the random flight defaults, `draws.verified_at`, `verify-draws` | Opus | 2 |
+| 4b | `updateFlight`, `updateHostKit` and the form parsers | Opus | 2, 4a |
+| 5 | The holder gate: `GridCell.flight`, kit and heat in models, `ogModel`, privacy tests | Opus | 2, 4a |
+| 6 | Landing hero, `placesOf`, the page-model test | Sonnet (Opus review) | 5 |
 | 7 | Cell: every state, glyphs, inks, overlay face, ring, bull | Opus | 1, 2, 3, 5 |
-| 8 | Grid frame, surround, lamp, legends, density tests | Sonnet | 7 |
+| 8 | Grid frame, surround, lamp, legends, density tests | Sonnet (Opus review of the view wiring) | 7 |
 | 9 | `cellMoments` diff | Opus | 5 |
 | 10 | Claim bar: "12 to go", media row, "You have …" line | Sonnet | 8 |
-| 11 | Claim moments on `cellMoments` | Opus | 7, 9, 10 |
-| 12 | The reveal rewrite + `reveal-plan.ts` | Opus | 7, 8, 11 |
-| 13 | Result page and copy | Sonnet | 12 |
-| 14 | OG route in the kit view with heat | Opus | 5, 6, 12 |
-| 15 | Feed cards, sort chips, landing hero, host profile record and framing | Sonnet (Opus review of the host record) | 6, 8 |
-| 16 | `/account` flight and kit pickers, `/host/new` nudge, "This is your flight" | Sonnet (Opus review) | 4, 7 |
-| 17 | Copy audit pass | Sonnet (Opus review) | 10, 13, 15, 16 |
-| 18 | `/me` member view and history | Sonnet | 7, 11 |
+| 11a | Claim moments on `cellMoments`: press, drop, glint, others in, sent, paid, paid undone | Opus | 7, 9, 10 |
+| 11b | Release drain, sniped strike, the lamp's step down, Board fills, "Pay within 24 hours." | Opus | 11a |
+| 12a | The reveal's timeline: `reveal-plan.ts`, the places, the read-out, the house lights | Opus | 6, 7, 11a |
+| 12b | The reveal on the board: the dart, the bulls, the caller, Skip and Replay, Draw starts | Opus | 6, 8, 11b, 12a |
+| 13 | Result page and copy | Sonnet | 12b |
+| 14 | OG route in the kit view with heat | Opus | 5, 6, 12b |
+| 15a | Feed cards, sort chips and the landing hero on the wall | Sonnet | 6, 8, 10 |
+| 15b | The host record and kit framing on the profile and the ledger header | Opus | 4a, 6, 8, 10, 15a |
+| 16 | `/account` flight and kit pickers, `/host/new` nudge, "This is your flight" | Sonnet (Opus review) | 4a, 4b, 7, 8, 11b, 12a |
+| 17 | Copy audit pass | Sonnet (Opus review) | 10, 13, 15b, 16 |
+| 18 | `/me` member view and history | Sonnet | 7, 11b, 16 |
 | 19 | Docs: constraint amendments, "superseded" notes, README | Sonnet | all |
-| 20 | E2E: participant and stranger views, `/account`, axe, journey 2, fixtures | Sonnet | all |
+| 20 | E2E: participant and stranger views, `/account`, axe, journey 2, fixtures, the budget | Opus | all |
 
-Tasks 5 and 6 split the public kit and heat (recorded ruling 17): Task 5 carries them on `listFeed`, `hostProfile` and the grid model with the privacy tests; Task 6 adds the landing hero's places, kit, heat and cells, creates `placesOf`, and pins the break page model end to end.
+Tasks 5 and 6 split the public kit and heat (recorded ruling 17): Task 5 carries them on `listFeed`, `hostProfile` and the grid model with the privacy tests; Task 6 adds the landing hero's places, kit, heat and cells, creates `placesOf`, and pins the break page model end to end. Tasks 4, 11, 12 and 15 run as halves, each with its own commit and gates (recorded ruling 38): 24 tasks in all. A task marked "(Opus review)" carries a "Reviewer: Opus" note under its heading for the controller.
 
 <!-- TASKS:BEGIN -->
 
 ### Task 1: Board tokens, fonts, theme-color (model: Sonnet)
 
-The Mosaic board needs its own colours, the lamp's five steps, the default kit, the motion tokens, a fifth font file and a `theme-color` that follows the route, all without changing a single existing value. This task adds the board tokens to `tokens.css` under new names with the values of spec §4, maps the colours, the display face and the four display sizes through `@theme inline`, pins every new pair the spec states (cream text on the wall at 8:1 or more, the steel wire at 3:1 or more on the wall and on cream), loads Big Shoulders 800 as the fifth file, and gives the five wall routes (spec §8: `/b/{id}`, `/b/{id}/result`, `/breaks`, `/`, `/h/{handle}`) the wall's `theme-color` while every other route keeps paper. The wall background is a CSS rule that a route turns on with `data-wall`; the restyling tasks turn it on (recorded ruling 12). Nothing looks different yet, apart from the browser chrome on the wall routes.
+The Mosaic board needs its own colours, the lamp's five steps, the default kit, the motion tokens, a fifth font file and a `theme-color` that follows the route, all without changing a single existing value. This task adds the board tokens to `tokens.css` under new names with the values of spec §4, maps the colours, the display face and the four display sizes through `@theme inline`, pins every new pair the spec states (cream text on the wall at 8:1 or more, the steel wire at 3:1 or more on the wall and on cream), loads Big Shoulders 800 as the fifth file with its Display cut pinned, and ships `wallViewport`, the wall's `theme-color`, for the five wall routes (spec §8: `/b/{id}`, `/b/{id}/result`, `/breaks`, `/`, `/h/{handle}`), while the root layout keeps paper's. The wall background is a CSS rule that a route turns on with `data-wall`; the restyling tasks turn it on and export `viewport = wallViewport` in the same commit (recorded ruling 12: Task 8 the break page, Task 13 the result page, Task 15a the feed and the landing page, Task 15b the host profile), so Tasks 1 to 3 leave every route's browser chrome as it is. The footer takes `--board-text-2` on wall routes so it keeps its contrast there. Nothing looks different yet.
 
 **Files:**
 - Modify: `src/app/tokens.css` (board tokens, lamp, kit, motion; `@theme inline` mappings)
@@ -189,8 +202,7 @@ The Mosaic board needs its own colours, the lamp's five steps, the default kit, 
 - Modify: `src/app/fonts.ts` (`bigShoulders`)
 - Create: `src/app/wall.ts`
 - Modify: `src/app/layout.tsx` (font variable, `PAPER_THEME_COLOR`, body without `bg-paper`)
-- Modify: `src/app/globals.css` (the `data-wall` rule)
-- Modify: `src/app/page.tsx`, `src/app/breaks/page.tsx`, `src/app/b/[id]/page.tsx`, `src/app/b/[id]/result/page.tsx`, `src/app/h/[handle]/page.tsx` (`viewport` export)
+- Modify: `src/app/globals.css` (the `data-wall` rule, the wall footer, the pinned Display cut)
 - Modify: `e2e/layout.spec.ts` (one test)
 
 **Interfaces:**
@@ -199,25 +211,26 @@ The Mosaic board needs its own colours, the lamp's five steps, the default kit, 
   - Tokens on `:root`: `--board-wall` `#17161A`, `--board-wall-2` `#221F26`, `--board-cream` `#FBF7EE`, `--board-cream-2` `#EEE8DA`, `--board-ink` `#15130F`, `--board-ink-2` `#5A5246`, `--board-steel` `#7A7D84`, `--board-ring` `#0F0E0C`, `--board-text` `var(--board-cream)`, `--board-text-2` `#D4CEC3`, `--board-text-3` `#B3ADA3`, `--lamp-0` … `--lamp-4`, `--kit-dark` `#2340C4`, `--kit-light` `#F7C51B` (the default kit, Blue with Yellow; set per break later), and the spec §4 motion tokens.
   - `@theme inline`: `--color-board-*`, `--color-kit-dark`, `--color-kit-light`, `--font-shoulders`, `--text-wall-title`, `--text-caller`, `--text-checkout`, `--text-wall-display`.
   - `src/app/fonts.ts`: `bigShoulders` (`Big_Shoulders`, one variable file with `weight: "variable"` and `axes: ["opsz"]`, latin, `display: "swap"`, `preload: false`, variable `--font-big-shoulders`); every use sets weight 800 (recorded ruling 11).
-  - `globals.css`: `html { font-optical-sizing: auto; }`, so large Big Shoulders titles take the Display cut.
-  - `src/app/wall.ts`: `WALL_THEME_COLOR = "#17161A"`, `PAPER_THEME_COLOR = "#F6F5F1"`, `wallViewport: Viewport = { themeColor: WALL_THEME_COLOR }`.
-  - `globals.css`: `html:has([data-wall]), html:has([data-wall]) body { background-color: var(--board-wall); }`.
+  - `globals.css`: `.font-shoulders, .caller-banner { font-variation-settings: "opsz" 72; font-weight: 800; }`, so every Big Shoulders title, count and call is drawn in the Display cut (72 is the axis maximum Step 1 prints; recorded ruling 11). No `font-optical-sizing` rule.
+  - `src/app/wall.ts`: `WALL_THEME_COLOR = "#17161A"`, `PAPER_THEME_COLOR = "#F6F5F1"`, `wallViewport: Viewport = { themeColor: WALL_THEME_COLOR }`. No route exports it in this task.
+  - `globals.css`: `html:has([data-wall]), html:has([data-wall]) body { background-color: var(--board-wall); }` and `html:has([data-wall]) footer { color: var(--board-text-2); }`.
+  - `e2e/layout.spec.ts`: the test "theme-color is the wall on wall routes and paper elsewhere (Mosaic §8)" with its `const wall: string[] = [];` list, which Tasks 8, 15a and 15b fill.
 
 - [ ] **Step 1: Confirm the Big Shoulders export name before anything else**
 
 Spec §4 asks for this first, because Google reorganised the family.
 
-Run: `node -e 'const d=require("./node_modules/next/dist/compiled/@next/font/dist/google/font-data.json");console.log(Object.keys(d).filter((k)=>k.startsWith("Big Shoulders")).join("|"));console.log(JSON.stringify(d["Big Shoulders"].weights), JSON.stringify(d["Big Shoulders"].axes.map((a)=>a.tag)))' && grep -c "export declare function Big_Shoulders<" node_modules/next/dist/compiled/@next/font/dist/google/index.d.ts`
+Run: `node -e 'const d=require("./node_modules/next/dist/compiled/@next/font/dist/google/font-data.json");console.log(Object.keys(d).filter((k)=>k.startsWith("Big Shoulders")).join("|"));console.log(JSON.stringify(d["Big Shoulders"].weights), JSON.stringify(d["Big Shoulders"].axes.map((a)=>`${a.tag}:${a.min}-${a.max}`)))' && grep -c "export declare function Big_Shoulders<" node_modules/next/dist/compiled/@next/font/dist/google/index.d.ts`
 
 Expected:
 
 ```
 Big Shoulders|Big Shoulders Inline|Big Shoulders Stencil
-["100","200","300","400","500","600","700","800","900","variable"] ["opsz","wght"]
+["100","200","300","400","500","600","700","800","900","variable"] ["opsz:10-72","wght:100-900"]
 1
 ```
 
-So the export is `Big_Shoulders`, it is a variable family with an `opsz` axis (weight 800 inside its range), and there is no `Big_Shoulders_Display` (recorded ruling 11). If the first line lists `Big Shoulders Display`, or `"variable"` or `opsz` is missing, stop and report BLOCKED: fonts.
+So the export is `Big_Shoulders`, it is a variable family with an `opsz` axis from 10 to 72 (weight 800 inside its range), and there is no `Big_Shoulders_Display` (recorded ruling 11). The Display cut is the axis maximum, 72: Step 8 pins it, and Task 14 Step 1 requests the same value for the link preview's file. If the first line lists `Big Shoulders Display`, or `"variable"` or `opsz` is missing, stop and report BLOCKED: fonts. If the `opsz` maximum is not 72, use the printed maximum wherever this plan writes `"opsz" 72` or `opsz,wght@72,800`, and report the difference.
 
 - [ ] **Step 2: Create `wall.ts`**
 
@@ -337,8 +350,15 @@ describe("Mosaic board tokens (Mosaic spec §4)", () => {
   it("paints the wall only where a route opts in with data-wall", () => {
     // Later tasks use --board-wall on board layers (the house-lights dim), so count only page backgrounds.
     expect([...globals.matchAll(/background-color: var\(--board-wall\)/g)]).toHaveLength(1);
-    expect(globals).toContain("font-optical-sizing: auto;");
     expect(globals).toMatch(/html:has\(\[data-wall\]\),\s*html:has\(\[data-wall\]\) body\s*\{\s*background-color: var\(--board-wall\);\s*\}/);
+    // The shared footer keeps its contrast on the wall (its text-ink-2 would read about 2.6:1 there).
+    expect(globals).toMatch(/html:has\(\[data-wall\]\) footer\s*\{\s*color: var\(--board-text-2\);\s*\}/);
+  });
+  it("pins Big Shoulders to its Display cut wherever it is drawn (Mosaic §4 type)", () => {
+    // The opsz axis would otherwise follow the font size, and the 22 px count and the 26 px caller would draw an
+    // intermediate cut. 72 is the axis maximum (Step 1).
+    expect(globals).toMatch(/\.font-shoulders,\s*\.caller-banner\s*\{\s*font-variation-settings: "opsz" 72;\s*font-weight: 800;\s*\}/);
+    expect(globals).not.toContain("font-optical-sizing");
   });
   it("sets theme-color to the wall on wall routes and to paper elsewhere", () => {
     expect(WALL_THEME_COLOR).toBe(t["board-wall"]);
@@ -357,7 +377,7 @@ describe("Mosaic board tokens (Mosaic spec §4)", () => {
 - [ ] **Step 4: Run them to see them fail**
 
 Run: `pnpm test src/app/tokens.test.ts`
-Expected: FAIL. The first five tests pass; all eleven "Mosaic board tokens" tests fail: `toMatchObject` reports the missing `board-*` keys, `raw("lamp-0")` and the motion and mapping values are `undefined`, the globals test finds 0 matches, the theme-color test compares `#17161A` with `undefined`, and the fonts test fails on the `Big_Shoulders` regex.
+Expected: FAIL. The first five tests pass; all twelve "Mosaic board tokens" tests fail: `toMatchObject` reports the missing `board-*` keys, `raw("lamp-0")` and the motion and mapping values are `undefined`, the globals test finds 0 matches, the Display-cut test finds no `.font-shoulders` rule, the theme-color test compares `#17161A` with `undefined`, and the fonts test fails on the `Big_Shoulders` regex.
 
 - [ ] **Step 5: Write the tokens**
 
@@ -508,7 +528,8 @@ export const barlow = Barlow({ subsets: ["latin"], weight: ["400", "500", "600"]
 export const barlowCondensed = Barlow_Condensed({ subsets: ["latin"], weight: ["600"], variable: "--font-barlow-condensed", display: "swap" });
 // The fifth file (Mosaic §4). Google folded Big Shoulders Display into Big_Shoulders, one variable family with an opsz
 // axis. next/font takes `axes` only with the variable weight, so this is one variable file; every use sets weight 800,
-// and `font-optical-sizing: auto` (globals.css) gives large titles the Display cut (recorded ruling 11). Not preloaded:
+// and globals.css pins `font-variation-settings: "opsz" 72` on .font-shoulders and .caller-banner, so every size is
+// drawn in the Display cut (recorded ruling 11). Not preloaded:
 // the root layout imports this module, so a preload would reach every route; the file loads where Big Shoulders text
 // first renders, which is the wall routes only.
 export const bigShoulders = Big_Shoulders({ subsets: ["latin"], weight: "variable", axes: ["opsz"], variable: "--font-big-shoulders", display: "swap", preload: false });
@@ -586,92 +607,22 @@ with
   html:has([data-wall]) body {
     background-color: var(--board-wall);
   }
-  /* Big Shoulders is one variable file with an opsz axis: large titles take the Display cut (recorded ruling 11). */
-  html {
-    font-optical-sizing: auto;
+  /* The shared footer sits on the wall there: its text-ink-2 would read about 2.6:1 on --board-wall. */
+  html:has([data-wall]) footer {
+    color: var(--board-text-2);
+  }
+  /* Big Shoulders is one variable file with an opsz axis (10 to 72). Pin the Display cut at every size, so the 22 px
+     count and the 26 px caller match the 32 px and 40 px titles (Mosaic §4 type; recorded ruling 11). */
+  .font-shoulders,
+  .caller-banner {
+    font-variation-settings: "opsz" 72;
+    font-weight: 800;
   }
 ```
 
-No route sets `data-wall` in this task: Tasks 8, 13 and 15 add it to the pages they restyle, because today's pages put ink text straight on the body (recorded ruling 12).
+No route sets `data-wall` in this task: Tasks 8, 13, 15a and 15b add it to the pages they restyle, because today's pages put ink text straight on the body (recorded ruling 12).
 
-- [ ] **Step 9: The wall routes export the wall's theme-color**
-
-In `src/app/b/[id]/page.tsx`, replace
-
-```tsx
-import { loadBreak } from "./load";
-```
-
-with
-
-```tsx
-import { wallViewport } from "@/app/wall";
-import { loadBreak } from "./load";
-
-export const viewport = wallViewport;
-```
-
-In `src/app/b/[id]/result/page.tsx`, replace
-
-```tsx
-import { Verify } from "./verify";
-```
-
-with
-
-```tsx
-import { Verify } from "./verify";
-import { wallViewport } from "@/app/wall";
-
-export const viewport = wallViewport;
-```
-
-In `src/app/breaks/page.tsx`, replace
-
-```tsx
-export const metadata: Metadata = { title: "Browse breaks" };
-```
-
-with
-
-```tsx
-export const metadata: Metadata = { title: "Browse breaks" };
-export const viewport = wallViewport;
-```
-
-and add `import { wallViewport } from "@/app/wall";` below `import { feedHref, parseFeedParams, SORT_LABELS } from "./params";`.
-
-In `src/app/page.tsx`, replace
-
-```tsx
-import { heroNumbers, ranText } from "./landing-copy";
-```
-
-with
-
-```tsx
-import { heroNumbers, ranText } from "./landing-copy";
-import { wallViewport } from "./wall";
-
-export const viewport = wallViewport;
-```
-
-In `src/app/h/[handle]/page.tsx`, replace
-
-```tsx
-import { pastText, profileTrustText } from "@/components/break/frame-copy";
-```
-
-with
-
-```tsx
-import { pastText, profileTrustText } from "@/components/break/frame-copy";
-import { wallViewport } from "@/app/wall";
-
-export const viewport = wallViewport;
-```
-
-- [ ] **Step 10: The e2e check of theme-color per route**
+- [ ] **Step 9: The e2e check of theme-color per route**
 
 In `e2e/layout.spec.ts`, replace
 
@@ -684,11 +635,13 @@ with
 ```ts
 test("theme-color is the wall on wall routes and paper elsewhere (Mosaic §8)", async ({ browser }) => {
   const page = await anonymous(browser, 390, 664);
-  for (const path of ["/", "/breaks", url, `/h/lh${run}`]) {
+  // Each wall route joins this list in the task that puts it on the wall (Task 8, Task 15a, Task 15b; recorded ruling 12).
+  const wall: string[] = [];
+  for (const path of wall) {
     await page.goto(path);
     await expect(page.locator('meta[name="theme-color"]'), path).toHaveAttribute("content", "#17161A");
   }
-  for (const path of ["/legal/draw", "/login"]) {
+  for (const path of ["/legal/draw", "/login", ...["/", "/breaks", url, `/h/lh${run}`].filter((p) => !wall.includes(p))]) {
     await page.goto(path);
     await expect(page.locator('meta[name="theme-color"]'), path).toHaveAttribute("content", "#F6F5F1");
   }
@@ -697,28 +650,28 @@ test("theme-color is the wall on wall routes and paper elsewhere (Mosaic §8)", 
 test("an anonymous viewer's cell names never carry a handle (D§4)", async ({ browser }) => {
 ```
 
-- [ ] **Step 11: Run the tests to see them pass**
+- [ ] **Step 10: Run the tests to see them pass**
 
 Run: `pnpm test src/app/tokens.test.ts`
-Expected: PASS, 16 tests.
+Expected: PASS, 17 tests.
 
-- [ ] **Step 12: Run every gate**
+- [ ] **Step 11: Run every gate**
 
 Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm test:e2e`
-Expected: all green. The build fetches the fifth font; if it hangs or errors in `next-font-loader`, stop and report BLOCKED: fonts. Every page still renders on paper (no route sets `data-wall`), so the axe test is unchanged; the new theme-color test passes.
+Expected: all green. The build fetches the fifth font; if it hangs or errors in `next-font-loader`, stop and report BLOCKED: fonts. Every page still renders on paper with paper's browser chrome (no route sets `data-wall` or exports `wallViewport`), so the axe test is unchanged; the new theme-color test passes with every route on paper.
 
-- [ ] **Step 13: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
-git add src/app/tokens.css src/app/tokens.test.ts src/app/fonts.ts src/app/wall.ts src/app/layout.tsx src/app/globals.css src/app/page.tsx src/app/breaks/page.tsx "src/app/b/[id]/page.tsx" "src/app/b/[id]/result/page.tsx" "src/app/h/[handle]/page.tsx" e2e/layout.spec.ts
-git commit -m "feat(ui): mosaic board tokens, Big Shoulders and a theme colour per route"
+git add src/app/tokens.css src/app/tokens.test.ts src/app/fonts.ts src/app/wall.ts src/app/layout.tsx src/app/globals.css e2e/layout.spec.ts
+git commit -m "feat(ui): mosaic board tokens, Big Shoulders and the wall theme colour"
 ```
 
 ---
 
 ### Task 2: `flights.ts` with contrast and heat tests (model: Opus)
 
-One pure module holds the flight set, the kits and the lamp (spec §4, §10): eight colours in two tiers with their faces, number inks and labels; four dart shapes as 16 × 16 SVG paths with the spec's aspect ratios; the fifteen kits and their default; `heatStep` and the five lamp colours; and `TOKENS`, the board's hex literals for the link preview, which cannot read CSS variables. Keys are stored by migration 0004 (Task 4) and never reorder. The tests pin Review Focus item 3 with the real WCAG luminance and contrast functions from `src/lib/contrast.ts`: every face against its number ink at 5:1 or better. They also pin the ink rule, the excluded tones, the tier rule for kits, the pinstripe on the wall, the shapes' boxes, the heat step edges and the lamp's constraints. There is no `defaultFlight(userId)` (recorded ruling 6).
+One pure module holds the flight set, the kits and the lamp (spec §4, §10): eight colours in two tiers with their faces, number inks and labels; four dart shapes as 16 × 16 SVG paths with the spec's aspect ratios; the fifteen kits and their default; `heatStep` and the five lamp colours; and `TOKENS`, the board's hex literals for the link preview, which cannot read CSS variables. Keys are stored by migration 0004 (Task 4a) and never reorder. The tests pin Review Focus item 3 with the real WCAG luminance and contrast functions from `src/lib/contrast.ts`: every face against its number ink at 5:1 or better. They also pin the ink rule, the excluded tones, the tier rule for kits, the pinstripe on the wall, the shapes' boxes, the heat step edges and the lamp's constraints. There is no `defaultFlight(userId)` (recorded ruling 6).
 
 **Files:**
 - Create: `src/domain/flights.ts`, `src/domain/flights.test.ts`
@@ -984,7 +937,7 @@ export function heatStep(open: number, total: number, closed: boolean): HeatStep
   return Math.max(0, Math.min(3, Math.floor((4 * (total - open)) / total))) as HeatStep;
 }
 
-/** One warm white whose alpha only rises; CSS (--lamp-0 … --lamp-4) and the link preview share these strings. */
+/** One warm white whose alpha only rises; CSS (--lamp-0 to --lamp-4) and the link preview share these strings. */
 export const LAMP: Record<HeatStep, string> = {
   0: "rgba(255,232,200,0.06)",
   1: "rgba(255,232,200,0.095)",
@@ -1303,28 +1256,22 @@ git commit -m "test(grid): key cell tests on data attributes, not class names"
 
 ---
 
-### Task 4: Migration 0004, `updateFlight`, `updateHostKit`, `verify-draws` (model: Opus)
+### Task 4a: Migration 0004, the random flight defaults, `draws.verified_at` and `verify-draws` (model: Opus)
 
-Spec §10: every member has a stored flight from the start, drawn at random on the server when the `users` row is created, with existing members backfilled the same way; hosts store a kit; a draw records once whether it checks out. This task adds the columns (`users.flight_colour`, `users.flight_shape`, `users.flight_chosen_at`, `host_profiles.kit_dark`, `host_profiles.kit_light`, `draws.verified_at`) with their `CHECK`s in migration `0004_flights_kits`. The random default is a column default that picks from the eight colours and the four shapes. Because Postgres evaluates a volatile default once per existing row when the column is added, the generated statement is also the backfill and the `NOT NULL`; a test pins that (recorded ruling 16). The hand SQL after the breakpoint re-declares `draws_update_guard`: 0000's guard refuses every update except voiding, so `verified_at` could never be set without it. The task also adds `updateFlight` and `updateHostKit` (their events, onboarded and banned checks, and tier checks), the pure form parsers in `src/app/account/parse.ts`, `verified_at` at the point `finaliseDraw` records a draw, and `scripts/verify-draws.ts`, which runs `verifyInputs` over existing draws. The pickers and their server actions are Task 16.
+Spec §10: every member has a stored flight from the start, drawn at random on the server when the `users` row is created, with existing members backfilled the same way; hosts store a kit; a draw records once whether it checks out. This task adds the columns (`users.flight_colour`, `users.flight_shape`, `users.flight_chosen_at`, `host_profiles.kit_dark`, `host_profiles.kit_light`, `draws.verified_at`) with their `CHECK`s in migration `0004_flights_kits`. The random default is a column default that picks from the eight colours and the four shapes. Because Postgres evaluates a volatile default once per existing row when the column is added, the generated statement is also the backfill and the `NOT NULL`; a test pins that (recorded ruling 16). The hand SQL after the breakpoint re-declares `draws_update_guard`: 0000's guard refuses every update except voiding, so `verified_at` could never be set without it, and the new rule lets `verified_at` change alone (no half-void rides with it). The task also sets `verified_at` at the point `finaliseDraw` records a draw, and adds `scripts/verify-draws.ts`, which runs `verifyInputs` over existing draws. Anonymisation keeps the flight columns (spec §10); nothing in the code deletes or blanks a `users` column today, so no step changes it. The commands and parsers that write the new columns are Task 4b; the pickers and their server actions are Task 16.
 
 **Files:**
 - Modify: `src/db/schema.ts` (`users`, `hostProfiles`, `draws`)
 - Create (generated, then appended): `src/db/migrations/0004_flights_kits.sql`; Create (generated): `src/db/migrations/meta/0004_snapshot.json`; Modify (generated): `src/db/migrations/meta/_journal.json`
 - Modify: `src/db/migrations.test.ts`, `src/db/schema.test.ts`, `src/domain/flights.test.ts`
-- Modify: `src/domain/users/commands.ts` (`updateFlight`), `src/domain/users/commands.test.ts`
-- Modify: `src/domain/breaks/commands.ts` (`updateHostKit`), `src/domain/breaks/commands.test.ts`
-- Modify: `src/app/account/parse.ts` (`parseFlight`, `parseKit`), `src/app/account/parse.test.ts`
 - Create: `src/domain/draws/public-inputs.ts`, `src/domain/draws/verify-stored.ts`, `src/domain/draws/verify-stored.test.ts`
 - Modify: `src/domain/draws/commands.ts` (`finaliseDraw` sets `verifiedAt`)
 - Create: `scripts/verify-draws.ts`
 
 **Interfaces:**
-- Consumes: `FLIGHT_COLOURS`, `FLIGHT_SHAPES`, `DARK_COLOURS`, `LIGHT_COLOURS`, `isFlightColour`, `isFlightShape`, `FlightColour`, `FlightShape` (Task 2); `assertOnboarded` (`src/auth/authz.ts`); `appendEvent`; `InvalidInput`, `NotAuthorized`, `NotFound`; `verifyInputs`, `PublicInputs` (`src/crypto/verify.ts`); fixtures `makeUser`, `drawnBreak`.
+- Consumes: `FLIGHT_COLOURS`, `FLIGHT_SHAPES`, `DARK_COLOURS`, `LIGHT_COLOURS` (Task 2); `verifyInputs`, `PublicInputs` (`src/crypto/verify.ts`); fixtures `makeUser`, `drawnBreak`.
 - Produces:
-  - Columns: `users.flight_colour text NOT NULL DEFAULT (array['petrol','blue','plum','yellow','orange','lime','sky','pink'])[1 + floor(random() * 8)::int]` with `users_flight_colour_chk`; `users.flight_shape text NOT NULL DEFAULT (array['standard','kite','slim','pear'])[1 + floor(random() * 4)::int]` with `users_flight_shape_chk`; `users.flight_chosen_at timestamptz NULL`; `host_profiles.kit_dark text NULL` (`host_profiles_kit_dark_chk`: petrol, blue, plum), `host_profiles.kit_light text NULL` (`host_profiles_kit_light_chk`: yellow, orange, lime, sky, pink), `host_profiles_kit_pair_chk` (both null or neither); `draws.verified_at timestamptz NULL`, settable once from null on a draw that is not voided. Drizzle: `users.flightColour`, `users.flightShape`, `users.flightChosenAt`, `hostProfiles.kitDark`, `hostProfiles.kitLight`, `draws.verifiedAt`.
-  - `updateFlight(tx, caller, { colour: FlightColour; shape: FlightShape }): Promise<void>` (`src/domain/users/commands.ts`): onboarded and not banned; sets the flight and `flight_chosen_at`; event `user.profile_updated` with `{ changed: ["flight"] }` (never the values, recorded ruling 10); a no-op once chosen and unchanged.
-  - `updateHostKit(tx, caller, { dark: FlightColour; light: FlightColour }): Promise<void>` (`src/domain/breaks/commands.ts`): onboarded, not banned, role host or admin, own profile only; upserts `host_profiles` lazily as `savePaymentHandles` does; event `host.profile_updated` with `{ changed: ["kit"] }` (never the values, recorded ruling 10); a no-op when unchanged. Column and argument names are dark/light (recorded ruling 9).
-  - `parseFlight(form)`, `parseKit(form)` (`src/app/account/parse.ts`); form fields `flight` (`"<colour>-<shape>"`), `kitDark`, `kitLight`.
+  - Columns: `users.flight_colour text NOT NULL DEFAULT (array['petrol','blue','plum','yellow','orange','lime','sky','pink'])[1 + floor(random() * 8)::int]` with `users_flight_colour_chk`; `users.flight_shape text NOT NULL DEFAULT (array['standard','kite','slim','pear'])[1 + floor(random() * 4)::int]` with `users_flight_shape_chk`; `users.flight_chosen_at timestamptz NULL`; `host_profiles.kit_dark text NULL` (`host_profiles_kit_dark_chk`: petrol, blue, plum), `host_profiles.kit_light text NULL` (`host_profiles_kit_light_chk`: yellow, orange, lime, sky, pink), `host_profiles_kit_pair_chk` (both null or neither); `draws.verified_at timestamptz NULL`, settable once from null, alone, on a draw that is not voided. Drizzle: `users.flightColour`, `users.flightShape`, `users.flightChosenAt`, `hostProfiles.kitDark`, `hostProfiles.kitLight`, `draws.verifiedAt`.
   - `publicInputsOf(d, seedCommitment): PublicInputs` (`src/domain/draws/public-inputs.ts`); `verifyStoredDraws(tx): Promise<{ checked: number; verified: number }>` (`src/domain/draws/verify-stored.ts`).
   - `scripts/verify-draws.ts`: `pnpm exec tsx scripts/verify-draws.ts` (env from `ENV_FILE`, default `.env.local`; an explicit `DATABASE_URL` wins) prints `checked <n> draws, <m> verified`.
 
@@ -1443,6 +1390,8 @@ describe("draws.verified_at (migration 0004)", () => {
   it("still lets a draw be voided and changes nothing else, and a voided draw takes no check", async () => {
     const id = await freshDraw();
     await expect(sql`update draws set verified_at = now(), ranking = '[2,1]'::jsonb where id = ${id}`).rejects.toThrow(/may only be voided/);
+    // Recording the check never carries a half-void with it (voided_by or void_reason without voided_at).
+    await expect(sql`update draws set verified_at = now(), void_reason = 'test' where id = ${id}`).rejects.toThrow(/may only be voided/);
     await expect(sql`update draws set voided_at = now(), void_reason = 'test' where id = ${id}`).resolves.toBeDefined();
     await expect(sql`update draws set verified_at = now() where id = ${id}`).rejects.toThrow(/immutable/);
   });
@@ -1481,7 +1430,403 @@ describe("the stored keys match migration 0004", () => {
 });
 ```
 
-- [ ] **Step 2: Write the failing command, parser and draw tests**
+- [ ] **Step 2: Write the failing draw tests**
+
+Create `src/domain/draws/verify-stored.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { eq } from "drizzle-orm";
+import { withTx } from "../../../tests/helpers/db";
+import { makeUser, drawnBreak } from "../../../tests/helpers/fixtures";
+import { breaks, draws, drawRequests } from "@/db/schema";
+import type { Tx } from "@/db/client";
+import { verifyInputs } from "@/crypto/verify";
+import { publicInputsOf } from "./public-inputs";
+import { verifyStoredDraws } from "./verify-stored";
+
+/**
+ * A ran break whose active draw predates migration 0004: the fixture's draw is voided and recorded again without
+ * verified_at (a new request, the same secret, so the commitment guard passes). `tamper` reverses its ranking.
+ */
+async function unverifiedDraw(tx: Tx, o: { tamper?: boolean } = {}) {
+  const host = await makeUser(tx, { role: "host" });
+  const buyer = await makeUser(tx);
+  const b = await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
+  const [d] = await tx.select().from(draws).where(eq(draws.id, b.drawId));
+  await tx.update(draws).set({ voidedAt: new Date(), voidedBy: host.id, voidReason: "recorded again for the 0004 backfill test" }).where(eq(draws.id, d.id));
+  const [req] = await tx.insert(drawRequests).values({ breakId: b.id, attempt: 2, requestedBy: host.id, beaconRound: d.beaconRound, status: "done" }).returning({ id: drawRequests.id });
+  const [again] = await tx.insert(draws).values({
+    breakId: d.breakId, requestId: req.id, secret: d.secret, beaconRound: d.beaconRound, beaconRandomness: d.beaconRandomness,
+    beaconSignature: d.beaconSignature, seed: d.seed, algorithmVersion: d.algorithmVersion, entriesSnapshot: d.entriesSnapshot,
+    ranking: o.tamper ? [...d.ranking].reverse() : d.ranking, resultHash: d.resultHash, runBy: d.runBy,
+  }).returning();
+  return again;
+}
+
+describe("draws.verified_at", () => {
+  it("is set when finaliseDraw records a draw that checks out", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const buyer = await makeUser(tx);
+      const b = await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
+      const [d] = await tx.select().from(draws).where(eq(draws.id, b.drawId));
+      // The fixture's returned row predates openBreakWithLines' commitment update, so read the commitment back.
+      const [{ seedCommitment }] = await tx.select({ seedCommitment: breaks.seedCommitment }).from(breaks).where(eq(breaks.id, b.id));
+      expect(d.verifiedAt).toBeInstanceOf(Date);
+      expect(verifyInputs(publicInputsOf(d, seedCommitment)).ok).toBe(true);
+    });
+  });
+  it("is backfilled for a genuine draw and left empty for a tampered one", async () => {
+    await withTx(async (tx) => {
+      const genuine = await unverifiedDraw(tx);
+      const tampered = await unverifiedDraw(tx, { tamper: true });
+      expect([genuine.verifiedAt, tampered.verifiedAt]).toEqual([null, null]);
+      const r = await verifyStoredDraws(tx);
+      expect(r.checked).toBeGreaterThanOrEqual(2);
+      expect(r.verified).toBeGreaterThanOrEqual(1);
+      const [g] = await tx.select().from(draws).where(eq(draws.id, genuine.id));
+      const [t] = await tx.select().from(draws).where(eq(draws.id, tampered.id));
+      expect(g.verifiedAt).toBeInstanceOf(Date);
+      expect(t.verifiedAt).toBeNull();
+      // A second run never touches a draw it already marked.
+      await verifyStoredDraws(tx);
+      const [g2] = await tx.select().from(draws).where(eq(draws.id, genuine.id));
+      expect(g2.verifiedAt).toEqual(g.verifiedAt);
+    });
+  });
+});
+```
+
+- [ ] **Step 3: Run them to see them fail**
+
+Run (sandbox off): `pnpm test src/db src/domain/flights.test.ts src/domain/draws`
+Expected: FAIL. `migrations.test.ts`: `column "flight_colour" does not exist` and `ENOENT … 0004_flights_kits.sql`; `schema.test.ts`: `column "verified_at" does not exist`; `flights.test.ts`: ENOENT; `verify-stored.test.ts` fails to resolve `./public-inputs`.
+
+- [ ] **Step 4: Add the columns to the schema**
+
+In `src/db/schema.ts`, in `users` replace
+
+```ts
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, (t) => [
+  uniqueIndex("users_handle_lower_idx").on(sql`lower(${t.handle})`),
+  check("users_role_chk", sql`${t.role} in ('member','host','admin')`),
+  check("users_payment_name_chk", sql`char_length(${t.paymentName}) <= 60`),
+]);
+```
+
+with
+
+```ts
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  /**
+   * The member's flight (Mosaic §4): drawn at random from the 32 by the database when the row is created, never derived
+   * from the id (ids and handles are public on result pages). Holder data: shapeGrid decides who sees it.
+   */
+  flightColour: text("flight_colour").notNull().default(sql`(array['petrol','blue','plum','yellow','orange','lime','sky','pink'])[1 + floor(random() * 8)::int]`),
+  flightShape: text("flight_shape").notNull().default(sql`(array['standard','kite','slim','pear'])[1 + floor(random() * 4)::int]`),
+  /** Null until the member picks a flight on /account; "This is your flight" shows while it is null. */
+  flightChosenAt: timestamp("flight_chosen_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, (t) => [
+  uniqueIndex("users_handle_lower_idx").on(sql`lower(${t.handle})`),
+  check("users_role_chk", sql`${t.role} in ('member','host','admin')`),
+  check("users_payment_name_chk", sql`char_length(${t.paymentName}) <= 60`),
+  check("users_flight_colour_chk", sql`${t.flightColour} in ('petrol','blue','plum','yellow','orange','lime','sky','pink')`),
+  check("users_flight_shape_chk", sql`${t.flightShape} in ('standard','kite','slim','pear')`),
+]);
+```
+
+Replace the `hostProfiles` table with:
+
+```ts
+export const hostProfiles = pgTable("host_profiles", {
+  userId: uuid("user_id").primaryKey().references(() => users.id),
+  paymentHandles: jsonb("payment_handles").$type<{ venmo?: string; paypal?: string }>().notNull().default({}),
+  paymentHandlesChangedAt: timestamp("payment_handles_changed_at", { withTimezone: true }),
+  bio: text("bio"),
+  verifiedFbSince: integer("verified_fb_since"), // nullable now; avoids a later migration
+  /** The host's kit (Mosaic §4): one dark and one light flight colour. Both null is the default, Blue with Yellow. */
+  kitDark: text("kit_dark"),
+  kitLight: text("kit_light"),
+  createdAt: createdAt(),
+}, (t) => [
+  check("host_profiles_kit_dark_chk", sql`${t.kitDark} in ('petrol','blue','plum')`),
+  check("host_profiles_kit_light_chk", sql`${t.kitLight} in ('yellow','orange','lime','sky','pink')`),
+  check("host_profiles_kit_pair_chk", sql`(${t.kitDark} is null) = (${t.kitLight} is null)`),
+]);
+```
+
+In `draws`, replace
+
+```ts
+  voidReason: text("void_reason"),
+  createdAt: createdAt(),
+}, (t) => [
+  uniqueIndex("draws_active_uq").on(t.breakId).where(sql`${t.voidedAt} is null`),
+]);
+```
+
+with
+
+```ts
+  voidReason: text("void_reason"),
+  /** When verifyInputs passed on the recorded inputs (Mosaic §9 "draws verified"); set once, never on a voided draw. */
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, (t) => [
+  uniqueIndex("draws_active_uq").on(t.breakId).where(sql`${t.voidedAt} is null`),
+]);
+```
+
+- [ ] **Step 5: Generate migration 0004**
+
+Run: `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres pnpm db:generate --name flights_kits`
+Expected: drizzle-kit writes `src/db/migrations/0004_flights_kits.sql`, `src/db/migrations/meta/0004_snapshot.json` and a `_journal.json` entry tagged `0004_flights_kits`, without prompting. The SQL file must contain exactly these eleven statements, each ending `;--> statement-breakpoint` except the last (whitespace and drizzle-kit's statement order aside):
+
+```sql
+ALTER TABLE "users" ADD COLUMN "flight_colour" text DEFAULT (array['petrol','blue','plum','yellow','orange','lime','sky','pink'])[1 + floor(random() * 8)::int] NOT NULL;
+ALTER TABLE "users" ADD COLUMN "flight_shape" text DEFAULT (array['standard','kite','slim','pear'])[1 + floor(random() * 4)::int] NOT NULL;
+ALTER TABLE "users" ADD COLUMN "flight_chosen_at" timestamp with time zone;
+ALTER TABLE "host_profiles" ADD COLUMN "kit_dark" text;
+ALTER TABLE "host_profiles" ADD COLUMN "kit_light" text;
+ALTER TABLE "draws" ADD COLUMN "verified_at" timestamp with time zone;
+ALTER TABLE "users" ADD CONSTRAINT "users_flight_colour_chk" CHECK ("users"."flight_colour" in ('petrol','blue','plum','yellow','orange','lime','sky','pink'));
+ALTER TABLE "users" ADD CONSTRAINT "users_flight_shape_chk" CHECK ("users"."flight_shape" in ('standard','kite','slim','pear'));
+ALTER TABLE "host_profiles" ADD CONSTRAINT "host_profiles_kit_dark_chk" CHECK ("host_profiles"."kit_dark" in ('petrol','blue','plum'));
+ALTER TABLE "host_profiles" ADD CONSTRAINT "host_profiles_kit_light_chk" CHECK ("host_profiles"."kit_light" in ('yellow','orange','lime','sky','pink'));
+ALTER TABLE "host_profiles" ADD CONSTRAINT "host_profiles_kit_pair_chk" CHECK (("host_profiles"."kit_dark" is null) = ("host_profiles"."kit_light" is null));
+```
+
+The first two statements are the random defaults, the backfill and the `NOT NULL` in one: adding a column with a volatile default makes Postgres rewrite `users` and evaluate `random()` once per existing row (pinned by the "fills each existing row" test), so there is no separate hand-written backfill (recorded ruling 16). If drizzle-kit prompts, or the SQL differs from the eleven statements above (a default without the outer parentheses around the array is a difference), answer nothing, stop and report BLOCKED: migration.
+
+Then check the journal order: `node -e 'const e=require("./src/db/migrations/meta/_journal.json").entries;console.log(e[4].tag, e[4].when>e[3].when?"ok":"BAD")'` must print `0004_flights_kits ok`; if it prints `BAD`, stop and report BLOCKED: migration.
+
+- [ ] **Step 6: Append the hand SQL: the draws guard learns `verified_at`**
+
+0000's `draws_update_guard` raises "draws may only be voided" on every update that does not set `voided_at`, so neither the backfill nor any later check could set `verified_at`. Append to the end of `src/db/migrations/0004_flights_kits.sql` (after the last generated statement, starting on a new line):
+
+```sql
+
+--> statement-breakpoint
+-- draws: insert-only, except voiding once (voided_at, voided_by, void_reason) and recording the check once
+-- (verified_at from null to a time, on a draw that is not voided). Re-declares 0000's guard with the second rule.
+create or replace function draws_update_guard() returns trigger language plpgsql as $$
+begin
+  if old.voided_at is not null then
+    raise exception 'voided draws are immutable' using errcode = 'check_violation';
+  end if;
+  if new.id is distinct from old.id
+     or new.break_id is distinct from old.break_id
+     or new.request_id is distinct from old.request_id
+     or new.secret is distinct from old.secret
+     or new.beacon_round is distinct from old.beacon_round
+     or new.beacon_randomness is distinct from old.beacon_randomness
+     or new.beacon_signature is distinct from old.beacon_signature
+     or new.seed is distinct from old.seed
+     or new.algorithm_version is distinct from old.algorithm_version
+     or new.entries_snapshot::text is distinct from old.entries_snapshot::text
+     or new.ranking::text is distinct from old.ranking::text
+     or new.result_hash is distinct from old.result_hash
+     or new.run_by is distinct from old.run_by
+     or new.created_at is distinct from old.created_at then
+    raise exception 'draws may only be voided' using errcode = 'check_violation';
+  end if;
+  if new.verified_at is distinct from old.verified_at then
+    if old.verified_at is not null or new.verified_at is null or new.voided_at is not null then
+      raise exception 'draws.verified_at is set once' using errcode = 'check_violation';
+    end if;
+    -- Recording the check changes verified_at alone: no half-void rides along with it.
+    if new.voided_by is distinct from old.voided_by or new.void_reason is distinct from old.void_reason then
+      raise exception 'draws may only be voided' using errcode = 'check_violation';
+    end if;
+    return new;
+  end if;
+  if new.voided_at is null then
+    raise exception 'draws may only be voided' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+```
+
+The trigger `draws_update` from 0000 keeps pointing at this function by name; nothing else is re-created. The new columns need no policy: every table already has forced deny-all RLS.
+
+- [ ] **Step 7: Apply it to the three databases**
+
+Run (sandbox off): `ENV_FILE=.env.local pnpm db:migrate && ENV_FILE=.env.test pnpm db:migrate && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/breaks_e2e pnpm db:migrate`
+Expected: `migrated` three times. Any error: stop and report BLOCKED: migration.
+
+- [ ] **Step 8: Record the check when a draw is recorded, and the backfill**
+
+Create `src/domain/draws/public-inputs.ts`:
+
+```ts
+import type { draws } from "@/db/schema";
+import type { PublicInputs } from "@/crypto/verify";
+
+type DrawInputs = Pick<typeof draws.$inferSelect, "breakId" | "algorithmVersion" | "secret" | "beaconRound" | "beaconRandomness" | "entriesSnapshot" | "ranking" | "resultHash">;
+
+/** A recorded draw as the result page and /result.json publish it: what verifyInputs checks. */
+export function publicInputsOf(d: DrawInputs, seedCommitment: string | null): PublicInputs {
+  return {
+    breakId: d.breakId,
+    version: d.algorithmVersion,
+    secret: d.secret,
+    beaconRound: d.beaconRound,
+    beaconRandomness: d.beaconRandomness,
+    entries: d.entriesSnapshot.map((e) => ({ number: e.number, ownerId: e.ownerId })),
+    ranking: d.ranking,
+    resultHash: d.resultHash,
+    seedCommitment,
+  };
+}
+```
+
+Create `src/domain/draws/verify-stored.ts`:
+
+```ts
+import { and, eq, isNull } from "drizzle-orm";
+import type { Tx } from "@/db/client";
+import { breaks, draws } from "@/db/schema";
+import { verifyInputs } from "@/crypto/verify";
+import { publicInputsOf } from "./public-inputs";
+
+/**
+ * The draws.verified_at backfill (migration 0004, scripts/verify-draws.ts): the result page's check over every active
+ * draw not yet marked. A draw that fails stays null. Voided draws are immutable and never counted.
+ */
+export async function verifyStoredDraws(tx: Tx): Promise<{ checked: number; verified: number }> {
+  const rows = await tx.select({ draw: draws, seedCommitment: breaks.seedCommitment }).from(draws)
+    .innerJoin(breaks, eq(breaks.id, draws.breakId)).where(and(isNull(draws.verifiedAt), isNull(draws.voidedAt)));
+  let verified = 0;
+  for (const r of rows) {
+    if (!verifyInputs(publicInputsOf(r.draw, r.seedCommitment)).ok) continue;
+    await tx.update(draws).set({ verifiedAt: new Date() }).where(eq(draws.id, r.draw.id));
+    verified += 1;
+  }
+  return { checked: rows.length, verified };
+}
+```
+
+In `src/domain/draws/commands.ts`, replace
+
+```ts
+import { roundAfter, type BeaconSource } from "@/crypto/beacon";
+```
+
+with
+
+```ts
+import { roundAfter, type BeaconSource } from "@/crypto/beacon";
+import { verifyInputs } from "@/crypto/verify";
+import { publicInputsOf } from "./public-inputs";
+```
+
+and replace
+
+```ts
+  const [d] = await tx.insert(draws).values({
+    breakId: b.id, requestId: req.id, secret: Buffer.from(secret).toString("base64"), beaconRound: req.beaconRound,
+    beaconRandomness: bytesToHex(bv.randomness), beaconSignature: bv.signature, seed: bytesToHex(seed), algorithmVersion: ALGORITHM_VERSION,
+    entriesSnapshot: entryRows.map((e) => ({ number: e.number, ownerId: e.ownerId!, handleAtDraw: e.handle ?? "", isBonus: e.isBonus })),
+    ranking, resultHash, runBy: caller.id,
+  }).returning({ id: draws.id });
+```
+
+with
+
+```ts
+  const row = {
+    breakId: b.id, requestId: req.id, secret: Buffer.from(secret).toString("base64"), beaconRound: req.beaconRound,
+    beaconRandomness: bytesToHex(bv.randomness), beaconSignature: bv.signature, seed: bytesToHex(seed), algorithmVersion: ALGORITHM_VERSION,
+    entriesSnapshot: entryRows.map((e) => ({ number: e.number, ownerId: e.ownerId!, handleAtDraw: e.handle ?? "", isBonus: e.isBonus })),
+    ranking, resultHash, runBy: caller.id,
+  };
+  // The host record's "draws verified" (Mosaic §9, recorded ruling 7): the result page's own check, run once here.
+  const verified = verifyInputs(publicInputsOf(row, b.seedCommitment)).ok;
+  const [d] = await tx.insert(draws).values({ ...row, verifiedAt: verified ? new Date() : null }).returning({ id: draws.id });
+```
+
+- [ ] **Step 9: Write the backfill script**
+
+Create `scripts/verify-draws.ts`:
+
+```ts
+// Usage: ENV_FILE=.env.local pnpm exec tsx scripts/verify-draws.ts   (an explicit DATABASE_URL wins over the file)
+// Backfills draws.verified_at (migration 0004): runs verifyInputs over every active draw not yet marked. Safe to run
+// again: a marked draw is never checked twice. Run it after migrating, on every database.
+import { config } from "dotenv";
+config({ path: process.env.ENV_FILE ?? ".env.local" });
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "../src/db/schema";
+import { verifyStoredDraws } from "../src/domain/draws/verify-stored";
+
+// No top-level await: package.json has no "type": "module", so tsx emits CJS (as src/db/migrate.ts notes).
+async function main(): Promise<number> {
+  const client = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false });
+  try {
+    const db = drizzle(client, { schema });
+    const r = await db.transaction((tx) => verifyStoredDraws(tx));
+    console.log(`checked ${r.checked} draws, ${r.verified} verified`);
+    return 0;
+  } finally {
+    await client.end();
+  }
+}
+
+main().then(
+  (code) => process.exit(code),
+  (e: unknown) => {
+    console.error(e);
+    process.exit(1);
+  },
+);
+```
+
+- [ ] **Step 10: Run the tests to see them pass**
+
+Run (sandbox off): `pnpm test src/db src/domain/flights.test.ts src/domain/draws`
+Expected: PASS, including the four "migration 0004" tests, the two `draws.verified_at` schema tests (and the existing "lets a draw be voided but not otherwise changed" and "freezes draws.id even when voiding" tests, which still match `/voided/`) and both `verify-stored` tests.
+
+- [ ] **Step 11: Run the backfill on the three databases**
+
+Run (sandbox off): `ENV_FILE=.env.local pnpm exec tsx scripts/verify-draws.ts && ENV_FILE=.env.test pnpm exec tsx scripts/verify-draws.ts && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/breaks_e2e pnpm exec tsx scripts/verify-draws.ts`
+Expected: three lines `checked <n> draws, <m> verified`. On the local database `m` equals `n` (every draw there was run by the app). On `breaks_test`, the draws `schema.test.ts` leaves behind carry made-up inputs (`'aa'`, `'dd'`) and stay unverified, so `m` may be smaller. `breaks_e2e` is emptied by every e2e run, so `n` may be 0. A thrown error: stop and report it.
+
+- [ ] **Step 12: Run every gate**
+
+Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm test:concurrency && pnpm test:e2e`
+Expected: all green. `pnpm test:concurrency` covers `finaliseDraw`, which now verifies before inserting. Users created by `/test/login` and by `makeUser` get their random flight from the column default. Nothing reads or writes the flight or kit yet.
+
+- [ ] **Step 13: Commit**
+
+```bash
+git add src/db/schema.ts src/db/migrations src/db/migrations.test.ts src/db/schema.test.ts src/domain/flights.test.ts src/domain/draws scripts/verify-draws.ts
+git commit -m "feat(db): migration 0004 for flights, kits and verified draws"
+```
+
+---
+
+### Task 4b: `updateFlight`, `updateHostKit` and the form parsers (model: Opus)
+
+The commands that write Task 4a's columns, and the pure form parsers the `/account` pickers will post through (spec §10). `updateFlight` sets any of the 32 flights at once everywhere and marks `flight_chosen_at`, keeping the random one included; `updateHostKit` stores one dark and one light colour, upserting `host_profiles` lazily as `savePaymentHandles` does. Both check onboarding and bans; `updateHostKit` is for hosts and admins (admins may host, as `createDraft` already allows; recorded ruling 31) and checks the tiers. Each appends one event that names the changed field and never the values (recorded ruling 10), and does nothing when the value is unchanged. The pickers and their server actions are Task 16.
+
+**Files:**
+- Modify: `src/domain/users/commands.ts` (`updateFlight`), `src/domain/users/commands.test.ts`
+- Modify: `src/domain/breaks/commands.ts` (`updateHostKit`), `src/domain/breaks/commands.test.ts`
+- Modify: `src/app/account/parse.ts` (`parseFlight`, `parseKit`), `src/app/account/parse.test.ts`
+
+**Interfaces:**
+- Consumes: `DARK_COLOURS`, `LIGHT_COLOURS`, `isFlightColour`, `isFlightShape`, `FlightColour`, `FlightShape` (Task 2); `users.flightColour`, `users.flightShape`, `users.flightChosenAt`, `hostProfiles.kitDark`, `hostProfiles.kitLight` (Task 4a); `assertOnboarded` (`src/auth/authz.ts`); `appendEvent`; `InvalidInput`, `NotAuthorized`, `NotFound`; fixtures `makeUser`.
+- Produces:
+  - `updateFlight(tx, caller, { colour: FlightColour; shape: FlightShape }): Promise<void>` (`src/domain/users/commands.ts`): onboarded and not banned; sets the flight and `flight_chosen_at`; event `user.profile_updated` with `{ changed: ["flight"] }` (never the values, recorded ruling 10); a no-op once chosen and unchanged.
+  - `updateHostKit(tx, caller, { dark: FlightColour; light: FlightColour }): Promise<void>` (`src/domain/breaks/commands.ts`): onboarded, not banned, role host or admin, own profile only; upserts `host_profiles` lazily as `savePaymentHandles` does; event `host.profile_updated` with `{ changed: ["kit"] }` (never the values, recorded ruling 10); a no-op when unchanged. Column and argument names are dark/light (recorded ruling 9).
+  - `parseFlight(form)`, `parseKit(form)` (`src/app/account/parse.ts`); form fields `flight` (`"<colour>-<shape>"`), `kitDark`, `kitLight`.
+
+- [ ] **Step 1: Write the failing command and parser tests**
 
 In `src/domain/users/commands.test.ts`, replace
 
@@ -1664,229 +2009,12 @@ describe("parseKit", () => {
 });
 ```
 
-Create `src/domain/draws/verify-stored.test.ts`:
+- [ ] **Step 2: Run them to see them fail**
 
-```ts
-import { describe, it, expect } from "vitest";
-import { eq } from "drizzle-orm";
-import { withTx } from "../../../tests/helpers/db";
-import { makeUser, drawnBreak } from "../../../tests/helpers/fixtures";
-import { breaks, draws, drawRequests } from "@/db/schema";
-import type { Tx } from "@/db/client";
-import { verifyInputs } from "@/crypto/verify";
-import { publicInputsOf } from "./public-inputs";
-import { verifyStoredDraws } from "./verify-stored";
+Run (sandbox off): `pnpm test src/domain/users src/domain/breaks/commands.test.ts src/app/account`
+Expected: FAIL. `updateFlight`, `updateHostKit`, `parseFlight` and `parseKit` are not functions; every existing test in those files still passes.
 
-/**
- * A ran break whose active draw predates migration 0004: the fixture's draw is voided and recorded again without
- * verified_at (a new request, the same secret, so the commitment guard passes). `tamper` reverses its ranking.
- */
-async function unverifiedDraw(tx: Tx, o: { tamper?: boolean } = {}) {
-  const host = await makeUser(tx, { role: "host" });
-  const buyer = await makeUser(tx);
-  const b = await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
-  const [d] = await tx.select().from(draws).where(eq(draws.id, b.drawId));
-  await tx.update(draws).set({ voidedAt: new Date(), voidedBy: host.id, voidReason: "recorded again for the 0004 backfill test" }).where(eq(draws.id, d.id));
-  const [req] = await tx.insert(drawRequests).values({ breakId: b.id, attempt: 2, requestedBy: host.id, beaconRound: d.beaconRound, status: "done" }).returning({ id: drawRequests.id });
-  const [again] = await tx.insert(draws).values({
-    breakId: d.breakId, requestId: req.id, secret: d.secret, beaconRound: d.beaconRound, beaconRandomness: d.beaconRandomness,
-    beaconSignature: d.beaconSignature, seed: d.seed, algorithmVersion: d.algorithmVersion, entriesSnapshot: d.entriesSnapshot,
-    ranking: o.tamper ? [...d.ranking].reverse() : d.ranking, resultHash: d.resultHash, runBy: d.runBy,
-  }).returning();
-  return again;
-}
-
-describe("draws.verified_at", () => {
-  it("is set when finaliseDraw records a draw that checks out", async () => {
-    await withTx(async (tx) => {
-      const host = await makeUser(tx, { role: "host" });
-      const buyer = await makeUser(tx);
-      const b = await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
-      const [d] = await tx.select().from(draws).where(eq(draws.id, b.drawId));
-      // The fixture's returned row predates openBreakWithLines' commitment update, so read the commitment back.
-      const [{ seedCommitment }] = await tx.select({ seedCommitment: breaks.seedCommitment }).from(breaks).where(eq(breaks.id, b.id));
-      expect(d.verifiedAt).toBeInstanceOf(Date);
-      expect(verifyInputs(publicInputsOf(d, seedCommitment)).ok).toBe(true);
-    });
-  });
-  it("is backfilled for a genuine draw and left empty for a tampered one", async () => {
-    await withTx(async (tx) => {
-      const genuine = await unverifiedDraw(tx);
-      const tampered = await unverifiedDraw(tx, { tamper: true });
-      expect([genuine.verifiedAt, tampered.verifiedAt]).toEqual([null, null]);
-      const r = await verifyStoredDraws(tx);
-      expect(r.checked).toBeGreaterThanOrEqual(2);
-      expect(r.verified).toBeGreaterThanOrEqual(1);
-      const [g] = await tx.select().from(draws).where(eq(draws.id, genuine.id));
-      const [t] = await tx.select().from(draws).where(eq(draws.id, tampered.id));
-      expect(g.verifiedAt).toBeInstanceOf(Date);
-      expect(t.verifiedAt).toBeNull();
-      // A second run never touches a draw it already marked.
-      await verifyStoredDraws(tx);
-      const [g2] = await tx.select().from(draws).where(eq(draws.id, genuine.id));
-      expect(g2.verifiedAt).toEqual(g.verifiedAt);
-    });
-  });
-});
-```
-
-- [ ] **Step 3: Run them to see them fail**
-
-Run: `pnpm test src/db src/domain/flights.test.ts src/domain/users src/domain/breaks/commands.test.ts src/app/account src/domain/draws`
-Expected: FAIL. `migrations.test.ts`: `column "flight_colour" does not exist` and `ENOENT … 0004_flights_kits.sql`; `schema.test.ts`: `column "verified_at" does not exist`; `flights.test.ts`: ENOENT; `updateFlight`, `updateHostKit`, `parseFlight` and `parseKit` are not functions; `verify-stored.test.ts` fails to resolve `./public-inputs`.
-
-- [ ] **Step 4: Add the columns to the schema**
-
-In `src/db/schema.ts`, in `users` replace
-
-```ts
-  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
-  createdAt: createdAt(),
-}, (t) => [
-  uniqueIndex("users_handle_lower_idx").on(sql`lower(${t.handle})`),
-  check("users_role_chk", sql`${t.role} in ('member','host','admin')`),
-  check("users_payment_name_chk", sql`char_length(${t.paymentName}) <= 60`),
-]);
-```
-
-with
-
-```ts
-  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
-  /**
-   * The member's flight (Mosaic §4): drawn at random from the 32 by the database when the row is created, never derived
-   * from the id (ids and handles are public on result pages). Holder data: shapeGrid decides who sees it.
-   */
-  flightColour: text("flight_colour").notNull().default(sql`(array['petrol','blue','plum','yellow','orange','lime','sky','pink'])[1 + floor(random() * 8)::int]`),
-  flightShape: text("flight_shape").notNull().default(sql`(array['standard','kite','slim','pear'])[1 + floor(random() * 4)::int]`),
-  /** Null until the member picks a flight on /account; "This is your flight" shows while it is null. */
-  flightChosenAt: timestamp("flight_chosen_at", { withTimezone: true }),
-  createdAt: createdAt(),
-}, (t) => [
-  uniqueIndex("users_handle_lower_idx").on(sql`lower(${t.handle})`),
-  check("users_role_chk", sql`${t.role} in ('member','host','admin')`),
-  check("users_payment_name_chk", sql`char_length(${t.paymentName}) <= 60`),
-  check("users_flight_colour_chk", sql`${t.flightColour} in ('petrol','blue','plum','yellow','orange','lime','sky','pink')`),
-  check("users_flight_shape_chk", sql`${t.flightShape} in ('standard','kite','slim','pear')`),
-]);
-```
-
-Replace the `hostProfiles` table with:
-
-```ts
-export const hostProfiles = pgTable("host_profiles", {
-  userId: uuid("user_id").primaryKey().references(() => users.id),
-  paymentHandles: jsonb("payment_handles").$type<{ venmo?: string; paypal?: string }>().notNull().default({}),
-  paymentHandlesChangedAt: timestamp("payment_handles_changed_at", { withTimezone: true }),
-  bio: text("bio"),
-  verifiedFbSince: integer("verified_fb_since"), // nullable now; avoids a later migration
-  /** The host's kit (Mosaic §4): one dark and one light flight colour. Both null is the default, Blue with Yellow. */
-  kitDark: text("kit_dark"),
-  kitLight: text("kit_light"),
-  createdAt: createdAt(),
-}, (t) => [
-  check("host_profiles_kit_dark_chk", sql`${t.kitDark} in ('petrol','blue','plum')`),
-  check("host_profiles_kit_light_chk", sql`${t.kitLight} in ('yellow','orange','lime','sky','pink')`),
-  check("host_profiles_kit_pair_chk", sql`(${t.kitDark} is null) = (${t.kitLight} is null)`),
-]);
-```
-
-In `draws`, replace
-
-```ts
-  voidReason: text("void_reason"),
-  createdAt: createdAt(),
-}, (t) => [
-  uniqueIndex("draws_active_uq").on(t.breakId).where(sql`${t.voidedAt} is null`),
-]);
-```
-
-with
-
-```ts
-  voidReason: text("void_reason"),
-  /** When verifyInputs passed on the recorded inputs (Mosaic §9 "draws verified"); set once, never on a voided draw. */
-  verifiedAt: timestamp("verified_at", { withTimezone: true }),
-  createdAt: createdAt(),
-}, (t) => [
-  uniqueIndex("draws_active_uq").on(t.breakId).where(sql`${t.voidedAt} is null`),
-]);
-```
-
-- [ ] **Step 5: Generate migration 0004**
-
-Run: `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres pnpm db:generate --name flights_kits`
-Expected: drizzle-kit writes `src/db/migrations/0004_flights_kits.sql`, `src/db/migrations/meta/0004_snapshot.json` and a `_journal.json` entry tagged `0004_flights_kits`, without prompting. The SQL file must contain exactly these eleven statements, each ending `;--> statement-breakpoint` except the last (whitespace and drizzle-kit's statement order aside):
-
-```sql
-ALTER TABLE "users" ADD COLUMN "flight_colour" text DEFAULT (array['petrol','blue','plum','yellow','orange','lime','sky','pink'])[1 + floor(random() * 8)::int] NOT NULL;
-ALTER TABLE "users" ADD COLUMN "flight_shape" text DEFAULT (array['standard','kite','slim','pear'])[1 + floor(random() * 4)::int] NOT NULL;
-ALTER TABLE "users" ADD COLUMN "flight_chosen_at" timestamp with time zone;
-ALTER TABLE "host_profiles" ADD COLUMN "kit_dark" text;
-ALTER TABLE "host_profiles" ADD COLUMN "kit_light" text;
-ALTER TABLE "draws" ADD COLUMN "verified_at" timestamp with time zone;
-ALTER TABLE "users" ADD CONSTRAINT "users_flight_colour_chk" CHECK ("users"."flight_colour" in ('petrol','blue','plum','yellow','orange','lime','sky','pink'));
-ALTER TABLE "users" ADD CONSTRAINT "users_flight_shape_chk" CHECK ("users"."flight_shape" in ('standard','kite','slim','pear'));
-ALTER TABLE "host_profiles" ADD CONSTRAINT "host_profiles_kit_dark_chk" CHECK ("host_profiles"."kit_dark" in ('petrol','blue','plum'));
-ALTER TABLE "host_profiles" ADD CONSTRAINT "host_profiles_kit_light_chk" CHECK ("host_profiles"."kit_light" in ('yellow','orange','lime','sky','pink'));
-ALTER TABLE "host_profiles" ADD CONSTRAINT "host_profiles_kit_pair_chk" CHECK (("host_profiles"."kit_dark" is null) = ("host_profiles"."kit_light" is null));
-```
-
-The first two statements are the random defaults, the backfill and the `NOT NULL` in one: adding a column with a volatile default makes Postgres rewrite `users` and evaluate `random()` once per existing row (pinned by the "fills each existing row" test), so there is no separate hand-written backfill (recorded ruling 16). If drizzle-kit prompts, or the SQL differs from the eleven statements above (a default without the outer parentheses around the array is a difference), answer nothing, stop and report BLOCKED: migration.
-
-Then check the journal order: `node -e 'const e=require("./src/db/migrations/meta/_journal.json").entries;console.log(e[4].tag, e[4].when>e[3].when?"ok":"BAD")'` must print `0004_flights_kits ok`; if it prints `BAD`, stop and report BLOCKED: migration.
-
-- [ ] **Step 6: Append the hand SQL: the draws guard learns `verified_at`**
-
-0000's `draws_update_guard` raises "draws may only be voided" on every update that does not set `voided_at`, so neither the backfill nor any later check could set `verified_at`. Append to the end of `src/db/migrations/0004_flights_kits.sql` (after the last generated statement, starting on a new line):
-
-```sql
-
---> statement-breakpoint
--- draws: insert-only, except voiding once (voided_at, voided_by, void_reason) and recording the check once
--- (verified_at from null to a time, on a draw that is not voided). Re-declares 0000's guard with the second rule.
-create or replace function draws_update_guard() returns trigger language plpgsql as $$
-begin
-  if old.voided_at is not null then
-    raise exception 'voided draws are immutable' using errcode = 'check_violation';
-  end if;
-  if new.id is distinct from old.id
-     or new.break_id is distinct from old.break_id
-     or new.request_id is distinct from old.request_id
-     or new.secret is distinct from old.secret
-     or new.beacon_round is distinct from old.beacon_round
-     or new.beacon_randomness is distinct from old.beacon_randomness
-     or new.beacon_signature is distinct from old.beacon_signature
-     or new.seed is distinct from old.seed
-     or new.algorithm_version is distinct from old.algorithm_version
-     or new.entries_snapshot::text is distinct from old.entries_snapshot::text
-     or new.ranking::text is distinct from old.ranking::text
-     or new.result_hash is distinct from old.result_hash
-     or new.run_by is distinct from old.run_by
-     or new.created_at is distinct from old.created_at then
-    raise exception 'draws may only be voided' using errcode = 'check_violation';
-  end if;
-  if new.verified_at is distinct from old.verified_at then
-    if old.verified_at is not null or new.verified_at is null or new.voided_at is not null then
-      raise exception 'draws.verified_at is set once' using errcode = 'check_violation';
-    end if;
-    return new;
-  end if;
-  if new.voided_at is null then
-    raise exception 'draws may only be voided' using errcode = 'check_violation';
-  end if;
-  return new;
-end $$;
-```
-
-The trigger `draws_update` from 0000 keeps pointing at this function by name; nothing else is re-created. The new columns need no policy: every table already has forced deny-all RLS.
-
-- [ ] **Step 7: Apply it to the three databases**
-
-Run: `ENV_FILE=.env.local pnpm db:migrate && ENV_FILE=.env.test pnpm db:migrate && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/breaks_e2e pnpm db:migrate`
-Expected: `migrated` three times. Any error: stop and report BLOCKED: migration.
-
-- [ ] **Step 8: Write `updateFlight`**
+- [ ] **Step 3: Write `updateFlight`**
 
 In `src/domain/users/commands.ts`, replace
 
@@ -1922,7 +2050,7 @@ export async function updateFlight(tx: Tx, caller: Caller, p: { colour: FlightCo
 }
 ```
 
-- [ ] **Step 9: Write `updateHostKit`**
+- [ ] **Step 4: Write `updateHostKit`**
 
 In `src/domain/breaks/commands.ts`, replace
 
@@ -1961,7 +2089,7 @@ export async function updateHostKit(tx: Tx, caller: Caller, p: { dark: FlightCol
 
 ```
 
-- [ ] **Step 10: Write the form parsers**
+- [ ] **Step 5: Write the form parsers**
 
 In `src/app/account/parse.ts`, replace
 
@@ -2001,154 +2129,21 @@ export function parseKit(form: FormData): { ok: true; input: KitInput } | { ok: 
 }
 ```
 
-- [ ] **Step 11: Record the check when a draw is recorded, and the backfill**
+- [ ] **Step 6: Run the tests to see them pass**
 
-Create `src/domain/draws/public-inputs.ts`:
+Run (sandbox off): `pnpm test src/domain/users src/domain/breaks/commands.test.ts src/app/account`
+Expected: PASS, including the four `updateFlight` and four `updateHostKit` tests and the parser tests.
 
-```ts
-import type { draws } from "@/db/schema";
-import type { PublicInputs } from "@/crypto/verify";
+- [ ] **Step 7: Run every gate**
 
-type DrawInputs = Pick<typeof draws.$inferSelect, "breakId" | "algorithmVersion" | "secret" | "beaconRound" | "beaconRandomness" | "entriesSnapshot" | "ranking" | "resultHash">;
+Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm test:e2e`
+Expected: all green. Nothing calls the two commands outside their tests yet (Task 16 adds the server actions); no line or draw code changed, so `pnpm test:concurrency` is not needed here.
 
-/** A recorded draw as the result page and /result.json publish it: what verifyInputs checks. */
-export function publicInputsOf(d: DrawInputs, seedCommitment: string | null): PublicInputs {
-  return {
-    breakId: d.breakId,
-    version: d.algorithmVersion,
-    secret: d.secret,
-    beaconRound: d.beaconRound,
-    beaconRandomness: d.beaconRandomness,
-    entries: d.entriesSnapshot.map((e) => ({ number: e.number, ownerId: e.ownerId })),
-    ranking: d.ranking,
-    resultHash: d.resultHash,
-    seedCommitment,
-  };
-}
-```
-
-Create `src/domain/draws/verify-stored.ts`:
-
-```ts
-import { and, eq, isNull } from "drizzle-orm";
-import type { Tx } from "@/db/client";
-import { breaks, draws } from "@/db/schema";
-import { verifyInputs } from "@/crypto/verify";
-import { publicInputsOf } from "./public-inputs";
-
-/**
- * The draws.verified_at backfill (migration 0004, scripts/verify-draws.ts): the result page's check over every active
- * draw not yet marked. A draw that fails stays null. Voided draws are immutable and never counted.
- */
-export async function verifyStoredDraws(tx: Tx): Promise<{ checked: number; verified: number }> {
-  const rows = await tx.select({ draw: draws, seedCommitment: breaks.seedCommitment }).from(draws)
-    .innerJoin(breaks, eq(breaks.id, draws.breakId)).where(and(isNull(draws.verifiedAt), isNull(draws.voidedAt)));
-  let verified = 0;
-  for (const r of rows) {
-    if (!verifyInputs(publicInputsOf(r.draw, r.seedCommitment)).ok) continue;
-    await tx.update(draws).set({ verifiedAt: new Date() }).where(eq(draws.id, r.draw.id));
-    verified += 1;
-  }
-  return { checked: rows.length, verified };
-}
-```
-
-In `src/domain/draws/commands.ts`, replace
-
-```ts
-import { roundAfter, type BeaconSource } from "@/crypto/beacon";
-```
-
-with
-
-```ts
-import { roundAfter, type BeaconSource } from "@/crypto/beacon";
-import { verifyInputs } from "@/crypto/verify";
-import { publicInputsOf } from "./public-inputs";
-```
-
-and replace
-
-```ts
-  const [d] = await tx.insert(draws).values({
-    breakId: b.id, requestId: req.id, secret: Buffer.from(secret).toString("base64"), beaconRound: req.beaconRound,
-    beaconRandomness: bytesToHex(bv.randomness), beaconSignature: bv.signature, seed: bytesToHex(seed), algorithmVersion: ALGORITHM_VERSION,
-    entriesSnapshot: entryRows.map((e) => ({ number: e.number, ownerId: e.ownerId!, handleAtDraw: e.handle ?? "", isBonus: e.isBonus })),
-    ranking, resultHash, runBy: caller.id,
-  }).returning({ id: draws.id });
-```
-
-with
-
-```ts
-  const row = {
-    breakId: b.id, requestId: req.id, secret: Buffer.from(secret).toString("base64"), beaconRound: req.beaconRound,
-    beaconRandomness: bytesToHex(bv.randomness), beaconSignature: bv.signature, seed: bytesToHex(seed), algorithmVersion: ALGORITHM_VERSION,
-    entriesSnapshot: entryRows.map((e) => ({ number: e.number, ownerId: e.ownerId!, handleAtDraw: e.handle ?? "", isBonus: e.isBonus })),
-    ranking, resultHash, runBy: caller.id,
-  };
-  // The host record's "draws verified" (Mosaic §9, recorded ruling 7): the result page's own check, run once here.
-  const verified = verifyInputs(publicInputsOf(row, b.seedCommitment)).ok;
-  const [d] = await tx.insert(draws).values({ ...row, verifiedAt: verified ? new Date() : null }).returning({ id: draws.id });
-```
-
-- [ ] **Step 12: Write the backfill script**
-
-Create `scripts/verify-draws.ts`:
-
-```ts
-// Usage: ENV_FILE=.env.local pnpm exec tsx scripts/verify-draws.ts   (an explicit DATABASE_URL wins over the file)
-// Backfills draws.verified_at (migration 0004): runs verifyInputs over every active draw not yet marked. Safe to run
-// again: a marked draw is never checked twice. Run it after migrating, on every database.
-import { config } from "dotenv";
-config({ path: process.env.ENV_FILE ?? ".env.local" });
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import * as schema from "../src/db/schema";
-import { verifyStoredDraws } from "../src/domain/draws/verify-stored";
-
-// No top-level await: package.json has no "type": "module", so tsx emits CJS (as src/db/migrate.ts notes).
-async function main(): Promise<number> {
-  const client = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false });
-  try {
-    const db = drizzle(client, { schema });
-    const r = await db.transaction((tx) => verifyStoredDraws(tx));
-    console.log(`checked ${r.checked} draws, ${r.verified} verified`);
-    return 0;
-  } finally {
-    await client.end();
-  }
-}
-
-main().then(
-  (code) => process.exit(code),
-  (e: unknown) => {
-    console.error(e);
-    process.exit(1);
-  },
-);
-```
-
-- [ ] **Step 13: Run the tests to see them pass**
-
-Run: `pnpm test src/db src/domain/flights.test.ts src/domain/users src/domain/breaks/commands.test.ts src/app/account src/domain/draws`
-Expected: PASS, including the four "migration 0004" tests, the two `draws.verified_at` schema tests (and the existing "lets a draw be voided but not otherwise changed" and "freezes draws.id even when voiding" tests, which still match `/voided/`), the four `updateFlight` and four `updateHostKit` tests, the parser tests and both `verify-stored` tests.
-
-- [ ] **Step 14: Run the backfill on the three databases**
-
-Run: `ENV_FILE=.env.local pnpm exec tsx scripts/verify-draws.ts && ENV_FILE=.env.test pnpm exec tsx scripts/verify-draws.ts && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/breaks_e2e pnpm exec tsx scripts/verify-draws.ts`
-Expected: three lines `checked <n> draws, <m> verified`. On the local database `m` equals `n` (every draw there was run by the app). On `breaks_test`, the draws `schema.test.ts` leaves behind carry made-up inputs (`'aa'`, `'dd'`) and stay unverified, so `m` may be smaller. `breaks_e2e` is emptied by every e2e run, so `n` may be 0. A thrown error: stop and report it.
-
-- [ ] **Step 15: Run every gate**
-
-Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm test:concurrency && pnpm test:e2e`
-Expected: all green. `pnpm test:concurrency` covers `finaliseDraw`, which now verifies before inserting. Users created by `/test/login` and by `makeUser` get their random flight from the column default. Nothing reads the flight or kit yet.
-
-- [ ] **Step 16: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/db/schema.ts src/db/migrations src/db/migrations.test.ts src/db/schema.test.ts src/domain/flights.test.ts src/domain/users src/domain/breaks/commands.ts src/domain/breaks/commands.test.ts src/app/account/parse.ts src/app/account/parse.test.ts src/domain/draws scripts/verify-draws.ts
-git commit -m "feat(db): migration 0004 for flights, kits and verified draws, with the flight and kit commands"
+git add src/domain/users src/domain/breaks/commands.ts src/domain/breaks/commands.test.ts src/app/account/parse.ts src/app/account/parse.test.ts
+git commit -m "feat(account): updateFlight and updateHostKit with their form parsers"
 ```
 
 ---
@@ -2168,7 +2163,7 @@ Flights are holder data (spec §6). `getBreakPage` selects each holder's stored 
 - Modify: `e2e/layout.spec.ts`
 
 **Interfaces:**
-- Consumes: `flightOf`, `kitFor`, `heatStep`, `COLLISION_ORDER`, `WATCHED_PAIR`, `Flight`, `FlightColour`, `FlightShape`, `Kit`, `HeatStep` (Task 2); `users.flightColour`, `users.flightShape`, `hostProfiles.kitDark`, `hostProfiles.kitLight` (Task 4).
+- Consumes: `flightOf`, `kitFor`, `heatStep`, `COLLISION_ORDER`, `WATCHED_PAIR`, `Flight`, `FlightColour`, `FlightShape`, `Kit`, `HeatStep` (Task 2); `users.flightColour`, `users.flightShape`, `hostProfiles.kitDark`, `hostProfiles.kitLight` (Task 4a).
 - Produces:
   - `BreakPage.host.kit: Kit`; `BreakPage.lines[]` gains `ownerFlightColour: string | null; ownerFlightShape: string | null`.
   - `GridCell.flight: Flight | null` (set exactly where `holder` is); `GridModel.kit: Kit; GridModel.heat: HeatStep` (always set).
@@ -2524,7 +2519,7 @@ and, inside `describe("hostProfile", …)`, after the test `"is null for an unkn
 
 - [ ] **Step 3: Run them to see them fail**
 
-Run: `pnpm test src/domain/breaks`
+Run (sandbox off): `pnpm test src/domain/breaks`
 Expected: FAIL. `grid.test.ts` cannot import `shownFlights` (`… is not a function`), and the cell `toEqual` with `flight: null` fails on the missing key; `og.test.ts` fails on the missing `kit` and `heat` keys and the missing `won` tone; `feed.test.ts` and `queries.test.ts` fail on the missing `kit`.
 
 - [ ] **Step 4: Select flights and the kit in `getBreakPage` and the kit in `hostProfile`**
@@ -2724,7 +2719,8 @@ export function shapeGrid(page: BreakPage, viewer: GridViewer | null, now: Date)
   const participant = !!viewer && page.lines.some((l) => l.ownerId === viewer.id);
   const showHolders = hostView || participant;
   const sorted = [...page.lines].sort((x, y) => x.number - y.number);
-  // Flights are holder data (Mosaic §6): computed only for viewers who see holders, and set exactly where holder is.
+  // Flights are holder data (Mosaic §6): computed only for viewers who see holders, and set under the same condition as
+  // holder (`showHolders && l.ownerId`). The values can still differ: holder is null for an owner with no handle.
   const flights = showHolders ? holderFlights(sorted) : new Map<string, Flight>();
 
   const cells: GridCell[] = sorted.map((l) => ({
@@ -2992,7 +2988,7 @@ Both pass today (no cell draws a flight yet) and keep holding once Task 7 render
 
 - [ ] **Step 10: Run the tests to see them pass**
 
-Run: `pnpm test src/domain/breaks src/components src/domain/flights.test.ts`
+Run (sandbox off): `pnpm test src/domain/breaks src/components src/domain/flights.test.ts`
 Expected: PASS, including "sets a flight exactly where it sets a holder (Review Focus 1)", the five matrix tests (anonymous, signed in with no line here, holder, host, admin), the five collision tests, the kit-and-heat test, `og.test.ts` "has no flight key (Review Focus 1)" and "marks the won places on a ran break, and only there", and `feed.test.ts` "carries kit and heat and no flight (Review Focus 1)".
 
 - [ ] **Step 11: Run every gate**
@@ -3009,14 +3005,16 @@ git commit -m "feat(breaks): flights behind the holder gate, with kit and heat o
 
 ---
 
-### Task 6: Kit and heat through the feed, host profile, landing (model: Sonnet, Opus review)
+### Task 6: Landing hero, `placesOf`, the page-model test (model: Sonnet, Opus review)
+
+> **Reviewer: Opus** (a controller note: the controller dispatches this review after the implementer reports; the implementer lists this focus in its report). Focus: `latestRanBreak` and `placesOf` carry line numbers, palette keys and a step only (no owner, handle or flight); a voided draw never reaches the hero; a place with no prize is skipped. The implementer fixes the findings once; anything left is recorded (Plan B rule).
 
 Spec §6 ("Every other viewer, and every surface built without a viewer (link preview, feed, landing, host profile), sees the board in the host's kit and the fill heat") and §10 (`latestRanBreak` returns the ranking's places, the kit and the thumb cells). Task 5 already carries `kit` and `heat` on every `listFeed` card and `kit` on `hostProfile`, with the feed privacy test (recorded ruling 17). This task adds the rest and the plumbing:
 - the landing hero: `latestRanBreak` gains the prize places, the kit, the heat (frozen at step 4: a ran break is past Closed) and the thumb cells;
-- `placesOf(ranking, prizeRanks)`, the one function that turns a ran break's order into its won places, in `src/domain/draws/places.ts`, which Tasks 12, 14 and 15 import;
+- `placesOf(ranking, prizeRanks)`, the one function that turns a ran break's order into its won places, in `src/domain/draws/places.ts`, which Tasks 12a, 12b, 13, 14 and 15a import;
 - the break page model end to end: `GridModel.kit` and `GridModel.heat` (Task 5) read through `getBreakPage` for every kind of viewer, frozen at step 4 from Closed on.
 
-This task changes no UI: Task 15 draws the cards, hero and profile from these fields. None of these payloads ever carries a flight: `feedThumbs` stays as it is and selects no owner, and the new fields are palette keys of the host's kit, a step number and line numbers.
+This task changes no UI: Tasks 15a and 15b draw the cards, the hero and the profile from these fields. None of these payloads ever carries a flight: `feedThumbs` stays as it is and selects no owner, and the new fields are palette keys of the host's kit, a step number and line numbers.
 
 **Files:**
 - Create: `src/domain/draws/places.ts`, `src/domain/draws/places.test.ts`
@@ -3024,10 +3022,10 @@ This task changes no UI: Task 15 draws the cards, hero and profile from these fi
 - Modify: `src/domain/breaks/feed.test.ts`, `src/domain/breaks/queries.test.ts`
 
 **Interfaces:**
-- Consumes: `Kit`, `HeatStep`, `DEFAULT_KIT`, `kitFor(p: { kitDark: string | null; kitLight: string | null }): Kit`, `heatStep(open, total, closed): HeatStep` (Task 2, `src/domain/flights.ts`); the Drizzle columns `hostProfiles.kitDark`, `hostProfiles.kitLight` and the SQL columns `host_profiles.kit_dark`, `host_profiles.kit_light`, `users.flight_colour`, `users.flight_shape` (Task 4, migration 0004); `FeedBreak.kit`, `FeedBreak.heat`, `HostProfile.kit`, and `GridModel.kit: Kit` and `GridModel.heat: HeatStep` set by `shapeGrid` (Task 5).
+- Consumes: `Kit`, `HeatStep`, `DEFAULT_KIT`, `kitFor(p: { kitDark: string | null; kitLight: string | null }): Kit`, `heatStep(open, total, closed): HeatStep` (Task 2, `src/domain/flights.ts`); the Drizzle columns `hostProfiles.kitDark`, `hostProfiles.kitLight` and the SQL columns `host_profiles.kit_dark`, `host_profiles.kit_light`, `users.flight_colour`, `users.flight_shape` (Task 4a, migration 0004); `FeedBreak.kit`, `FeedBreak.heat`, `HostProfile.kit`, and `GridModel.kit: Kit` and `GridModel.heat: HeatStep` set by `shapeGrid` (Task 5).
 - Produces:
   - `src/domain/draws/places.ts`: `type Place = 1 | 2 | 3`; `placesOf(ranking: readonly number[], prizeRanks: readonly number[]): { number: number; place: Place }[]` (recorded ruling 17).
-  - `LatestRan = { breakId: string; title: string; lineCount: number; topLine: number; ranAt: Date; kit: Kit; heat: HeatStep; places: { number: number; place: Place }[]; cells: ThumbCell[] }` (`topLine` is kept for today's landing page until Task 15 rewrites it).
+  - `LatestRan = { breakId: string; title: string; lineCount: number; topLine: number; ranAt: Date; kit: Kit; heat: HeatStep; places: { number: number; place: Place }[]; cells: ThumbCell[] }` (`topLine` is kept for today's landing page until Task 15a rewrites it).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3152,8 +3150,8 @@ export type Place = 1 | 2 | 3;
 /**
  * The prize places to draw as won cells (Mosaic §5, §8; recorded ruling 17): every prize rank of 1, 2 or 3 the break
  * has, with the line the draw put there (`ranking[rank - 1]`). A place with no prize is skipped, as in the reveal (§7).
- * The landing hero (Task 6), the result page (Tasks 12, 13), the link preview (Task 14) and the card thumbnails
- * (Task 15) all read places from here.
+ * The landing hero (Task 6), the result page (Tasks 12a, 12b, 13), the link preview (Task 14) and the card thumbnails
+ * (Task 15a) all read places from here.
  */
 export function placesOf(ranking: readonly number[], prizeRanks: readonly number[]): { number: number; place: Place }[] {
   const ranks = [...new Set(prizeRanks)].filter((r): r is Place => r === 1 || r === 2 || r === 3).sort((a, b) => a - b);
@@ -3242,16 +3240,12 @@ export async function latestRanBreak(tx: Tx): Promise<LatestRan | null> {
 Run: `pnpm test src/domain/draws/places.test.ts src/domain/breaks/feed.test.ts src/domain/breaks/queries.test.ts` (sandbox off)
 Expected: PASS, including Task 5's "carries kit and heat and no flight (Review Focus 1)".
 
-- [ ] **Step 6: Ask for the Opus review**
-
-This task is Sonnet with an Opus review (task map). Hand the diff to an Opus reviewer with this focus: `latestRanBreak` and `placesOf` carry line numbers, palette keys and a step only (no owner, handle or flight); a voided draw never reaches the hero; a place with no prize is skipped. Fix the findings once; record anything left (Plan B rule).
-
-- [ ] **Step 7: Run every gate**
+- [ ] **Step 6: Run every gate**
 
 Run: `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm test:e2e` (sandbox off)
 Expected: all green. No page reads the new fields yet: the landing page compiles unchanged, because the fields are only added. No lines or draws change, so `pnpm test:concurrency` is not required.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/domain/draws/places.ts src/domain/draws/places.test.ts src/domain/breaks/feed.ts src/domain/breaks/feed.test.ts src/domain/breaks/queries.test.ts
@@ -3305,8 +3299,9 @@ In `src/components/grid/cell-label.test.ts`, append inside `describe("cellLabel"
     expect(cellLabel(c({ number: 23, state: "paid", place: 1 }), { foldSent: true })).toBe("Line 23, top spot");
     expect(cellLabel(c({ number: 9, state: "paid", place: 2 }), { foldSent: true })).toBe("Line 9, 2nd place");
     expect(cellLabel(c({ number: 31, state: "paid", place: 3 }), { foldSent: true })).toBe("Line 31, 3rd place");
-    // Recorded ruling 19: your own won line keeps "yours", as its ring does.
-    expect(cellLabel(c({ number: 23, state: "paid", place: 1, mine: true }), { foldSent: true })).toBe("Line 23, yours, top spot");
+    // A won line is named by its place alone, yours included: the result never changes with the viewer's holdings
+    // (Mosaic §5, recorded ruling 19).
+    expect(cellLabel(c({ number: 23, state: "paid", place: 1, mine: true }), { foldSent: true })).toBe("Line 23, top spot");
   });
   it("never includes a flight", () => {
     const name = cellLabel(c({ number: 5, state: "paid", flight: { colour: "plum", shape: "kite" } }), { foldSent: true });
@@ -3347,7 +3342,13 @@ import { FlightSprite } from "./flight-sprite";
 import { Grid } from "./grid";
 ```
 
-replace the helper line (whatever Tasks 3 and 5 left after `const cell = (number: number, o: Partial<GridCell> = {}): GridCell =>`) with
+replace the helper line Task 5 left
+
+```ts
+const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, flight: null, ...o });
+```
+
+with
 
 ```ts
 type C = GridCell & { place?: 1 | 2 | 3 | null };
@@ -3552,6 +3553,13 @@ for (const px of [44, 56, 68] as const) {
         expect(h).not.toMatch(/top spot<|place</); // no place word in the cell, only in its name
       });
     }
+    it("won and yours: named by its place alone, with no yours ring (Mosaic §5, recorded ruling 19)", () => {
+      const h = at(px, cell(23, { state: "paid", mine: true, flight: plum, place: 1 }));
+      expect(h).toContain('aria-label="Line 23, top spot"');
+      expect(h).toContain('data-won="1"');
+      expect(h).not.toContain("bc-ring");
+      expect(h).not.toContain("yours");
+    });
     it("kit view: an ink standard flight and the kit-light band; no data-flight and no --fc, whatever the data says", () => {
       const claimed = at(px, cell(2, { state: "taken", flight: plum }), { view: "kit" });
       expect(claimed).toContain('aria-label="Line 2, taken"');
@@ -3614,11 +3622,10 @@ with
 const NUMBER_SIZE: Record<PaperCellSize, string> = { md: "text-grid", sm: "text-[13px] leading-none", xs: "hidden" };
 ```
 
-and replace
+and replace the doc comment Task 3 left
 
 ```tsx
-/** One board segment. Shape carries state (design §4): hatch, dashed edge, ink face, corner flag, glyphs. */
-export function Cell({
+/** One board segment. Shape carries state (design §4): hatch, dashed edge, ink face, corner flag, glyphs; each mark is named in data-mark. */
 ```
 
 with
@@ -3628,8 +3635,9 @@ with
  * A cell on paper (ledger rows, the pay sheet, /me until Plan C Task 18): the first design's §4, unchanged on purpose
  * (Mosaic §1.1: "paper, ink and hatch mini cells, no flight, no kit, no glyph"). The board uses ./cell.
  */
-export function PaperCell({
 ```
+
+and on the line below it replace `export function Cell(` with `export function PaperCell(` (the rest of that line, Task 3's one-line signature, stays as it is).
 
 In `src/components/mini-cells.tsx` replace `import { Cell } from "./grid/cell";` with `import { PaperCell } from "./grid/paper-cell";` and `<Cell cell={c} size="sm" boxed` with `<PaperCell cell={c} size="sm" boxed`.
 
@@ -3663,11 +3671,13 @@ const PLACE_WORD: Record<1 | 2 | 3, string> = { 1: "top spot", 2: "2nd place", 3
  */
 export function cellStateWord(c: CellData, o: { struck?: boolean; foldSent?: boolean } = {}): string {
   if (o.struck) return "just taken";
+  // A won line is named by its place alone, yours included (Mosaic §5: "Line 23, top spot"): the result never changes
+  // with the viewer's holdings (recorded ruling 19).
+  if (c.place) return PLACE_WORD[c.place];
   const parts: string[] = [];
   if (c.mine) parts.push("yours");
   if (c.bonus) parts.push("bonus");
-  if (c.place) parts.push(PLACE_WORD[c.place]);
-  else parts.push(o.foldSent && c.state === "sent" && !c.mine ? "taken" : STATE_WORD[c.state]);
+  parts.push(o.foldSent && c.state === "sent" && !c.mine ? "taken" : STATE_WORD[c.state]);
   if (c.overdue) parts.push("overdue");
   return parts.join(", ");
 }
@@ -3834,7 +3844,8 @@ export function Cell({ cell, view = "member", size = "md", px, selected = false,
       {cell.state === "reserved" && marks && <span className="bc-double" data-mark="reserved-rule" />}
       {cell.state === "reserved" && size === "md" && <span className="bc-m text-micro" data-mark="mini-label">m</span>}
       {won && <span className="bc-bull" data-place={cell.place} data-mark="bull"><span className="bc-bull-ring" /></span>}
-      {cell.mine && marks && <span className="bc-ring" data-ring={darkFace ? "cream-out" : "ink-out"} data-mark="ring" />}
+      {/* No yours ring on a won cell: the bull and its place ring are the only extra mark (Mosaic §5, recorded ruling 19). */}
+      {cell.mine && !won && marks && <span className="bc-ring" data-ring={darkFace ? "cream-out" : "ink-out"} data-mark="ring" />}
       {cell.overdue && marks && <span className="bc-overdue" data-mark="overdue-edge" />}
       {selected && <span className="bc-brackets" data-mark="brackets"><i /><i /><i /><i /></span>}
       {/* Weight 600 in every state, selected included: 700 is not loaded. */}
@@ -3871,7 +3882,7 @@ export function Cell({ cell, view = "member", size = "md", px, selected = false,
   const name = label ?? cellLabel(cell, { struck, foldSent: true });
   const base = "bc relative block aspect-square w-full select-none";
   if (!onPress) {
-    // data-cell on display roots too, so the reveal can find its target cells (Task 12).
+    // data-cell on display roots too, so the reveal can find its target cells (Task 12b).
     return <div role="img" data-cell={cell.number} {...data} aria-label={name} style={style} className={base}>{body}</div>;
   }
   return (
@@ -3939,7 +3950,7 @@ Append to `src/app/globals.css`:
   /* Kit view, claimed: a 5 px kit-light band along the bottom edge, its top 1 px an ink keyline (y 39–44 at 44 px). */
   .bc-band { position: absolute; inset-inline: 0; bottom: 0; height: 5px; box-sizing: border-box; border-top: 1px solid var(--board-ink); background: var(--kit-light); }
 
-  /* The number and the glyph sit at z-index 1: the house-lights dim (Task 12) sits at 2, your own glyphs at 3 (recorded ruling 19). */
+  /* The number and the glyph sit at z-index 1: the house-lights dim (Task 12a) sits at 2, your own glyphs at 3 (recorded ruling 19). */
   .bc-num { position: relative; z-index: 1; font-size: var(--ns); line-height: 1; color: var(--board-ink); }
   .bc-chip { background: var(--board-cream); padding-inline: 2px; }
   .bc[data-state="paid"]:not([data-won]) .bc-num { color: var(--num); }
@@ -3997,7 +4008,7 @@ Append to `src/app/globals.css`:
   .bc[data-size="xs"] .bc-ring[data-ring="cream-out"] { box-shadow: inset 0 0 0 1px var(--board-cream), inset 0 0 0 2px var(--board-ink); }
   .bc[data-size="xs"] .bc-sent { top: auto; bottom: 2px; width: 6px; height: 1px; margin-left: -3px; }
   .bc[data-size="thumb"] .bc-band { height: 30%; border-top: 0; }
-  .bc[data-size="thumb"] .bc-bull-ring { display: none; }
+  /* Thumbnails keep the bull's ring: the ring carries the place, as on KitThumb (Task 15a). */
 
   /* Focus on the board: a 2 px ink outline over a 4 px cream ring, so one band always contrasts (Mosaic §5). */
   .bc:focus-visible { outline: 2px solid var(--board-ink); outline-offset: 0; box-shadow: 0 0 0 4px var(--board-cream); z-index: 10; }
@@ -4035,36 +4046,40 @@ git commit -m "feat(grid): mosaic cell states, flight glyphs, the yours ring and
 
 ---
 
-### Task 8: Grid frame, surround, lamp, legends, density tests (model: Sonnet)
+### Task 8: Grid frame, surround, lamp, legends, density tests (model: Sonnet, Opus review of the view wiring)
+
+> **Reviewer: Opus** (a controller note: the controller dispatches this review after the implementer reports; the implementer lists this focus in its report). Focus: the view wiring is a privacy decision. `boardView = grid.showHolders ? "member" : "kit"` on the break page; `Grid` and `Cell` in the kit view never set `data-flight` or `--fc`, whatever the data says; `GridPreview` passes only number, state and place. The implementer fixes the findings once; anything left is recorded (Plan B rule).
 
 Spec §4 (the kit is the board's surround; Heat) and §5 (the grid, the legend), with the 390 × 664 budget from §8.
 
-- **Frame:** one `box-shadow` stack on the numbered rows, 12 px in all, spread into the 16 px gutter, never a border or padding, so the grid keeps its 358 px at 390 and `columnsFor` keeps eight columns: `0 0 0 1px var(--board-steel), 0 0 0 7px var(--board-ring), 0 0 0 11px var(--kit-dark), 0 0 0 12px var(--kit-light)`.
+- **Frame:** one `box-shadow` stack on the numbered rows, 12 px in all, spread into the 16 px gutter, never a border or padding: `0 0 0 1px var(--board-steel), 0 0 0 7px var(--board-ring), 0 0 0 11px var(--kit-dark), 0 0 0 12px var(--kit-light)`.
+- **Width (recorded ruling 33):** the 44 pt floor is kept honestly. The rows pull 3.5 px into each gutter (`margin-inline: -3.5px` on the 358 px column), so at 390 the board is 365 px wide: eight 44.75 px cells with 1 px wires, a 45.75 px pitch, and the 12 px frame stack sits 15.5 px into the 16 px gutter. The group keeps the column's width, so its container queries and `columnsFor` are unchanged (360 wide keeps its seven columns, 47 px cells).
 - **Wire and empty slots:** the wire is `--board-steel`, drawn as each cell's own 1 px shadow over a 1 px gap, so empty slots in the last row show `--board-wall-2` and not wire.
 - **Lamp:** one layer behind the board. Its colour is fixed (from `LAMP`) and the step sets its opacity (`LAMP[heat]`'s alpha), so a step change is a `--dur-lamp` opacity transition. That only happens on change, never on mount, because the server renders the final value.
 - **Kit:** `--kit-dark` and `--kit-light` are set on the board from the kit's palette keys.
 - **Legends:** member (open, taken, sent, paid, yours) and kit (open, taken, paid), drawn as mini cells beside words separated by spaces.
-- **Thumbnail:** `GridPreview` becomes the kit-view thumbnail with its 6 px frame and the lamp.
+- **Thumbnail:** `GridPreview` becomes the kit-view thumbnail with its 6 px frame and the lamp. Its one paper caller, the `/host/new` composer (`src/app/host/new/form.tsx`, `<GridPreview count={lineCount} size={64} />`), changes with it on purpose: the composer previews the board in the kit it will open in, with no edit to `form.tsx` (recorded ruling 32). It is the only paper surface this task touches.
 
-The break page wires the view, kit and heat from `GridModel`. Render tests pin the frame value, the wire, the lamp and the kit. `boardGeometry` pins eight columns of 44.75 px at 390 and seven of 46.9 px at 360. `/dev/components` gains the density entry Task 20 checks by eye and in e2e. The "You have …" line stays where it is; Task 10 moves and restyles it.
+The break page wires the view, kit and heat from `GridModel`. Render tests pin the frame value, the wire, the lamp and the kit. `boardGeometry` pins eight 44.75 px cells (365 px wide, a 45.75 px pitch) at 390 and seven 47 px cells at 360. `/dev/components` gains the density entry Task 20 checks by eye and in e2e. The "You have …" line stays where it is; Task 10 moves and restyles it. The break page goes on the wall here: `data-wall` on its `<main>` and `export const viewport = wallViewport` from `src/app/b/[id]/page.tsx` in the same commit, so its browser chrome changes with the page (recorded ruling 12).
 
 **Files:**
 - Modify: `src/components/grid/grid.tsx` (whole file), `src/components/grid/grid-preview.tsx` (whole file), `src/components/grid/layout.ts` (`boardGeometry`), `src/components/grid/layout.test.ts`
 - Create: `src/components/grid/lamp.ts`, `src/components/board-legend.tsx`
 - Delete: `src/components/legend.tsx`
 - Modify: `src/components/grid/render.test.ts`, `src/app/globals.css` (board block)
-- Modify: `src/components/break/break-interactive.tsx` (`boardView`, `kit`, `heat`; the small line's ink), `src/app/b/[id]/page.tsx` (wire them, the legend, `data-wall`)
+- Modify: `src/components/break/break-interactive.tsx` (`boardView`, `kit`, `heat`; the small line's ink), `src/app/b/[id]/page.tsx` (wire them, the legend, `data-wall`, `viewport`)
+- Modify: `e2e/layout.spec.ts` (the break page joins the theme-color test's wall list)
 - Modify: `src/app/dev/components/page.tsx` (whole file: the density entry)
 
 **Interfaces:**
-- Consumes: `Cell`, `BoardView`, `CellData` (Task 7); `DEFAULT_KIT`, `FLIGHT_COLOURS`, `LAMP`, `Kit`, `HeatStep`, `Flight`, `FlightColour` (Task 2); `GridModel.kit`, `GridModel.heat`, `GridModel.showHolders` (Task 5); `--board-steel`, `--board-ring`, `--board-wall`, `--board-wall-2`, `--board-text-2`, `--dur-lamp` (Task 1).
+- Consumes: `Cell`, `BoardView`, `CellData` (Task 7); `DEFAULT_KIT`, `FLIGHT_COLOURS`, `LAMP`, `Kit`, `HeatStep`, `Flight`, `FlightColour` (Task 2); `GridModel.kit`, `GridModel.heat`, `GridModel.showHolders` (Task 5); `--board-steel`, `--board-ring`, `--board-wall`, `--board-wall-2`, `--board-text-2`, `--dur-lamp`, `wallViewport` and the theme-color e2e test's `wall` list (Task 1).
 - Produces:
   - `type BoardCell = GridCell & { place?: 1 | 2 | 3 | null }`.
   - `kitVars(kit: Kit): CSSProperties` (in `grid.tsx`).
   - `Grid` gains `view?: BoardView` (default `"member"`), `kit?: Kit` (default `DEFAULT_KIT`), `heat?: HeatStep | null` (no lamp when null); `cells: BoardCell[]`. Test ids `board-frame` (the numbered rows, which keep `data-grid-rows`) and `lamp`; `data-view` on the group.
   - `lampLayer(step: HeatStep): { backgroundImage: string; opacity: number }` and `LAMP_POSITION = "-32px -16px"` (the lamp's inset, which `.board-lamp` writes in `globals.css`; recorded ruling 18) (`src/components/grid/lamp.ts`).
-  - The break page's `<main>` carries `data-wall` (recorded ruling 12): the page is on the wall from this task on.
-  - `boardGeometry(viewport: number, count: number): { box: number; cols: number; pitch: number; rows: number; height: number }` (`layout.ts`).
+  - The break page's `<main>` carries `data-wall` and the page exports `viewport = wallViewport` (recorded ruling 12): the page and its browser chrome are on the wall from this task on.
+  - `BOARD_BLEED = 3.5` and `boardGeometry(viewport: number, count: number): { column: number; box: number; cols: number; cell: number; pitch: number; rows: number; height: number }` (`layout.ts`): `column` is the page column, `box` the board's width (the column plus 7 px), `cell` a cell's side, `pitch` a cell plus its 1 px wire (recorded ruling 33).
   - `BoardLegend({ view: BoardView; flight: Flight | null; kit: Kit })`: `ul[aria-label="What the cells mean"][data-testid=legend]`.
   - `type PreviewCell = Pick<CellData, "number" | "state" | "bonus"> & { place?: 1 | 2 | 3 | null }`; `GridPreview({ count, cells?: PreviewCell[], size?, kit?: Kit, heat?: HeatStep | null })`, always the kit view.
   - `BreakInteractiveProps` gains `boardView: BoardView; kit: Kit; heat: HeatStep`.
@@ -4075,13 +4090,15 @@ The break page wires the view, kit and heat from `GridModel`. Render tests pin t
 Append to `src/components/grid/layout.test.ts`, inside `describe("grid columns (design §4)", () => {` before its closing `});` (and add `boardGeometry` to the import from `./layout`):
 
 ```ts
-  it("the board at 390 and 360 (Mosaic §5, Review Focus 5): 8 × 44.75 px, then 7 × 46.9 px; the 12 px frame fits the gutter", () => {
-    expect(boardGeometry(390, 50)).toEqual({ box: 358, cols: 8, pitch: 44.75, rows: 7, height: 313.25 });
-    const at360 = boardGeometry(360, 50);
-    expect(at360).toMatchObject({ box: 328, cols: 7, rows: 8 });
-    expect(at360.pitch).toBeCloseTo(46.9, 1);
-    for (const w of [390, 360]) expect((w - boardGeometry(w, 50).box) / 2 - 12).toBe(4); // 4 px left to the screen edge
-    expect(boardGeometry(1024, 55)).toMatchObject({ box: 552, cols: 10 });
+  it("the board at 390 and 360 (Mosaic §5, Review Focus 5): 365 px of eight 44.75 px cells on 1 px wires, then seven 47 px cells; the 12 px frame reaches 15.5 px into the gutter", () => {
+    expect(boardGeometry(390, 50)).toEqual({ column: 358, box: 365, cols: 8, cell: 44.75, pitch: 45.75, rows: 7, height: 319.25 });
+    expect(boardGeometry(360, 50)).toEqual({ column: 328, box: 335, cols: 7, cell: 47, pitch: 48, rows: 8, height: 383 });
+    // The 44 pt floor holds at both widths, and half a pixel of gutter is left at the screen edge (3.5 px bleed + 12 px frame).
+    for (const w of [390, 360]) {
+      expect(boardGeometry(w, 50).cell).toBeGreaterThanOrEqual(44);
+      expect((w - boardGeometry(w, 50).box) / 2 - 12).toBe(0.5);
+    }
+    expect(boardGeometry(1024, 55)).toMatchObject({ column: 552, box: 559, cols: 10 });
   });
 ```
 
@@ -4131,8 +4148,8 @@ describe("Board (Mosaic §4, §5): the frame, the wire, the lamp, the kit", () =
     const tags = [h.match(/<div role="group"[^>]*>/)![0], h.match(/<div data-grid-rows[^>]*>/)![0]];
     for (const t of tags) expect(t).not.toMatch(/overflow|\bp[xytblr]?-|border/);
   });
-  it("wires cells in steel and leaves empty last-row slots in --board-wall-2", () => {
-    expect(rule(".board-frame, .board-wire")).toContain("gap: 1px; background: var(--board-wall-2);");
+  it("wires cells in steel, leaves empty last-row slots in --board-wall-2, and pulls the rows 3.5 px into each gutter", () => {
+    expect(rule(".board-frame, .board-wire")).toContain("gap: 1px; background: var(--board-wall-2); margin-inline: -3.5px;");
     expect(rule(".board-frame > .bc:not(:focus-visible), .board-wire > .bc:not(:focus-visible)")).toContain("box-shadow: 0 0 0 1px var(--board-steel);");
   });
   it("sets the kit on the board from palette keys", () => {
@@ -4155,8 +4172,8 @@ describe("Board (Mosaic §4, §5): the frame, the wire, the lamp, the kit", () =
     const h = html(createElement(Grid, { cells: fifty, lineCount: 50, label: "L", onPress: noop }));
     expect(h).toContain(GRID_COLS.l);
     expect(h.match(/<button/g)).toHaveLength(50);
-    expect(columnsFor(50, boardGeometry(390, 50).box)).toBe(8);
-    expect(columnsFor(50, boardGeometry(360, 50).box)).toBe(7);
+    expect(columnsFor(50, boardGeometry(390, 50).column)).toBe(8);
+    expect(columnsFor(50, boardGeometry(360, 50).column)).toBe(7);
   });
   it("kit view: no cell carries data-flight or --fc, even if a flight reached the data", () => {
     const h = html(createElement(Grid, { cells: fifty, lineCount: 50, label: "L", view: "kit", onPress: noop }));
@@ -4185,7 +4202,7 @@ describe("BoardLegend: mini cells beside words, spaces between", () => {
     expect(h.match(/width:16px;height:16px/g)).toHaveLength(5);
     expect(h).not.toContain("·");
   });
-  it("member without a line of one's own (host, admin): a standard flight in the kit's dark colour", () => {
+  it("member with no flight given (no viewer flight at all): a standard flight in the kit's dark colour", () => {
     const h = html(createElement(BoardLegend, { view: "member", flight: null, kit: plumLime }));
     expect(h).toContain('data-flight="plum-standard"');
   });
@@ -4227,17 +4244,24 @@ Expected: FAIL. `boardGeometry`, `./lamp` and `@/components/board-legend` do not
 Append to `src/components/grid/layout.ts`:
 
 ```ts
+/** How far the board's rows pull into each gutter (globals.css .board-frame, .board-wire: margin-inline: -3.5px). */
+export const BOARD_BLEED = 3.5;
+
 /**
- * The board at a viewport width (Mosaic §5): the grid box is the page column minus 16 px gutters below 640 and 552
- * above. The 12 px frame is a box-shadow drawn into the gutter, so it takes none of the box. `pitch` is a cell plus its
- * 1 px wire: 44.75 at 390, 46.9 at 360.
+ * The board at a viewport width (Mosaic §5, recorded ruling 33). `column` is the page column: the viewport minus 16 px
+ * gutters below 640, and 552 above. The rows pull BOARD_BLEED into each gutter, so `box` is the column plus 7 px (365 at
+ * 390). Cells sit 1 px apart (the wire): `cell` is a cell's side (44.75 at 390, 47 at 360) and `pitch` a cell plus its
+ * wire. Columns are read from the column, as the group's container queries read it. The 12 px frame is a box-shadow
+ * drawn 15.5 px into the 16 px gutter, so it takes none of the box.
  */
-export function boardGeometry(viewport: number, count: number): { box: number; cols: number; pitch: number; rows: number; height: number } {
-  const box = viewport >= 640 ? 552 : viewport - 32;
-  const cols = columnsFor(count, box);
-  const pitch = box / cols;
+export function boardGeometry(viewport: number, count: number): { column: number; box: number; cols: number; cell: number; pitch: number; rows: number; height: number } {
+  const column = viewport >= 640 ? 552 : viewport - 32;
+  const box = column + 2 * BOARD_BLEED;
+  const cols = columnsFor(count, column);
+  const cell = (box - (cols - 1)) / cols;
+  const pitch = cell + 1;
   const rows = Math.ceil(count / cols);
-  return { box, cols, pitch, rows, height: rows * pitch };
+  return { column, box, cols, cell, pitch, rows, height: rows * pitch - 1 };
 }
 ```
 
@@ -4408,8 +4432,9 @@ const mini = (o: Partial<CellData>): CellData => ({ number: 0, state: "open", mi
 /**
  * The legend as mini cells beside words, spaces between, no middle dots (Mosaic §5). Member view: open, taken, sent,
  * paid, yours, in the viewer's own flight. Paid has no single colour, and other people's sent lines read as taken, so
- * "sent" is drawn as yours, sent. Kit view: open, taken, paid, in the kit. `flight` is the viewer's own; a host or admin
- * with no line here gets a standard flight in the kit's dark colour (recorded ruling 20).
+ * "sent" is drawn as yours, sent. Kit view: open, taken, paid, in the kit. `flight` is the viewer's own (their first
+ * held flight, else their stored flight from Task 16); with no flight at all, a standard flight in the kit's dark colour
+ * (recorded ruling 20).
  */
 export function BoardLegend({ view, flight, kit }: { view: BoardView; flight: Flight | null; kit: Kit }) {
   const f: Flight = flight ?? { colour: kit.dark, shape: "standard" };
@@ -4448,11 +4473,14 @@ Append to `src/app/globals.css`:
 ```css
 /* ---------- The board (Mosaic §4, §5). ---------- */
 @layer components {
-  /* Wire: each cell's own 1 px steel shadow over a 1 px gap, so empty last-row slots show --board-wall-2, not wire. */
-  .board-frame, .board-wire { gap: 1px; background: var(--board-wall-2); }
+  /* Wire: each cell's own 1 px steel shadow over a 1 px gap, so empty last-row slots show --board-wall-2, not wire.
+     The rows pull 3.5 px into each gutter (BOARD_BLEED): at 390 the board is 365 px, eight 44.75 px cells on 1 px wires
+     (recorded ruling 33). The group keeps the column's width, so its container queries still pick eight columns. */
+  .board-frame, .board-wire { gap: 1px; background: var(--board-wall-2); margin-inline: -3.5px; }
   .board-frame > .bc:not(:focus-visible), .board-wire > .bc:not(:focus-visible) { box-shadow: 0 0 0 1px var(--board-steel); }
   /* The kit is the surround: 1 px steel, the 6 px numbers ring, 4 px kit dark, a 1 px kit-light pinstripe. Spread into the
-     page gutter, never border or padding: a 12 px border would leave 334 px and columnsFor would drop to 7 columns. */
+     page gutter (15.5 px of its 16 px with the bleed), never border or padding: a 12 px border would leave 334 px and
+     columnsFor would drop to 7 columns. */
   .board-frame {
     box-shadow: 0 0 0 1px var(--board-steel), 0 0 0 7px var(--board-ring), 0 0 0 11px var(--kit-dark), 0 0 0 12px var(--kit-light);
   }
@@ -4532,6 +4560,7 @@ add, directly below the line that starts `  const grid = shapeGrid(page,`:
 ```tsx
   const boardView: BoardView = grid.showHolders ? "member" : "kit";
   // The legend draws "yours" and "paid" in the viewer's own flight: the first line they hold here (recorded ruling 20).
+  // Task 16 adds the viewer's stored flight as the fallback, once the page loads it.
   const legendFlight = grid.cells.find((c) => c.mine && c.flight)?.flight ?? null;
 ```
 
@@ -4581,6 +4610,34 @@ with
     <main data-wall className="mx-auto max-w-[600px] px-4 pb-6 sm:px-6">
 ```
 
+and replace
+
+```tsx
+import { loadBreak } from "./load";
+```
+
+with
+
+```tsx
+import { wallViewport } from "@/app/wall";
+import { loadBreak } from "./load";
+
+/** The break page is on the wall from this task on: its browser chrome follows (Mosaic §8, recorded ruling 12). */
+export const viewport = wallViewport;
+```
+
+In `e2e/layout.spec.ts`, in the theme-color test Task 1 added, replace
+
+```ts
+  const wall: string[] = [];
+```
+
+with
+
+```ts
+  const wall: string[] = [url];
+```
+
 replace
 
 ```tsx
@@ -4588,6 +4645,7 @@ replace
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="font-condensed text-[20px] leading-6 font-semibold tabular" data-testid="left-count">{leftText(grid.counts.open, b.lineCount)}</span>
             <span className="text-small text-ink-2">{formatMoney(b.linePriceCents)} a line</span>
+            <StatusPill status={b.status} />
 ```
 
 with
@@ -4597,6 +4655,8 @@ with
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="font-condensed text-[20px] leading-6 font-semibold tabular text-[var(--board-text)]" data-testid="left-count">{leftText(grid.counts.open, b.lineCount)}</span>
             <span className="text-small text-[var(--board-text-2)]">{formatMoney(b.linePriceCents)} a line</span>
+            {/* The pill's paper tones (ink, green, red) sit on a cream chip until Task 10 moves the pill into the bar. */}
+            <span className="rounded-full bg-[var(--board-cream)]"><StatusPill status={b.status} /></span>
 ```
 
 replace
@@ -4635,7 +4695,7 @@ with
         <p className="min-w-0 flex-1 text-small text-[var(--board-text-2)]">
 ```
 
-If the axe test in `e2e/layout.spec.ts` (Step 13's gates) still reports a contrast failure on an element drawn straight on the wall, give that element `text-[var(--board-text-2)]` (one round, recorded ruling 8); an element inside a paper card keeps its ink.
+If the axe test in `e2e/layout.spec.ts` (Step 13's gates) still reports a contrast failure on an element drawn straight on the wall, give that element `text-[var(--board-text-2)]` (one round, recorded ruling 8); an element inside a paper card keeps its ink. The head's `StatusPill` already sits on a cream chip (above), and the shared footer already takes `--board-text-2` on wall routes (Task 1).
 
 - [ ] **Step 10: The density entry on `/dev/components`**
 
@@ -4736,7 +4796,7 @@ Expected: PASS.
 - [ ] **Step 12: Optional: check by hand**
 
 If you have a browser tool, open `/dev/components` in `pnpm dev` at 390 × 664 and check four things:
-- The `density` section shows eight columns inside the frame, with the frame's 4 px of gutter left at the screen edge and no horizontal scroll.
+- The `density` section shows eight 44.75 px columns inside the frame, with half a pixel of gutter left at the screen edge and no horizontal scroll.
 - The empty last-row slots are darker than the wire.
 - The top spot on line 23 has the double ring and a 14 px number, with the 10 px glyph clear of the disc.
 - The legend's mini cells read at 16 px.
@@ -4749,12 +4809,13 @@ Run: `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test && pnp
 Expected: all green.
 - `e2e/layout.spec.ts` still finds the legend by its name "What the cells mean", and its axe pass now covers the break page on the wall.
 - It still counts columns on the first `[data-grid-rows]` (8, 7, 6, 10).
-- The 390 × 664 budget still holds: the frame takes no layout height, and the legend's `mt-5` replaces `mt-3` plus the frame.
+- The 390 × 664 budget still holds: the frame takes no layout height, and the legend's `mt-5` replaces `mt-3` plus the frame. The 365 px board is about 6 px taller than a 358 px one would be (recorded ruling 33); if the legend no longer clears the bar, report it with the measured overlap and never shrink the cells below 44 px.
+- The theme-color test now expects the wall on the break page and paper on `/`, `/breaks` and the host profile.
 
 - [ ] **Step 14: Commit**
 
 ```bash
-git add src/components/grid src/components/board-legend.tsx src/app/globals.css src/components/break/break-interactive.tsx "src/app/b/[id]/page.tsx" src/app/dev/components/page.tsx
+git add src/components/grid src/components/board-legend.tsx src/app/globals.css src/components/break/break-interactive.tsx "src/app/b/[id]/page.tsx" src/app/dev/components/page.tsx e2e/layout.spec.ts
 git commit -m "feat(grid): framed board in the host's kit with the lamp, mini-cell legends and kit thumbnails"
 ```
 
@@ -4762,12 +4823,12 @@ git commit -m "feat(grid): framed board in the host's kit with the lamp, mini-ce
 
 ### Task 9: `cellMoments` diff (model: Opus)
 
-Spec §3 ("Animate on change, never on mount") and §7, the moment table. `cellMoments(prev, next, o)` is a pure diff over the same viewer's previous and next cells. It decides which cells play a moment; Task 11 maps each moment to its CSS classes and does nothing else.
+Spec §3 ("Animate on change, never on mount") and §7, the moment table. `cellMoments(prev, next, o)` is a pure diff over the same viewer's previous and next cells. It decides which cells play a moment; Task 11a maps each moment to its CSS classes and does nothing else.
 
 - **What sets still:** first paint (no previous cells), a change in the line count (a bonus line added), and any transition §7 does not list.
 - **A view change:** sets still for every cell except the viewer's own claim landing (kit → member, the numbers in `o.mine`) and the viewer's own release (member → kit). That is §6 together with Review Focus 2 (recorded ruling 21).
 - **Caps:** at most 5 drop, 5 sent, 8 others-in, 8 paid, 8 paid-undo, 8 release and 8 sniped per diff, and at most 8 cells in all. The viewer's own moments go first, then everyone else's, each group in line order; a cell past a cap sets still (recorded ruling 21).
-- **A refresh mid-animation:** Task 11 diffs against the last rendered cells, so a repeat diff is all still and the cell snaps to its new state.
+- **A refresh mid-animation:** Task 11a diffs against the last rendered cells, so a repeat diff is all still and the cell snaps to its new state.
 
 **Files:**
 - Create: `src/components/grid/cell-moments.ts`, `src/components/grid/cell-moments.test.ts`
@@ -5039,7 +5100,7 @@ Expected: PASS.
 - [ ] **Step 5: Run every gate**
 
 Run: `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test && pnpm exec tsc --noEmit && pnpm lint && pnpm test:e2e` (sandbox off)
-Expected: all green. Nothing calls `cellMoments` yet; Task 11 does.
+Expected: all green. Nothing calls `cellMoments` yet; Task 11a does.
 
 - [ ] **Step 6: Commit**
 
@@ -5054,14 +5115,14 @@ git commit -m "feat(grid): cellMoments diff so nothing animates on mount or on a
 
 Spec §8 (the break page) and §9 (the checkout count):
 
-- **Checkout count:** "12 to go", counting open numbered lines (not claimed, not reserved). It sits in the paper claim bar beside the primary action, in Big Shoulders Display 800 at 22/24 with tabular figures. It is a text swap: never keyed, rolled or pulsed.
+- **Checkout count:** "12 to go", counting open numbered lines (not claimed, not reserved). It sits in the paper claim bar beside the primary action, in Big Shoulders 800 (the Display cut, Task 1) at 22/24 with tabular figures. It is a text swap: never keyed, rolled or pulsed.
 - **Status pill:** moves from the media row to beside the count.
-- **Media row:** "50 lines, $5 a line", then "Hosted by @jim. New host." with the 20 × 10 kit swatch, on one 24 px line under the 32/32 Big Shoulders title. While there are no photos the head has no thumbnail (the board is the picture).
+- **Media row:** "50 lines, $5 a line", then "Hosted by @jim. New host." with the 20 × 10 kit swatch (the trust word stays on the break page on purpose, recorded ruling 27), on one 24 px line under the 32/32 Big Shoulders title. While there are no photos the head has no thumbnail (the board is the picture).
 - **Grid label:** the grid group is named "Lines, 12 to go".
 - **"You have …" line:** "You have 4 and 11." (joins "4 and 11", "4, 11 and 27") is plain text right under the legend. It and the legend sit directly below the board, inside the 390 × 664 budget, and the Grid | List toggle moves under them (recorded ruling 23).
-- **"Pay within 24 hours.":** leaves the page head; the pay sheet already says "Pay by <time>" (recorded ruling 23).
+- **"Pay within 24 hours.":** leaves the page head; Task 11b puts it in the pay sheet's pay block, above the absolute deadline (spec §8, §1.1; recorded ruling 23).
 
-"19 of 50 left" leaves the break page. `leftText` stays only for the feed card and the OG caption until Tasks 15 and 14 replace them (recorded ruling 23). Updated e2e spec: `e2e/layout.spec.ts`, two new tests. No journey or page spec keys on the strings this task changes: `e2e/pages.spec.ts`'s "4 of 4 left" is the feed card, which Task 15 changes.
+"19 of 50 left" leaves the break page. `leftText` stays only for the feed card and the OG caption until Tasks 15a and 14 replace them (recorded ruling 23). Updated e2e spec: `e2e/layout.spec.ts`, two new tests. No journey or page spec keys on the strings this task changes: `e2e/pages.spec.ts`'s "4 of 4 left" is the feed card, which Task 15a changes.
 
 **Files:**
 - Modify: `src/components/break/frame-copy.ts`, `src/components/break/frame-copy.test.ts` (`toGoText`, `mediaText`)
@@ -5230,7 +5291,7 @@ export const leftText = (open: number, total: number) => `${open} of ${total} le
 with
 
 ```ts
-/** Retired on the break page (Mosaic §9); the feed card and the link-preview caption drop it in Plan C Tasks 15 and 14. */
+/** Retired on the break page (Mosaic §9); the feed card and the link-preview caption drop it in Plan C Tasks 15a and 14. */
 export const leftText = (open: number, total: number) => `${open} of ${total} left`;
 /** The checkout count (Mosaic §9): open numbered lines, "12 to go". A text swap, never rolled. */
 export const toGoText = (open: number) => `${open} to go`;
@@ -5538,7 +5599,8 @@ replace
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="font-condensed text-[20px] leading-6 font-semibold tabular text-[var(--board-text)]" data-testid="left-count">{leftText(grid.counts.open, b.lineCount)}</span>
             <span className="text-small text-[var(--board-text-2)]">{formatMoney(b.linePriceCents)} a line</span>
-            <StatusPill status={b.status} />
+            {/* The pill's paper tones (ink, green, red) sit on a cream chip until Task 10 moves the pill into the bar. */}
+            <span className="rounded-full bg-[var(--board-cream)]"><StatusPill status={b.status} /></span>
           </div>
         </div>
       </section>
@@ -5668,60 +5730,56 @@ git commit -m "feat(break): \"12 to go\" in the claim bar, the media row and the
 
 ---
 
-### Task 11: Claim moments on `cellMoments` (model: Opus)
+### Task 11a: Claim moments on `cellMoments`: press, drop, glint, others in, sent, paid, paid undone (model: Opus)
 
-Spec §7, the rows from Select to Board fills; §3 "Animate on change, never on mount" and "Nothing travels across the cells"; Review Focus 2.
+Spec §7, the rows Select, Claim commits, Others claim, I've sent it, Paid and Paid undone; §3 "Animate on change, never on mount" and "Nothing travels across the cells"; Review Focus 2.
 
-Every per-cell moment is a CSS animation on `transform` or `opacity`, switched on by a `data-moment` attribute that only `cellMoments` (Task 9) sets. A first paint, a refresh with no change and a view switch therefore play nothing.
+Every per-cell moment is a CSS animation on `transform` or `opacity`, switched on by a `data-moment` attribute that only `cellMoments` (Task 9) sets. A first paint, a refresh with no change and a view switch therefore play nothing. `boardMoments` wraps the server's `GridCell[]` with `cellViews` (Task 9) before it calls `cellMoments`, so the diff gets the `CellView` it is typed for (recorded ruling 34).
 
-This task adds what `cellMoments` cannot see:
-- a strike on a selected line someone else took (selection is client-only);
-- the drain of the viewer's own lines when their last line goes and the board switches to the kit view.
+The claim's drop never depends on render order (recorded ruling 34). The island records the pending claim (its numbers, or `null` for a random claim whose numbers only the server knows) before the action is called, through a new `onStart` option of `useClaim`. `useBoardMoments` drops the flights of every cell that turns the viewer's while that claim is pending, whichever lands first: the refreshed props or the action's answer. The pending claim clears once its lines have landed, or when the claim is refused. `stepMoments`, the hook's pure step, is tested in both orders.
 
-The cell as it was is drawn as an `aria-hidden` "ghost" layer (`bc-ghost`) while a moment needs it. The release drains it. Paid holds the old ink on its chip above the incoming overlay. Paid undone fades the old overlay out under the number. Sent cross-fades the outline into the filled glyph. When the viewer's own last line goes, the released cells drain over `--dur-release` first, with the rest of the board held in the member view, and only then does the board re-render in the kit view, still (spec §7 Release, recorded ruling 21).
+The cell as it was is drawn as an `aria-hidden` "ghost" layer (`bc-ghost`) while a moment needs it. Paid holds the old ink on its chip above the incoming overlay. Paid undone fades the old overlay out under the number. Sent cross-fades the outline into the filled glyph.
 
 Further changes:
 - **Pay sheet and count.** The pay sheet opens at the last landing or at 400 ms. The bar's checkout count drops by one per landing, as a text swap.
-- **Lamp.** Task 8's `Grid` already owns it (`heat`, `lampLayer`, test id `lamp`): one fixed gradient whose step is its opacity, so a step change is a `--dur-lamp` crossfade that never plays on mount. This task adds nothing to it (recorded ruling 18).
-- **Board fills.** "Board's full. Game on." drops in once per viewer per break.
 - **Announcements.** Paid, paid undone, released, given back and open again are said politely. A claim says "Pay Jim $10".
 - **Reduced motion.** Everything is instant: the global rule already cuts durations, and this task cuts delays and hides the glint and the ghosts.
+
+Task 11b adds what `cellMoments` cannot see (the strike on a sniped selection, the drain of the viewer's own last lines), the release moment's look, the lamp's downward step, Board fills and the pay sheet's "Pay within 24 hours." line. Until then a release plays no motion: its cell changes at once.
 
 Cell internals are Task 7's: the layers are children of `.bc-in` with the `bc-*` classes, `bc-num` and `bc-glyph` at z-index 1; this task adds `data-moment` on the root and two root-level layers, `bc-glint` and `bc-ghost` (recorded ruling 19).
 
 **Files:**
 - Create: `src/lib/motion.ts`, `src/lib/motion.test.ts`
 - Create: `src/components/grid/moment-attrs.ts`, `src/components/grid/board-moments.ts`, `src/components/grid/board-moments.test.ts`, `src/components/grid/use-board-moments.ts`
-- Create: `src/components/flight-glyph.tsx`, `src/components/break/caller-banner.tsx`, `src/components/break/caller-copy.ts`, `src/components/break/caller-copy.test.ts`
 - Create: `src/components/grid/moments-render.test.ts`, `src/components/grid/motion-css.test.ts`
 - Modify: `src/components/grid/cell.tsx`, `src/components/grid/grid.tsx`
 - Modify: `src/app/globals.css` (the moments block)
 - Modify: `src/components/break/selection.ts`, `src/components/break/selection.test.ts`
+- Modify: `src/components/break/use-claim.ts` (`onStart`)
 - Modify: `src/components/break/pay-sheet.tsx` (`onGaveBack` passes the numbers)
 - Modify: `src/components/break/break-interactive.tsx`
 
 **Interfaces:**
 - Consumes:
-  - From Task 9: `cellMoments`, `CellMoment` (`src/components/grid/cell-moments.ts`).
-  - From Task 5: `GridCell.flight`, `GridModel.showHolders`, `GridModel.heat`.
-  - From Task 2: `FLIGHT_COLOURS`, `FLIGHT_SHAPES`, `Flight`.
+  - From Task 9: `cellMoments`, `cellViews`, `CellMoment` (`src/components/grid/cell-moments.ts`).
+  - From Task 5: `GridCell.flight`, `GridModel.showHolders`.
   - From Task 7: `Cell`, `BoardView`, `CellData` and the Cell internals (`.bc-in` layers with the `bc-*` classes).
-  - From Task 8: `Grid` (its frame and its lamp) and `BreakInteractiveProps.boardView`.
+  - From Task 8: `Grid` and `BreakInteractiveProps.boardView`.
   - From Task 10: the bar's checkout count (`barCheckout`, the `toGo` prop).
-  - From Task 1: the motion tokens and `--font-big-shoulders`.
+  - From Task 1: the motion tokens.
 - Produces:
   - `src/lib/motion.ts`: `MOTION` (ms numbers keyed `press … staggerOthers`), `EASE`, `MOTION_VAR`, `EASE_VAR`, `type DurationTokens`, `prefersReducedMotion(): boolean`.
-  - `src/components/grid/moment-attrs.ts`: `GHOSTED_MOMENTS`, `momentAttrs(moment?, order?): { moment; style; glint; ghost }`.
+  - `src/components/grid/moment-attrs.ts`: `GHOSTED_MOMENTS` (sent, paid, paid undone; Task 11b adds release), `momentAttrs(moment?, order?): { moment; style; glint; ghost }`.
   - `src/components/grid/board-moments.ts`:
-    - `BoardView` (re-exported from `./cell`, Task 7) and `type BoardSnap = { cells; view; struck }`;
-    - `boardMoments(prev, next, claimed): Map<number, CellMoment>`, `ghostsFrom(prev, moments)`, `drainCells(prev, moments)`, `momentOrder(moments)`, `countMoment(moments, kind)`;
-    - `landingTimes(n)`, `paySheetDelay(n, reduced)`, `MOMENT_CLEAR_MS`, `longestMoment()`;
+    - `BoardView` (re-exported from `./cell`, Task 7), `type BoardSnap = { cells; view; struck }` and `type PendingClaim = { numbers: readonly number[] | null }`;
+    - `landedClaim(prev, next, claim): number[]`, `boardMoments(prev, next, claimed): Map<number, CellMoment>`, `type MomentState = { snap; moments; from; landed }`, `stepMoments(state, next, claim): MomentState`;
+    - `ghostsFrom(prev, moments)`, `momentOrder(moments)`, `countMoment(moments, kind)`;
+    - `DROP_CAP`, `landingTimes(n)`, `PAY_SHEET_MAX_MS`, `paySheetDelay(n, reduced)`, `MOMENT_CLEAR_MS`, `longestMoment()`;
     - `momentAnnouncements(prev, next, hostName, gaveBack): string`.
-  - `src/components/grid/use-board-moments.ts`: `useBoardMoments(next: BoardSnap, claimed)` returning `{ moments, from, held }` (`held`: the member-view board shown while the viewer's own last lines drain, else null).
-  - `src/components/flight-glyph.tsx`: `FlightGlyph({ flight, size?, keyline?, strokeWidth? })`.
-  - `src/components/break/caller-banner.tsx`: `CallerBanner({ text, rule, flight?, play? })` (`data-testid="caller"`, `aria-hidden`).
-  - `src/components/break/caller-copy.ts`: `BOARD_FULL_CALL`, `boardFullAnnouncement(host)`, `fullBoardKey(id)`.
+  - `src/components/grid/use-board-moments.ts`: `useBoardMoments(next: BoardSnap, claim: PendingClaim | null)` returning `{ moments, from, landed }`.
   - `selection.ts`: `claimAnnouncement(got, taken, hostName, owedCents)`.
+  - `useClaim`'s options gain `onStart?: (requested: number[]) => void`, called synchronously before the action.
   - `Cell` props `moment?: CellMoment; order?: number; from?: CellData; ghost?: boolean`, and `data-moment="<CellMoment>"` on a cell's root while it plays; `Grid` props `moments?: ReadonlyMap<number, CellMoment>; from?: ReadonlyMap<number, CellData>`.
   - `PaySheet`'s `onGaveBack: (numbers: number[]) => void`.
 
@@ -5813,50 +5871,31 @@ import { describe, it, expect } from "vitest";
 import type { GridCell } from "@/domain/breaks/grid";
 import { MOTION } from "@/lib/motion";
 import {
-  boardMoments, countMoment, drainCells, ghostsFrom, landingTimes, longestMoment, MOMENT_CLEAR_MS, momentAnnouncements, momentOrder, paySheetDelay,
-  type BoardSnap,
+  boardMoments, countMoment, ghostsFrom, landedClaim, landingTimes, longestMoment, MOMENT_CLEAR_MS, momentAnnouncements, momentOrder,
+  paySheetDelay, stepMoments, type BoardSnap, type MomentState,
 } from "./board-moments";
 import type { CellMoment } from "./cell-moments";
 import { momentAttrs } from "./moment-attrs";
 
 const BLUE_KITE = { colour: "blue", shape: "kite" } as const;
+const LIME = { colour: "lime", shape: "standard" } as const;
 const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, flight: null, ...o });
 const board = (n: number, f: (c: GridCell) => Partial<GridCell> = () => ({})) => Array.from({ length: n }, (_, i) => { const c = cell(i + 1); return { ...c, ...f(c) }; });
 const snap = (cells: readonly GridCell[], o: Partial<BoardSnap> = {}): BoardSnap => ({ cells, view: "member", struck: [], ...o });
+const fresh = (s: BoardSnap): MomentState => ({ snap: s, moments: new Map(), from: new Map(), landed: [] });
+const moving = (m: ReadonlyMap<number, CellMoment>) => [...m].filter(([, x]) => x !== "still").sort(([a], [b]) => a - b);
 
-describe("boardMoments: what cellMoments cannot see", () => {
-  it("strikes a newly sniped line, at most 8 at once, and never a line struck before", () => {
-    const cells = board(20);
-    const m = boardMoments(snap(cells, { struck: [3] }), snap(cells, { struck: [3, 5] }), []);
-    expect(m.get(5)).toBe("sniped");
-    expect(m.get(3)).not.toBe("sniped");
-    const many = boardMoments(snap(cells), snap(cells, { struck: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }), []);
-    expect(countMoment(many, "sniped")).toBe(8);
-  });
-  it("drains the viewer's own lines when their last line goes and the board turns to the kit view (§6)", () => {
-    const before = board(8, (c) => (c.number <= 2 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : c.number === 5 ? { state: "paid", holder: "liz", flight: { colour: "yellow", shape: "pear" } } : {}));
-    const after = board(8, (c) => (c.number === 5 ? { state: "paid" } : {}));
-    const m = boardMoments(snap(before), snap(after, { view: "kit" }), []);
-    expect(m.get(1)).toBe("release");
-    expect(m.get(2)).toBe("release");
-    expect(m.get(5) ?? "still").toBe("still"); // a flight face turning into a kit face is a view change: still
-  });
-  it("holds the member view while those lines drain: the released cells open, every other cell as it was (§7 Release)", () => {
-    const before = board(4, (c) => (c.number <= 2 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : c.number === 3 ? { state: "paid", holder: "liz", flight: { colour: "yellow", shape: "pear" } } : {}));
-    const moments = new Map<number, CellMoment>([[1, "release"], [2, "release"], [3, "still"], [4, "still"]]);
-    expect(drainCells(before, moments).map((c) => [c.number, c.state, c.mine, c.flight])).toEqual([
-      [1, "open", false, null], [2, "open", false, null], [3, "paid", false, { colour: "yellow", shape: "pear" }], [4, "open", false, null],
-    ]);
-  });
-  it("plays no release across a line-count change (a bonus line added)", () => {
-    const before = board(8, (c) => (c.number === 1 ? { state: "taken", mine: true, flight: BLUE_KITE } : {}));
-    const after = [...board(8), cell(9, { bonus: true })];
-    expect(countMoment(boardMoments(snap(before), snap(after, { view: "kit" }), []), "release")).toBe(0);
+describe("boardMoments: cellMoments over the server's cells", () => {
+  it("wraps GridCell[] with cellViews, so the first claim as a stranger drops exactly the claimed cells (Review Focus 2)", () => {
+    const others = new Set([2, 5, 8]);
+    const prev = board(10, (c) => (others.has(c.number) ? { state: "taken" } : {}));
+    const next = board(10, (c) => (c.number === 3 || c.number === 7 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : others.has(c.number) ? { state: "taken", holder: "liz", flight: LIME } : {}));
+    expect(moving(boardMoments(snap(prev, { view: "kit" }), snap(next), [3, 7]))).toEqual([[3, "drop"], [7, "drop"]]);
   });
   it("keeps the old cell only for the moments that draw it", () => {
     const prev = board(4, () => ({ state: "taken", holder: "liz" }));
     const moments = new Map<number, CellMoment>([[1, "paid"], [2, "others-in"], [3, "release"], [4, "still"]]);
-    expect([...ghostsFrom(prev, moments).keys()]).toEqual([1, 3]);
+    expect([...ghostsFrom(prev, moments).keys()]).toEqual([1]); // release draws its ghost from Task 11b on
     expect(momentAttrs("drop", 2)).toEqual({ moment: "drop", style: { "--i": 2 }, glint: true, ghost: false });
     expect(momentAttrs("still")).toEqual({ moment: undefined, style: {}, glint: false, ghost: false });
     expect(momentAttrs(undefined).moment).toBeUndefined();
@@ -5865,6 +5904,33 @@ describe("boardMoments: what cellMoments cannot see", () => {
     const order = momentOrder(new Map<number, CellMoment>([[9, "others-in"], [2, "others-in"], [4, "drop"], [7, "still"], [5, "others-in"]]));
     expect(Object.fromEntries(order)).toEqual({ 2: 0, 4: 0, 5: 1, 9: 2 });
     expect(momentOrder(undefined).size).toBe(0);
+  });
+});
+
+describe("the pending claim: the drop never depends on render order (recorded ruling 34)", () => {
+  const before = snap(board(6), { view: "kit" });
+  const after = snap(board(6, (c) => (c.number === 2 || c.number === 4 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : {})));
+  it("lands the cells that turn the viewer's, limited to the claim's numbers when they are known", () => {
+    expect(landedClaim(before.cells, after.cells, { numbers: [2, 4] })).toEqual([2, 4]);
+    expect(landedClaim(before.cells, after.cells, { numbers: [2] })).toEqual([2]);
+    expect(landedClaim(before.cells, after.cells, { numbers: null })).toEqual([2, 4]); // a random claim: numbers unknown in advance
+    expect(landedClaim(before.cells, after.cells, null)).toEqual([]);
+  });
+  it("props first: the refreshed board lands while the claim is pending; the answer that follows re-renders nothing new", () => {
+    const s1 = stepMoments(fresh(before), after, { numbers: null });
+    expect(moving(s1.moments)).toEqual([[2, "drop"], [4, "drop"]]);
+    expect(s1.landed).toEqual([2, 4]);
+    // The island clears the claim once its lines landed; the same props rendered again change nothing.
+    expect(stepMoments(s1, after, null)).toBe(s1);
+  });
+  it("answer first: the claim is still pending when the refreshed board lands", () => {
+    const s0 = stepMoments(fresh(before), before, { numbers: [2, 4] }); // the answer re-renders the old props
+    expect(s0.moments.size).toBe(0);
+    const s1 = stepMoments(s0, after, { numbers: [2, 4] });
+    expect(moving(s1.moments)).toEqual([[2, "drop"], [4, "drop"]]);
+  });
+  it("with no claim pending, cells that turn the viewer's play nothing", () => {
+    expect(moving(stepMoments(fresh(before), after, null).moments)).toEqual([]);
   });
 });
 
@@ -5912,19 +5978,6 @@ describe("momentAnnouncements (§7, Announced)", () => {
 });
 ```
 
-Create `src/components/break/caller-copy.test.ts`:
-
-```ts
-import { it, expect } from "vitest";
-import { BOARD_FULL_CALL, boardFullAnnouncement, fullBoardKey } from "./caller-copy";
-
-it("says the board-fills lines of the caller copy, once per viewer per break", () => {
-  expect(BOARD_FULL_CALL).toBe("Board's full. Game on.");
-  expect(boardFullAnnouncement("Jim")).toBe("Board's full. Every line is paid. Waiting for Jim to run the draw.");
-  expect(fullBoardKey("b1")).toBe("breaks.full.b1");
-});
-```
-
 In `src/components/break/selection.test.ts`, add `claimAnnouncement,` to the import list from `./selection`, and append at the end of the file:
 
 ```ts
@@ -5939,8 +5992,8 @@ describe("claimAnnouncement (§7 Claim commits)", () => {
 
 - [ ] **Step 6: Run them to see them fail**
 
-Run: `pnpm test src/components/grid/board-moments.test.ts src/components/break/caller-copy.test.ts src/components/break/selection.test.ts`
-Expected: FAIL. `./board-moments`, `./moment-attrs` and `./caller-copy` do not exist, and `claimAnnouncement` is not exported.
+Run: `pnpm test src/components/grid/board-moments.test.ts src/components/break/selection.test.ts`
+Expected: FAIL. `./board-moments` and `./moment-attrs` do not exist, and `claimAnnouncement` is not exported.
 
 - [ ] **Step 7: Write the pure parts**
 
@@ -5950,8 +6003,8 @@ Create `src/components/grid/moment-attrs.ts`:
 import type { CSSProperties } from "react";
 import type { CellMoment } from "./cell-moments";
 
-/** Moments that draw the cell as it was (the ghost): sent cross-fades it, paid holds its ink, undo and release fade it out. */
-export const GHOSTED_MOMENTS: ReadonlySet<CellMoment> = new Set<CellMoment>(["sent", "paid", "paid-undo", "release"]);
+/** Moments that draw the cell as it was (the ghost): sent cross-fades it, paid holds its ink, undo fades it out. Task 11b adds release. */
+export const GHOSTED_MOMENTS: ReadonlySet<CellMoment> = new Set<CellMoment>(["sent", "paid", "paid-undo"]);
 
 export type MomentAttrs = { moment: Exclude<CellMoment, "still"> | undefined; style: CSSProperties; glint: boolean; ghost: boolean };
 
@@ -5968,7 +6021,7 @@ Create `src/components/grid/board-moments.ts`:
 import type { GridCell } from "@/domain/breaks/grid";
 import { MOTION } from "@/lib/motion";
 import { joinAnd } from "@/lib/list";
-import { cellMoments, type CellMoment } from "./cell-moments";
+import { cellMoments, cellViews, type CellMoment } from "./cell-moments";
 import { GHOSTED_MOMENTS } from "./moment-attrs";
 
 import type { BoardView } from "./cell";
@@ -5977,40 +6030,41 @@ import type { BoardView } from "./cell";
 export type { BoardView };
 /** What one render of the board showed; moments are the diff between two of these. */
 export type BoardSnap = { cells: readonly GridCell[]; view: BoardView; struck: readonly number[] };
+/**
+ * A claim this viewer sent, recorded before the action is called (recorded ruling 34). `numbers` is what was asked for
+ * (a selection, "Take the last N"), or null for a random claim, whose numbers only the server knows.
+ */
+export type PendingClaim = { numbers: readonly number[] | null };
 
 export const DROP_CAP = 5;
-export const SNIPED_CAP = 8;
-export const OWN_RELEASE_CAP = 8;
 /** The pay sheet never waits longer than this for the flights to land (§7 Claim commits). */
 export const PAY_SHEET_MAX_MS = 400;
 /** data-moment, will-change and the ghosts go once every moment has finished (longestMoment, pinned by a test). */
 export const MOMENT_CLEAR_MS = 1000;
 
+/** No selection and no strike: boardMoments diffs the server's cells; the strike is the island's own (Task 11b). */
+const NO_SET: ReadonlySet<number> = new Set();
+
 /**
- * cellMoments (Task 9) plus the two moments it cannot see. A strike on a selected line someone else took: the
- * selection is client-only. The viewer's own lines draining when their last line goes: the board switches to the
- * kit view, which cellMoments sets still, but spec §6 plays "the viewer's own release moment" first.
- * `claimed` is the lines this viewer just claimed: their flights drop even across the kit → member switch.
+ * The lines a pending claim landed in this diff: cells that turn the viewer's between `prev` and `next`, limited to the
+ * claim's numbers when they are known. No claim pending: none. Only the viewer's own claim makes a cell theirs.
+ */
+export function landedClaim(prev: readonly GridCell[], next: readonly GridCell[], claim: PendingClaim | null): number[] {
+  if (!claim) return [];
+  const was = new Map(prev.map((c) => [c.number, c.mine]));
+  const asked = claim.numbers ? new Set(claim.numbers) : null;
+  return next.filter((c) => c.mine && was.get(c.number) === false && (!asked || asked.has(c.number))).map((c) => c.number);
+}
+
+/**
+ * cellMoments (Task 9) over the server's cells, wrapped with cellViews so the diff gets the CellView it is typed for
+ * (recorded ruling 34). `claimed` is the lines this viewer's claim just landed: their flights drop even across the
+ * kit → member switch. Task 11b adds the two moments cellMoments cannot see.
  */
 export function boardMoments(prev: BoardSnap, next: BoardSnap, claimed: readonly number[]): Map<number, CellMoment> {
-  const out = new Map<number, CellMoment>(cellMoments(prev.cells, next.cells, { view: next.view, prevView: prev.view, mine: claimed }));
-  if (prev.view === "member" && next.view === "kit" && prev.cells.length === next.cells.length) {
-    const now = new Map(next.cells.map((c) => [c.number, c]));
-    let n = 0;
-    for (const c of prev.cells) {
-      if (!c.mine || now.get(c.number)?.state !== "open") continue;
-      if (n++ >= OWN_RELEASE_CAP) break;
-      out.set(c.number, "release");
-    }
-  }
-  const before = new Set(prev.struck);
-  let s = 0;
-  for (const x of [...next.struck].sort((a, b) => a - b)) {
-    if (before.has(x)) continue;
-    if (s++ >= SNIPED_CAP) break; // past the cap the strike shows at once (Cell draws `struck` itself)
-    out.set(x, "sniped");
-  }
-  return out;
+  return new Map<number, CellMoment>(
+    cellMoments(cellViews(prev.cells, NO_SET, NO_SET), cellViews(next.cells, NO_SET, NO_SET), { view: next.view, prevView: prev.view, mine: claimed }),
+  );
 }
 
 /** The cells as they were, for the moments that draw them (GHOSTED_MOMENTS). */
@@ -6023,13 +6077,23 @@ export function ghostsFrom(prev: readonly GridCell[], moments: ReadonlyMap<numbe
   return out;
 }
 
+/** useBoardMoments' state: the last board this viewer saw, the moments of the change into it, and the claim lines it landed. */
+export type MomentState = {
+  snap: BoardSnap;
+  moments: ReadonlyMap<number, CellMoment>;
+  from: ReadonlyMap<number, GridCell>;
+  landed: readonly number[];
+};
+
 /**
- * The board shown while the viewer's own last lines drain (spec §7 Release, recorded ruling 21): the previous member-view
- * cells, with each released cell already open (its ghost drains over it). Only after --dur-release does the board
- * re-render in the kit view, still.
+ * One render of the board against the last (the hook's pure step, so tests can drive both orders a claim lands in).
+ * The same props return the same state; changed props diff, with the pending claim's landed lines as `claimed`.
  */
-export function drainCells(prev: readonly GridCell[], moments: ReadonlyMap<number, CellMoment>): GridCell[] {
-  return prev.map((c): GridCell => (moments.get(c.number) === "release" ? { ...c, state: "open", mine: false, holder: null, flight: null } : c));
+export function stepMoments(state: MomentState, next: BoardSnap, claim: PendingClaim | null): MomentState {
+  if (state.snap.cells === next.cells && state.snap.view === next.view && state.snap.struck === next.struck) return state;
+  const landed = landedClaim(state.snap.cells, next.cells, claim);
+  const moments = boardMoments(state.snap, next, landed);
+  return { snap: next, moments, from: ghostsFrom(state.snap.cells, moments), landed };
 }
 
 /** Each cell's place in its moment's stagger, in line order, counted per kind ("--stagger-others in line order"). */
@@ -6102,16 +6166,6 @@ export function momentAnnouncements(prev: readonly GridCell[], next: readonly Gr
 }
 ```
 
-Create `src/components/break/caller-copy.ts`:
-
-```ts
-/** The caller's lines on the break page (Mosaic §7 caller copy): the same for every viewer, never "You", never the prize. */
-export const BOARD_FULL_CALL = "Board's full. Game on.";
-export const boardFullAnnouncement = (hostName: string) => `Board's full. Every line is paid. Waiting for ${hostName} to run the draw.`;
-/** Board fills plays once per viewer per break, stored like the reveal's once-per-viewer flag. */
-export const fullBoardKey = (breakId: string) => `breaks.full.${breakId}`;
-```
-
 Append to `src/components/break/selection.ts`:
 
 ```ts
@@ -6124,8 +6178,8 @@ export function claimAnnouncement(got: readonly number[], taken: readonly number
 
 - [ ] **Step 8: Run them to see them pass**
 
-Run: `pnpm test src/components/grid/board-moments.test.ts src/components/break/caller-copy.test.ts src/components/break/selection.test.ts`
-Expected: PASS. If the "drains the viewer's own lines" test fails because Task 9's `cellMoments` returns something other than "still" for cell 5 across the view change, stop: that breaks Review Focus 2, so it is reported as a Task 9 bug, not patched here.
+Run: `pnpm test src/components/grid/board-moments.test.ts src/components/break/selection.test.ts`
+Expected: PASS. If the stranger's first-claim test fails because Task 9's `cellMoments` moves a cell other than 3 and 7 across the view change, stop: that breaks Review Focus 2, so it is reported as a Task 9 bug, not patched here.
 
 - [ ] **Step 9: Write the failing render and CSS tests**
 
@@ -6137,7 +6191,6 @@ import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { GridCell } from "@/domain/breaks/grid";
 import { DEFAULT_KIT } from "@/domain/flights";
-import { CallerBanner } from "@/components/break/caller-banner";
 import type { CellMoment } from "./cell-moments";
 import { Cell } from "./cell";
 import { Grid } from "./grid";
@@ -6173,13 +6226,12 @@ describe("a cell plays only the moment it is given (§3: animate on change, neve
       expect(h).not.toContain("bc-ghost");
     }
   });
-  it("sent, paid, paid undone and release draw the cell as it was, hidden from assistive tech; the name is the new state's", () => {
+  it("sent, paid and paid undone draw the cell as it was, hidden from assistive tech; the name is the new state's", () => {
     const was = cell(9, { state: "taken", mine: true, flight: BLUE_KITE });
     const cases: [CellMoment, GridCell][] = [
       ["sent", cell(9, { state: "sent", mine: true, flight: BLUE_KITE })],
       ["paid", cell(9, { state: "paid", mine: true, flight: BLUE_KITE })],
       ["paid-undo", cell(9, { state: "taken", mine: true, flight: BLUE_KITE })],
-      ["release", cell(9)],
     ];
     for (const [moment, now] of cases) {
       const h = html(createElement(Cell, { cell: now, onPress: noop, moment, from: was }));
@@ -6190,7 +6242,6 @@ describe("a cell plays only the moment it is given (§3: animate on change, neve
       expect(ghost).not.toMatch(/role="img"|aria-label=|data-cell=|data-flight=/);
       expect(buttonOf(h, 9).indexOf("aria-label=")).toBeGreaterThan(-1);
     }
-    expect(html(createElement(Cell, { cell: cell(9), onPress: noop, moment: "release", from: was }))).toContain('aria-label="Line 9, open"');
   });
 });
 
@@ -6203,22 +6254,6 @@ describe("Grid hands each cell its moment and its place in the stagger", () => {
     expect(buttonOf(h, 4)).toContain("--i:1");
     expect(buttonOf(h, 1)).not.toContain("data-moment");
     expect(buttonOf(h, 3)).not.toContain("data-moment");
-  });
-});
-
-describe("the caller banner", () => {
-  // The lamp's opacity step is Task 8's (lampLayer in Grid, pinned in render.test.ts).
-  it("is decorative text with a rule, a glyph only when given a flight, and plays only when told", () => {
-    const still = html(createElement(CallerBanner, { text: "Board's full. Game on.", rule: "var(--kit-dark)" }));
-    expect(still).toContain('data-testid="caller"');
-    expect(still).toContain('aria-hidden="true"');
-    expect(still).toContain("Board&#x27;s full. Game on.");
-    expect(still).not.toContain("<svg");
-    expect(still).not.toContain("data-play");
-    const call = html(createElement(CallerBanner, { text: "Line 23. @mike takes the top spot.", rule: "#2340C4", flight: BLUE_KITE, play: true }));
-    expect(call).toContain("<svg");
-    expect(call).toContain("data-play");
-    expect(call).not.toContain("data-flight");
   });
 });
 ```
@@ -6247,7 +6282,8 @@ function keyframes(src: string): Map<string, string> {
 describe("per-cell motion is CSS on transform and opacity only (Mosaic §7, Global Constraints: Motion)", () => {
   it("animates no other property in any of the board's keyframes", () => {
     const frames = keyframes(css);
-    for (const name of ["land", "squash", "glint", "fadein", "set", "seat", "pull", "strike"]) expect(frames.has(name), name).toBe(true);
+    // Task 11b adds pull and strike to this list.
+    for (const name of ["land", "squash", "glint", "fadein", "set", "seat"]) expect(frames.has(name), name).toBe(true);
     for (const [name, body] of frames) {
       const props = [...body.matchAll(/([\w-]+)\s*:/g)].map((m) => m[1]);
       for (const p of props) expect(["transform", "translate", "scale", "opacity", "animation-timing-function"], `${name}: ${p}`).toContain(p);
@@ -6266,23 +6302,38 @@ describe("per-cell motion is CSS on transform and opacity only (Mosaic §7, Glob
 - [ ] **Step 10: Run them to see them fail**
 
 Run: `pnpm test src/components/grid/moments-render.test.ts src/components/grid/motion-css.test.ts`
-Expected: FAIL. `@/components/break/caller-banner` does not exist, `Cell` ignores `moment`, and `globals.css` has none of the keyframes `land`, `squash`, `glint`, `fadein`, `set`, `seat`, `pull` or `strike`.
+Expected: FAIL. `Cell` ignores `moment`, `Grid` takes no `moments`, and `globals.css` has none of the keyframes `land`, `squash`, `glint`, `fadein`, `set` or `seat`.
 
 - [ ] **Step 11: Write the moment layers in Cell and Grid**
 
-In `src/components/grid/cell.tsx`:
-
-1. Add the imports:
+In `src/components/grid/cell.tsx`, replace
 
 ```tsx
+import { cellMetrics } from "./cell-metrics";
+```
+
+with
+
+```tsx
+import { cellMetrics } from "./cell-metrics";
 import type { CellMoment } from "./cell-moments";
 import { momentAttrs } from "./moment-attrs";
 ```
 
-2. Add to the `Props` type:
+replace
 
 ```tsx
-  /** The moment this render plays (Task 11): only cellMoments sets it, so nothing animates on mount. */
+  onPress?: (n: number) => void;
+};
+
+type CSSVars
+```
+
+with
+
+```tsx
+  onPress?: (n: number) => void;
+  /** The moment this render plays (Task 11a): only cellMoments sets it, so nothing animates on mount. */
   moment?: CellMoment;
   /** This cell's place in its moment's stagger (`--i`). */
   order?: number;
@@ -6290,11 +6341,30 @@ import { momentAttrs } from "./moment-attrs";
   from?: CellData;
   /** Drawn as a moment's ghost (inside another cell): no role, no name, no data-cell and no data-flight. */
   ghost?: boolean;
+};
+
+type CSSVars
 ```
 
-3. Add `moment, order, from, ghost = false` to the destructured props of `Cell`.
+replace
 
-4. Directly before `const style: CSSVars = { ...faceVars(cell, view), … };`, add:
+```tsx
+export function Cell({ cell, view = "member", size = "md", px, selected = false, struck = false, disabled = false, label, testId, tabIndex, onPress }: Props) {
+```
+
+with
+
+```tsx
+export function Cell({ cell, view = "member", size = "md", px, selected = false, struck = false, disabled = false, label, testId, tabIndex, onPress, moment, order, from, ghost = false }: Props) {
+```
+
+replace
+
+```tsx
+  const style: CSSVars = { ...faceVars(cell, view), ...(px !== undefined ? { width: px, height: px } : {}) };
+```
+
+with
 
 ```tsx
   const motion = momentAttrs(moment, order);
@@ -6305,51 +6375,843 @@ import { momentAttrs } from "./moment-attrs";
       {motion.ghost && from && <span aria-hidden className="bc-ghost"><Cell cell={from} view={view} size={size} px={px} ghost /></span>}
     </>
   );
+  const style: CSSVars = { ...faceVars(cell, view), ...(px !== undefined ? { width: px, height: px } : {}), ...motion.style };
 ```
 
-5. In the `style` object Task 7 builds (the one carrying `--face`, `--num` and `--fc`), spread `...motion.style` last. Directly before `if (!onPress) {`, add the ghost's root:
+replace
 
 ```tsx
+  const base = "bc relative block aspect-square w-full select-none";
+  if (!onPress) {
+    // data-cell on display roots too, so the reveal can find its target cells (Task 12b).
+    return <div role="img" data-cell={cell.number} {...data} aria-label={name} style={style} className={base}>{body}</div>;
+  }
+```
+
+with
+
+```tsx
+  const base = "bc relative block aspect-square w-full select-none";
   if (ghost) {
     // Only what the CSS reads: the state, the size, mine and won. The ghost never names a flight or a line.
     return <div data-state={data["data-state"]} data-size={data["data-size"]} data-mine={data["data-mine"]} data-won={data["data-won"]} style={style} className={base}>{body}</div>;
   }
+  if (!onPress) {
+    // data-cell on display roots too, so the reveal can find its target cells (Task 12b).
+    return <div role="img" data-cell={cell.number} {...data} data-moment={motion.moment} aria-label={name} style={style} className={base}>{body}{momentLayers}</div>;
+  }
 ```
 
-6. On both other roots (the `role="img"` element and the `<button>`): add `data-moment={motion.moment}`, and render `{momentLayers}` as the last child, after `{body}` (so `.bc-glint` and `.bc-ghost` are root children beside `.bc-in`).
-
-In `src/components/grid/grid.tsx`:
-
-1. Add the imports:
+and, in the `<button>`, replace
 
 ```tsx
+      {...data}
+      aria-label={name}
+```
+
+with
+
+```tsx
+      {...data}
+      data-moment={motion.moment}
+      aria-label={name}
+```
+
+and
+
+```tsx
+      {body}
+    </button>
+```
+
+with
+
+```tsx
+      {body}
+      {momentLayers}
+    </button>
+```
+
+(`.bc-glint` and `.bc-ghost` are root children beside `.bc-in`.)
+
+In `src/components/grid/grid.tsx`, replace
+
+```tsx
+import { lampLayer } from "./lamp";
+```
+
+with
+
+```tsx
+import { lampLayer } from "./lamp";
 import type { CellData } from "./cell-label";
 import type { CellMoment } from "./cell-moments";
 import { momentOrder } from "./board-moments";
 ```
 
-2. Add to `Props`:
+replace
 
 ```tsx
+  focusNumber?: number | null;
+};
+```
+
+with
+
+```tsx
+  focusNumber?: number | null;
   /** This render's moments (useBoardMoments); absent everywhere but the live break page. */
   moments?: ReadonlyMap<number, CellMoment>;
   /** The cells as they were, for the moments that draw them. */
   from?: ReadonlyMap<number, CellData>;
+};
 ```
 
-3. Add `moments, from` to the destructured props, and before `const renderCell` add `const order = momentOrder(moments);`.
-
-4. In `renderCell`'s `<Cell … />`, add the three props after `struck={…}`:
+replace
 
 ```tsx
+export function Grid({ cells, lineCount, label, view = "member", kit = DEFAULT_KIT, heat = null, selected, struck, disabledOpen = false, readOnly = false, onPress, onKeyDown, focusNumber: rovingNumber = null }: Props) {
+```
+
+with
+
+```tsx
+export function Grid({ cells, lineCount, label, view = "member", kit = DEFAULT_KIT, heat = null, selected, struck, disabledOpen = false, readOnly = false, onPress, onKeyDown, focusNumber: rovingNumber = null, moments, from }: Props) {
+```
+
+replace
+
+```tsx
+  const renderCell = (c: BoardCell) => {
+```
+
+with
+
+```tsx
+  const order = momentOrder(moments);
+  const renderCell = (c: BoardCell) => {
+```
+
+and replace
+
+```tsx
+        struck={struck?.has(c.number) ?? false}
+```
+
+with
+
+```tsx
+        struck={struck?.has(c.number) ?? false}
         moment={moments?.get(c.number)}
         order={order.get(c.number)}
         from={from?.get(c.number)}
 ```
 
-- [ ] **Step 12: Write the glyph and the caller banner**
+- [ ] **Step 12: Write the moment CSS**
 
-(The lamp is Task 8's: `Grid` draws it from `heat` with `lampLayer`, so this task writes no lamp component.)
+Append to `src/app/globals.css` (Task 11b appends the release, the strike and the caller after it):
+
+```css
+/* ---- Mosaic claim moments (spec §7). Per-cell motion is CSS on transform and opacity only, switched on by
+   data-moment, which only cellMoments sets: nothing plays on mount or on a view switch. --i is the cell's place in
+   its stagger. The layers are Task 7's (.bc-in > .bc-*); .bc-glint and .bc-ghost (the cell as it was) are root
+   children beside .bc-in. Child combinators keep a rule off the ghost's own copy of the layers. ---- */
+[data-moment] { will-change: transform, opacity; }
+
+/* Select: the cell dips under the thumb. */
+button[data-cell] { transition: transform var(--dur-unpress) var(--ease-over); }
+button[data-cell][data-state="open"]:not([aria-disabled="true"]):active { transform: scale(0.94); transition: transform var(--dur-press) var(--ease-out); }
+
+/* Claim commits: the outlined flight drops 6 px in, the cell squashes and settles, the wire glints once in cream, the ring lands. */
+[data-moment="drop"] { contain: none; z-index: 1; animation: squash calc(var(--dur-squash) + var(--dur-settle)) linear calc(var(--i, 0) * var(--stagger-own) + var(--dur-drop)) both; }
+[data-moment="drop"] > .bc-in > .bc-glyph { --drop: 6px; animation: land var(--dur-drop) var(--ease-in) calc(var(--i, 0) * var(--stagger-own)) both; }
+[data-moment="drop"] > .bc-in > .bc-ring { animation: fadein var(--dur-drop) step-end calc(var(--i, 0) * var(--stagger-own)) both; }
+.bc-glint { position: absolute; inset: -1px; border: 1px solid color-mix(in srgb, var(--board-cream) 70%, transparent); pointer-events: none; opacity: 0; animation: glint var(--dur-glint) var(--ease-out) calc(var(--i, 0) * var(--stagger-own) + var(--dur-drop)) forwards; }
+
+/* Others claim: their flight (or the kit band) fades in. No squash, no glint. */
+[data-moment="others-in"] > .bc-in > .bc-glyph,
+[data-moment="others-in"] > .bc-in > .bc-band { animation: fadein var(--dur-others) var(--ease-out) calc(var(--i, 0) * var(--stagger-others)) both; }
+
+/* I've sent it: the outline cross-fades into the filled glyph; the sent mark fades in. */
+[data-moment="sent"] > .bc-in > .bc-glyph,
+[data-moment="sent"] > .bc-in > .bc-sent { animation: fadein var(--dur-sent) var(--ease-inout) calc(var(--i, 0) * var(--stagger-own)) both; }
+[data-moment="sent"] > .bc-ghost { z-index: 2; animation: fadein var(--dur-sent) var(--ease-inout) calc(var(--i, 0) * var(--stagger-own)) reverse both; }
+
+/* Paid: the overlay fades in; the old number on its chip and the old glyph (the ghost, above them at z-index 2) hold
+   until the fade ends, then the new ink shows and the flight seats 2 px. Never a background-color transition. */
+[data-moment="paid"] > .bc-in > .bc-face { animation: set var(--dur-set) var(--ease-out) calc(var(--i, 0) * var(--stagger-others)) both; }
+[data-moment="paid"] > .bc-in > .bc-num { animation: fadein var(--dur-set) step-end calc(var(--i, 0) * var(--stagger-others)) both; }
+[data-moment="paid"] > .bc-in > .bc-glyph { animation: fadein var(--dur-set) step-end calc(var(--i, 0) * var(--stagger-others)) both, seat var(--dur-seat) var(--ease-over) calc(var(--i, 0) * var(--stagger-others) + var(--dur-set)) both; }
+[data-moment="paid"] > .bc-ghost { z-index: 2; animation: fadein var(--dur-set) step-start calc(var(--i, 0) * var(--stagger-others)) reverse both; }
+
+/* Paid undone: the ink is back at once; the old overlay (the ghost, under the number) fades out. */
+[data-moment="paid-undo"] > .bc-ghost { z-index: 0; animation: fadein var(--dur-set) var(--ease-inout) calc(var(--i, 0) * var(--stagger-others)) reverse both; }
+
+/* The ghost: the old cell without its own face, showing only the layers its moment names. */
+.bc-ghost { position: absolute; inset: 0; pointer-events: none; }
+.bc-ghost > .bc { background: transparent; box-shadow: none; }
+[data-moment="sent"] > .bc-ghost .bc-in > :not(.bc-glyph),
+[data-moment="paid"] > .bc-ghost .bc-in > :not(.bc-num, .bc-glyph),
+[data-moment="paid-undo"] > .bc-ghost .bc-in > :not(.bc-face) { visibility: hidden; }
+
+@keyframes land { from { transform: translateY(calc(-1 * var(--drop, 6px))); opacity: 0; } to { transform: none; opacity: 1; } }
+/* 40 % = --dur-squash / (--dur-squash + --dur-settle): linear into the squash, --ease-over out of it. */
+@keyframes squash { 0% { transform: scale(1); animation-timing-function: linear; } 40% { transform: scale(0.96); animation-timing-function: cubic-bezier(.3, 1.5, .5, 1); } 100% { transform: scale(1); } }
+@keyframes glint { from { opacity: 1; } to { opacity: 0; } }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+@keyframes set { from { opacity: 0; } to { opacity: 1; } }
+@keyframes seat { from { transform: translateY(-2px); } to { transform: none; } }
+
+/* Reduced motion: every moment is its final state at once (the global rule shortens durations, not delays). */
+@media (prefers-reduced-motion: reduce) {
+  [data-moment], [data-moment] * { animation: none !important; }
+  .bc-glint, .bc-ghost { display: none; }
+  button[data-cell]:active { transform: none !important; }
+}
+```
+
+- [ ] **Step 13: Run the render and CSS tests to see them pass**
+
+Run: `pnpm test src/components/grid`
+Expected: PASS, `render.test.ts` included: no moment prop means no change to any existing assertion.
+
+- [ ] **Step 14: Write the hook**
+
+Create `src/components/grid/use-board-moments.ts`:
+
+```ts
+"use client";
+import { useEffect, useState } from "react";
+import type { GridCell } from "@/domain/breaks/grid";
+import type { CellMoment } from "./cell-moments";
+import { MOMENT_CLEAR_MS, stepMoments, type BoardSnap, type MomentState, type PendingClaim } from "./board-moments";
+
+const NONE: ReadonlyMap<number, CellMoment> = new Map();
+const NO_GHOSTS: ReadonlyMap<number, GridCell> = new Map();
+type Shown = { moments: ReadonlyMap<number, CellMoment>; from: ReadonlyMap<number, GridCell>; landed: readonly number[] };
+
+/**
+ * The moments of the latest change to the board, against what this viewer saw last (Mosaic §3). The first render has
+ * no earlier board, so it plays nothing. A change that lands mid-moment replaces the map: those cells snap to their
+ * new final state. The map clears after MOMENT_CLEAR_MS, so data-moment, will-change and the ghosts never outstay the
+ * motion. `claim` is the island's pending claim: whichever renders first, the refreshed props or the action's answer,
+ * the claim's lines drop when they turn the viewer's (recorded ruling 34). `landed` tells the island to clear it.
+ */
+export function useBoardMoments(next: BoardSnap, claim: PendingClaim | null): Shown {
+  const [state, setState] = useState<MomentState>(() => ({ snap: next, moments: NONE, from: NO_GHOSTS, landed: [] }));
+  const current = stepMoments(state, next, claim);
+  if (current !== state) setState(current); // adjusting state while rendering: React re-renders before it commits, so no stale frame
+  const shown = current.moments;
+  useEffect(() => {
+    if (shown.size === 0) return;
+    const id = window.setTimeout(() => setState((s) => (s.moments === shown ? { ...s, moments: NONE, from: NO_GHOSTS } : s)), MOMENT_CLEAR_MS);
+    return () => window.clearTimeout(id);
+  }, [shown]);
+  return { moments: current.moments, from: current.from, landed: current.landed };
+}
+```
+
+- [ ] **Step 15: Record the claim before the action is called**
+
+In `src/components/break/use-claim.ts`, replace
+
+```ts
+  markClaimed: (numbers: number[]) => void;
+```
+
+with
+
+```ts
+  markClaimed: (numbers: number[]) => void;
+  /** Called synchronously, before the action: the island records the pending claim, so its drop never waits on render order (Plan C, recorded ruling 34). */
+  onStart?: (requested: number[]) => void;
+```
+
+and replace
+
+```ts
+    const id = batchId;
+    start(async () => {
+```
+
+with
+
+```ts
+    const id = batchId;
+    o.onStart?.(optimistic);
+    start(async () => {
+```
+
+- [ ] **Step 16: Wire the moments into the break island**
+
+In `src/components/break/pay-sheet.tsx`, replace `  onGaveBack: () => void;` with
+
+```tsx
+  /** The lines just given back: the next refresh announces "You gave back …" for them. */
+  onGaveBack: (numbers: number[]) => void;
+```
+
+and replace `if (r.ok) { setConfirming(false); p.onGaveBack(); p.onClose(); return; }` with `if (r.ok) { setConfirming(false); p.onGaveBack(numbers); p.onClose(); return; }`.
+
+In `src/components/break/break-interactive.tsx`:
+
+1. Add `useLayoutEffect` to the `react` import. Add the imports:
+
+```tsx
+import { countMoment, landingTimes, momentAnnouncements, paySheetDelay, type PendingClaim } from "@/components/grid/board-moments";
+import { useBoardMoments } from "@/components/grid/use-board-moments";
+import { prefersReducedMotion } from "@/lib/motion";
+```
+
+In the `./selection` import, replace `outcomeText` with `claimAnnouncement`.
+
+2. `BreakInteractiveProps.boardView` (Task 8) already says the view; moments compare cells within one view only.
+
+3. After `const [struck, setStruck] = useState<number[]>([]);` add:
+
+```tsx
+  // The claim in flight, recorded before the action is called (useClaim's onStart), so its flights drop whichever lands
+  // first: the refreshed props or the answer (recorded ruling 34). Null once its lines landed, or when it was refused.
+  // Not named `claim`: that is the imported server action.
+  const [pendingClaim, setPendingClaim] = useState<PendingClaim | null>(null);
+  // The lines just given back: the next refresh announces "You gave back …" for them.
+  const gaveBack = useRef<number[]>([]);
+  const board = useBoardMoments({ cells: p.cells, view: p.boardView, struck }, pendingClaim);
+  // Drops not yet landed: the checkout count drops by one per landing (a text swap, never rolled).
+  const [landing, setLanding] = useState(0);
+  const sheetTimer = useRef<number | null>(null);
+```
+
+4. In `finish`, in the `if (r.ok)` branch, replace
+
+```tsx
+      say(outcomeText(r.data.got, taken));
+      // Built on what is already shown (a retry adds to the first claim's provisional amount); none got, none provisional.
+      pay.setPendingOwe((prev) => nextPendingOwe(p.owe ?? prev, r.data.got, p.priceCents));
+      pay.show(); // the claim is committed; now the pay step
+      return;
+```
+
+with
+
+```tsx
+      const owedBefore = (p.owe ?? pay.pendingOwe)?.cents ?? 0;
+      say(claimAnnouncement(r.data.got, taken, p.hostName, owedBefore + r.data.got.length * p.priceCents));
+      if (r.data.got.length === 0) setPendingClaim(null); // none got: nothing will land
+      // Built on what is already shown (a retry adds to the first claim's provisional amount); none got, none provisional.
+      pay.setPendingOwe((prev) => nextPendingOwe(p.owe ?? prev, r.data.got, p.priceCents));
+      // The claim is committed; the pay step opens at the last landing or at 400 ms, whichever comes first.
+      if (sheetTimer.current !== null) window.clearTimeout(sheetTimer.current);
+      const wait = paySheetDelay(r.data.got.length, prefersReducedMotion());
+      if (wait === 0) pay.show();
+      else sheetTimer.current = window.setTimeout(() => { sheetTimer.current = null; pay.show(); }, wait);
+      return;
+```
+
+and, in the same function, replace
+
+```tsx
+    if (r.code === "NOT_SIGNED_IN") { router.push(loginHref(p.breakId, requested)); return; }
+```
+
+with
+
+```tsx
+    setPendingClaim(null); // refused: none of this claim will land
+    if (r.code === "NOT_SIGNED_IN") { router.push(loginHref(p.breakId, requested)); return; }
+```
+
+5. In the `useClaim({ … })` options, replace
+
+```tsx
+    markClaimed,
+    onDone: finish,
+```
+
+with
+
+```tsx
+    markClaimed,
+    // Before the action is called: a selection or "Take the last N" knows its numbers; a random claim does not.
+    onStart: (requested) => setPendingClaim({ numbers: requested.length > 0 ? requested : null }),
+    onDone: finish,
+```
+
+6. In the reconcile effect, replace
+
+```tsx
+  const { cells: freshCells, allowance } = p;
+  useEffect(() => {
+    if (lastCells.current === freshCells) return;
+    lastCells.current = freshCells;
+```
+
+with
+
+```tsx
+  const { cells: freshCells, allowance, hostName } = p;
+  useEffect(() => {
+    if (lastCells.current === freshCells) return;
+    const before = lastCells.current;
+    lastCells.current = freshCells;
+```
+
+then, directly before `const text = said.join(" ");` in the same effect, add:
+
+```tsx
+    // Paid, paid undone, released, given back, open again (Mosaic §7): own lines only where the row says so.
+    const moved = momentAnnouncements(before, freshCells, hostName, gaveBack.current);
+    if (moved) said.push(moved);
+    gaveBack.current = [];
+```
+
+and change that effect's dependency list from `[freshCells, allowance]` to `[freshCells, allowance, hostName]`.
+
+7. After the reconcile effect, add:
+
+```tsx
+  // The claim's lines have landed: later diffs are other people's again.
+  useEffect(() => { if (board.landed.length > 0) setPendingClaim(null); }, [board.landed]);
+
+  // The checkout count drops by one per landing. Before paint, so the count never shows the lower number first.
+  useLayoutEffect(() => {
+    const drops = countMoment(board.moments, "drop");
+    if (drops === 0 || prefersReducedMotion()) { setLanding(0); return; }
+    const times = landingTimes(drops);
+    setLanding(times.length);
+    const ids = times.map((t) => window.setTimeout(() => setLanding((n) => Math.max(0, n - 1)), t));
+    return () => ids.forEach((id) => window.clearTimeout(id));
+  }, [board.moments]);
+
+  useEffect(() => () => { if (sheetTimer.current !== null) window.clearTimeout(sheetTimer.current); }, []);
+```
+
+8. After `const pending = claimer.pending || pay.pending;` add:
+
+```tsx
+  // What the checkout count shows: the server's open count, plus the claimed lines whose flights have not landed yet.
+  const shownOpen = p.counts.open + landing;
+```
+
+Then, in the `<ClaimBar … />` element, replace Task 10's `toGo={barCheckout({ status: p.status, openCount: p.counts.open })}` with `toGo={barCheckout({ status: p.status, openCount: shownOpen })}`. Leave `openCount: p.counts.open` in the `claimBar({ … })` input (it drives Take the last N) and in the grid's label.
+
+9. In the `<Grid … />` element, after `struck={struckSet}` add:
+
+```tsx
+            moments={board.moments}
+            from={board.from}
+```
+
+10. In the `<PaySheet … />` element, replace `onGaveBack={() => pay.setPendingOwe(null)}` with `onGaveBack={(numbers) => { gaveBack.current = numbers; pay.setPendingOwe(null); }}`.
+
+(`src/app/b/[id]/page.tsx` already passes `boardView`, and `Grid` already draws the lamp from `heat`: Task 8.)
+
+- [ ] **Step 17: Run every gate**
+
+Run (sandbox off): `pnpm exec tsc --noEmit && pnpm lint && pnpm test`
+Expected: all green.
+
+Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e`
+Expected: all green on `breaks_e2e`. The pay sheet now opens up to 360 ms after the claim resolves; every spec reaches it through Playwright's auto-waiting assertions (`pay-sheet`, `pay-outcome`, `pay-amount`, `pay-sent`), so none needs a change. The journeys never assert the bar's count mid-landing. Task 20 adds "the first claim as a stranger animates only the claimed cells".
+
+- [ ] **Step 18: Optional: check by hand**
+
+If you have a browser tool: `pnpm dev` and open a break at 390 × 664. Claim two lines: each flight drops in, its cell squashes, the wire around it glints once in cream, and the count drops one per landing. Then mark one paid from the host's ledger in a second window and refresh the buyer: the colour fades in and the number switches ink at the end. With the OS reduce-motion setting on, every change shows at once. Stop the server afterwards (port rule). Report the check as not performed if you cannot do it.
+
+- [ ] **Step 19: Commit**
+
+```bash
+git add src/lib/motion.ts src/lib/motion.test.ts src/app/globals.css src/components/grid src/components/break
+git commit -m "feat(board): claim moments on cellMoments: press, drop and glint, others in, sent, paid and undone"
+```
+
+---
+
+### Task 11b: Release drain, sniped strike, the lamp's step down, Board fills, "Pay within 24 hours." (model: Opus)
+
+Spec §7, the rows Release or give back, Line sniped and Board fills, and the Heat row's "A release steps the lamp back down"; §8's pay block; §3 "Nothing travels across the cells".
+
+This task adds what `cellMoments` (Task 9) cannot see, on top of Task 11a's moments:
+- a strike on a selected line someone else took (selection is client-only), at most 8 at once;
+- the drain of the viewer's own lines when their last line goes and the board switches to the kit view.
+
+The release moment draws the cell as it was (`bc-ghost`, Task 11a) and drains it: the old colour fades, its flight lifts 8 px and fades. When the viewer's own last line goes, the released cells drain over `--dur-release` first, with the rest of the board held in the member view, and only then does the board re-render in the kit view, still (spec §7 Release, recorded ruling 21).
+
+Further changes:
+- **Lamp.** Task 8's `Grid` already owns it (`heat`, `lampLayer`, test id `lamp`): one fixed gradient whose step is its opacity, so a step change is a `--dur-lamp` crossfade that never plays on mount (recorded ruling 18). This task adds the render test that pins the step going back down after a release.
+- **Board fills.** "Board's full. Game on." drops in once per viewer per break, as the caller's banner between the board and the legend (recorded ruling 22). `CallerBanner` and `FlightGlyph` are written here; Task 12b's reveal and Task 16's flight line reuse them.
+- **"Pay within 24 hours."** moves to the pay sheet's pay block, directly above the absolute deadline (spec §8, §1.1; recorded ruling 23). Task 10 took it out of the page head.
+- **Reduced motion.** The release, the strike and the banner are instant.
+
+**Files:**
+- Modify: `src/components/grid/board-moments.ts`, `src/components/grid/board-moments.test.ts`, `src/components/grid/moment-attrs.ts`, `src/components/grid/use-board-moments.ts`
+- Modify: `src/components/grid/moments-render.test.ts`, `src/components/grid/motion-css.test.ts`
+- Create: `src/components/flight-glyph.tsx`, `src/components/break/caller-banner.tsx`, `src/components/break/caller-copy.ts`, `src/components/break/caller-copy.test.ts`
+- Modify: `src/app/globals.css` (the release, the strike, the caller)
+- Modify: `src/components/break/pay-sheet.tsx` (`payWithin`), `src/components/break/break-interactive.tsx`, `src/app/b/[id]/page.tsx`
+- Modify: `e2e/layout.spec.ts` (one test)
+
+**Interfaces:**
+- Consumes:
+  - From Task 11a: `boardMoments`, `stepMoments`, `MomentState`, `BoardSnap`, `ghostsFrom`, `countMoment`, `GHOSTED_MOMENTS`, `useBoardMoments`, the moments CSS block and the island wiring (`board`, `pendingClaim`, `sheetTimer`).
+  - From Task 9: `cellMoments`, `cellViews`, `CellMoment`.
+  - From Task 8: `Grid`'s lamp (`lampLayer`, test id `lamp`).
+  - From Task 10: `BreakInteractiveProps.underBoard`; `payWithinText` (`frame-copy.ts`, there before Plan C).
+  - From Task 2: `FLIGHT_COLOURS`, `FLIGHT_SHAPES`, `Flight`, `DEFAULT_KIT`.
+  - From Task 1: the motion tokens and `--font-big-shoulders`.
+- Produces:
+  - `src/components/grid/board-moments.ts`: `SNIPED_CAP`, `OWN_RELEASE_CAP`; `boardMoments` adds the own-release drain and the sniped strike; `drainCells(prev, moments)`; `MomentState.held: BoardSnap | null`.
+  - `GHOSTED_MOMENTS` gains `release`.
+  - `useBoardMoments(next, claim)` returns `{ moments, from, landed, held }` (`held`: the member-view board shown while the viewer's own last lines drain, else null).
+  - `src/components/flight-glyph.tsx`: `FlightGlyph({ flight, size?, keyline?, strokeWidth? })`.
+  - `src/components/break/caller-banner.tsx`: `CallerBanner({ text, rule, flight?, play? })` (`data-testid="caller"`, `aria-hidden`).
+  - `src/components/break/caller-copy.ts`: `BOARD_FULL_CALL`, `boardFullAnnouncement(host)`, `fullBoardKey(id)`.
+  - `PaySheet`'s `payWithin?: string | null` (test id `pay-within`); `BreakInteractiveProps.payWithin: string | null`.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `src/components/grid/board-moments.test.ts`, replace
+
+```ts
+  boardMoments, countMoment, ghostsFrom, landedClaim, landingTimes, longestMoment, MOMENT_CLEAR_MS, momentAnnouncements, momentOrder,
+  paySheetDelay, stepMoments, type BoardSnap, type MomentState,
+```
+
+with
+
+```ts
+  boardMoments, countMoment, drainCells, ghostsFrom, landedClaim, landingTimes, longestMoment, MOMENT_CLEAR_MS, momentAnnouncements, momentOrder,
+  paySheetDelay, stepMoments, type BoardSnap, type MomentState,
+```
+
+replace
+
+```ts
+const fresh = (s: BoardSnap): MomentState => ({ snap: s, moments: new Map(), from: new Map(), landed: [] });
+```
+
+with
+
+```ts
+const fresh = (s: BoardSnap): MomentState => ({ snap: s, moments: new Map(), from: new Map(), landed: [], held: null });
+```
+
+replace
+
+```ts
+    expect([...ghostsFrom(prev, moments).keys()]).toEqual([1]); // release draws its ghost from Task 11b on
+```
+
+with
+
+```ts
+    expect([...ghostsFrom(prev, moments).keys()]).toEqual([1, 3]);
+```
+
+and append at the end of the file:
+
+```ts
+describe("boardMoments: what cellMoments cannot see", () => {
+  it("strikes a newly sniped line, at most 8 at once, and never a line struck before", () => {
+    const cells = board(20);
+    const m = boardMoments(snap(cells, { struck: [3] }), snap(cells, { struck: [3, 5] }), []);
+    expect(m.get(5)).toBe("sniped");
+    expect(m.get(3)).not.toBe("sniped");
+    const many = boardMoments(snap(cells), snap(cells, { struck: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }), []);
+    expect(countMoment(many, "sniped")).toBe(8);
+  });
+  it("drains the viewer's own lines when their last line goes and the board turns to the kit view (§6)", () => {
+    const before = board(8, (c) => (c.number <= 2 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : c.number === 5 ? { state: "paid", holder: "liz", flight: { colour: "yellow", shape: "pear" } } : {}));
+    const after = board(8, (c) => (c.number === 5 ? { state: "paid" } : {}));
+    const m = boardMoments(snap(before), snap(after, { view: "kit" }), []);
+    expect(m.get(1)).toBe("release");
+    expect(m.get(2)).toBe("release");
+    expect(m.get(5) ?? "still").toBe("still"); // a flight face turning into a kit face is a view change: still
+  });
+  it("holds the member view while those lines drain: the released cells open, every other cell as it was (§7 Release)", () => {
+    const before = board(4, (c) => (c.number <= 2 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : c.number === 3 ? { state: "paid", holder: "liz", flight: { colour: "yellow", shape: "pear" } } : {}));
+    const moments = new Map<number, CellMoment>([[1, "release"], [2, "release"], [3, "still"], [4, "still"]]);
+    expect(drainCells(before, moments).map((c) => [c.number, c.state, c.mine, c.flight])).toEqual([
+      [1, "open", false, null], [2, "open", false, null], [3, "paid", false, { colour: "yellow", shape: "pear" }], [4, "open", false, null],
+    ]);
+  });
+  it("plays no release across a line-count change (a bonus line added)", () => {
+    const before = board(8, (c) => (c.number === 1 ? { state: "taken", mine: true, flight: BLUE_KITE } : {}));
+    const after = [...board(8), cell(9, { bonus: true })];
+    expect(countMoment(boardMoments(snap(before), snap(after, { view: "kit" }), []), "release")).toBe(0);
+  });
+});
+
+describe("stepMoments holds the member view while the viewer's own last lines drain (§7 Release)", () => {
+  it("returns the held board for a member to kit switch with own releases, and none otherwise", () => {
+    const before = snap(board(4, (c) => (c.number === 1 ? { state: "taken", mine: true, holder: "me", flight: BLUE_KITE } : {})));
+    const after = snap(board(4), { view: "kit" });
+    const s = stepMoments(fresh(before), after, null);
+    expect(s.moments.get(1)).toBe("release");
+    expect(s.held?.view).toBe("member");
+    expect(s.held?.cells.map((c) => c.state)).toEqual(["open", "open", "open", "open"]);
+    expect(stepMoments(fresh(before), snap(board(4)), null).held).toBeNull();
+  });
+});
+```
+
+Create `src/components/break/caller-copy.test.ts`:
+
+```ts
+import { it, expect } from "vitest";
+import { BOARD_FULL_CALL, boardFullAnnouncement, fullBoardKey } from "./caller-copy";
+
+it("says the board-fills lines of the caller copy, once per viewer per break", () => {
+  expect(BOARD_FULL_CALL).toBe("Board's full. Game on.");
+  expect(boardFullAnnouncement("Jim")).toBe("Board's full. Every line is paid. Waiting for Jim to run the draw.");
+  expect(fullBoardKey("b1")).toBe("breaks.full.b1");
+});
+```
+
+In `src/components/grid/moments-render.test.ts`, replace
+
+```ts
+import { DEFAULT_KIT } from "@/domain/flights";
+```
+
+with
+
+```ts
+import { DEFAULT_KIT } from "@/domain/flights";
+import { CallerBanner } from "@/components/break/caller-banner";
+```
+
+and append at the end of the file:
+
+```ts
+describe("release draws the cell as it was and drains it", () => {
+  it("renders the ghost, hidden from assistive tech, under the open cell's own name", () => {
+    const was = cell(9, { state: "taken", mine: true, flight: BLUE_KITE });
+    const h = html(createElement(Cell, { cell: cell(9), onPress: noop, moment: "release", from: was }));
+    expect(h).toContain('data-moment="release"');
+    expect(h).toContain('<span aria-hidden="true" class="bc-ghost">');
+    expect(h).toContain('aria-label="Line 9, open"');
+    expect(h.slice(h.indexOf('class="bc-ghost"'))).not.toMatch(/role="img"|aria-label=|data-cell=|data-flight=/);
+  });
+});
+
+describe("the lamp steps back down after a release (Mosaic §4 Heat)", () => {
+  it("is the same layer at a lower opacity, so the change is the one --dur-lamp opacity transition", () => {
+    const up = html(createElement(Grid, { cells: [cell(1, { state: "taken" }), cell(2)], lineCount: 2, label: "L", kit: DEFAULT_KIT, heat: 3 }));
+    const down = html(createElement(Grid, { cells: [cell(1), cell(2)], lineCount: 2, label: "L", kit: DEFAULT_KIT, heat: 2 }));
+    expect(up).toMatch(/data-testid="lamp"[^>]*opacity:0.165/);
+    expect(down).toMatch(/data-testid="lamp"[^>]*opacity:0.13/);
+  });
+});
+
+describe("the caller banner", () => {
+  // The lamp's opacity step is Task 8's (lampLayer in Grid, pinned in render.test.ts).
+  it("is decorative text with a rule, a glyph only when given a flight, and plays only when told", () => {
+    const still = html(createElement(CallerBanner, { text: "Board's full. Game on.", rule: "var(--kit-dark)" }));
+    expect(still).toContain('data-testid="caller"');
+    expect(still).toContain('aria-hidden="true"');
+    expect(still).toContain("Board&#x27;s full. Game on.");
+    expect(still).not.toContain("<svg");
+    expect(still).not.toContain("data-play");
+    const call = html(createElement(CallerBanner, { text: "Line 23. @mike takes the top spot.", rule: "#2340C4", flight: BLUE_KITE, play: true }));
+    expect(call).toContain("<svg");
+    expect(call).toContain("data-play");
+    expect(call).not.toContain("data-flight");
+  });
+});
+```
+
+In `src/components/grid/motion-css.test.ts`, replace
+
+```ts
+    // Task 11b adds pull and strike to this list.
+    for (const name of ["land", "squash", "glint", "fadein", "set", "seat"]) expect(frames.has(name), name).toBe(true);
+```
+
+with
+
+```ts
+    for (const name of ["land", "squash", "glint", "fadein", "set", "seat", "pull", "strike"]) expect(frames.has(name), name).toBe(true);
+```
+
+and replace
+
+```ts
+    expect(blocks.some((b) => b.includes("[data-moment], [data-moment] *") && b.includes(".bc-glint, .bc-ghost { display: none; }"))).toBe(true);
+```
+
+with
+
+```ts
+    expect(blocks.some((b) => b.includes("[data-moment], [data-moment] *") && b.includes(".bc-glint, .bc-ghost { display: none; }"))).toBe(true);
+    expect(blocks.some((b) => b.includes(".caller-banner[data-play] { animation: none !important; }"))).toBe(true);
+```
+
+In `e2e/layout.spec.ts`, add directly before the test `"a failed 'I've sent it' reports inside the pay sheet, not behind it"`:
+
+```ts
+test("the pay sheet's pay block says 'Pay within 24 hours.' while the break is open (Mosaic §8)", async ({ browser }) => {
+  const page = await signedIn(browser, `lw${run}@e2e.test`);
+  await page.goto(url);
+  await page.getByTestId("cell-44").click();
+  await page.getByTestId("claim-submit").click();
+  await expect(page.getByTestId("pay-sheet")).toBeVisible();
+  await expect(page.getByTestId("pay-within")).toHaveText(/^Pay within \d+ hours?\.$/);
+});
+```
+
+(Line 44 is not used by any other test in this file.)
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `pnpm test src/components/grid src/components/break/caller-copy.test.ts`
+Expected: FAIL. `drainCells` is not exported and `MomentState` has no `held`; `boardMoments` plays no sniped strike and no own release; `ghostsFrom` leaves out release; `@/components/break/caller-banner` and `./caller-copy` do not exist; `globals.css` has no `pull` or `strike` keyframes.
+
+- [ ] **Step 3: The two moments cellMoments cannot see, and the held board**
+
+In `src/components/grid/moment-attrs.ts`, replace
+
+```ts
+/** Moments that draw the cell as it was (the ghost): sent cross-fades it, paid holds its ink, undo fades it out. Task 11b adds release. */
+export const GHOSTED_MOMENTS: ReadonlySet<CellMoment> = new Set<CellMoment>(["sent", "paid", "paid-undo"]);
+```
+
+with
+
+```ts
+/** Moments that draw the cell as it was (the ghost): sent cross-fades it, paid holds its ink, undo and release fade it out. */
+export const GHOSTED_MOMENTS: ReadonlySet<CellMoment> = new Set<CellMoment>(["sent", "paid", "paid-undo", "release"]);
+```
+
+In `src/components/grid/board-moments.ts`, replace
+
+```ts
+export const DROP_CAP = 5;
+```
+
+with
+
+```ts
+export const DROP_CAP = 5;
+export const SNIPED_CAP = 8;
+export const OWN_RELEASE_CAP = 8;
+```
+
+replace Task 11a's `boardMoments`
+
+```ts
+/**
+ * cellMoments (Task 9) over the server's cells, wrapped with cellViews so the diff gets the CellView it is typed for
+ * (recorded ruling 34). `claimed` is the lines this viewer's claim just landed: their flights drop even across the
+ * kit → member switch. Task 11b adds the two moments cellMoments cannot see.
+ */
+export function boardMoments(prev: BoardSnap, next: BoardSnap, claimed: readonly number[]): Map<number, CellMoment> {
+  return new Map<number, CellMoment>(
+    cellMoments(cellViews(prev.cells, NO_SET, NO_SET), cellViews(next.cells, NO_SET, NO_SET), { view: next.view, prevView: prev.view, mine: claimed }),
+  );
+}
+```
+
+with:
+
+```ts
+/**
+ * cellMoments (Task 9) over the server's cells, wrapped with cellViews so the diff gets the CellView it is typed for
+ * (recorded ruling 34), plus the two moments it cannot see. A strike on a selected line someone else took: the
+ * selection is client-only. The viewer's own lines draining when their last line goes: the board switches to the kit
+ * view, which cellMoments sets still, but spec §6 plays "the viewer's own release moment" first. `claimed` is the lines
+ * this viewer's claim just landed: their flights drop even across the kit → member switch.
+ */
+export function boardMoments(prev: BoardSnap, next: BoardSnap, claimed: readonly number[]): Map<number, CellMoment> {
+  const out = new Map<number, CellMoment>(
+    cellMoments(cellViews(prev.cells, NO_SET, NO_SET), cellViews(next.cells, NO_SET, NO_SET), { view: next.view, prevView: prev.view, mine: claimed }),
+  );
+  if (prev.view === "member" && next.view === "kit" && prev.cells.length === next.cells.length) {
+    const now = new Map(next.cells.map((c) => [c.number, c]));
+    let n = 0;
+    for (const c of prev.cells) {
+      if (!c.mine || now.get(c.number)?.state !== "open") continue;
+      if (n++ >= OWN_RELEASE_CAP) break;
+      out.set(c.number, "release");
+    }
+  }
+  const before = new Set(prev.struck);
+  let s = 0;
+  for (const x of [...next.struck].sort((a, b) => a - b)) {
+    if (before.has(x)) continue;
+    if (s++ >= SNIPED_CAP) break; // past the cap the strike shows at once (Cell draws `struck` itself)
+    out.set(x, "sniped");
+  }
+  return out;
+}
+```
+
+replace
+
+```ts
+/** useBoardMoments' state: the last board this viewer saw, the moments of the change into it, and the claim lines it landed. */
+export type MomentState = {
+  snap: BoardSnap;
+  moments: ReadonlyMap<number, CellMoment>;
+  from: ReadonlyMap<number, GridCell>;
+  landed: readonly number[];
+};
+```
+
+with
+
+```ts
+/**
+ * The board shown while the viewer's own last lines drain (spec §7 Release, recorded ruling 21): the previous member-view
+ * cells, with each released cell already open (its ghost drains over it). Only after --dur-release does the board
+ * re-render in the kit view, still.
+ */
+export function drainCells(prev: readonly GridCell[], moments: ReadonlyMap<number, CellMoment>): GridCell[] {
+  return prev.map((c): GridCell => (moments.get(c.number) === "release" ? { ...c, state: "open", mine: false, holder: null, flight: null } : c));
+}
+
+/**
+ * useBoardMoments' state: the last board this viewer saw, the moments of the change into it, the claim lines it
+ * landed, and the held member-view board while the viewer's own last lines drain (else null).
+ */
+export type MomentState = {
+  snap: BoardSnap;
+  moments: ReadonlyMap<number, CellMoment>;
+  from: ReadonlyMap<number, GridCell>;
+  landed: readonly number[];
+  held: BoardSnap | null;
+};
+```
+
+and replace
+
+```ts
+  return { snap: next, moments, from: ghostsFrom(state.snap.cells, moments), landed };
+}
+```
+
+with
+
+```ts
+  const draining = state.snap.view === "member" && next.view === "kit" && countMoment(moments, "release") > 0;
+  const held = draining ? { cells: drainCells(state.snap.cells, moments), view: "member" as const, struck: next.struck } : null;
+  return { snap: next, moments, from: ghostsFrom(state.snap.cells, moments), landed, held };
+}
+```
+
+(`countMoment` is declared further down the file as a `const`: it is called only when `stepMoments` runs, after the module has loaded, so the order is safe.)
+
+- [ ] **Step 4: The board-fills copy, the glyph and the caller banner**
+
+Create `src/components/break/caller-copy.ts`:
+
+```ts
+/** The caller's lines on the break page (Mosaic §7 caller copy): the same for every viewer, never "You", never the prize. */
+export const BOARD_FULL_CALL = "Board's full. Game on.";
+export const boardFullAnnouncement = (hostName: string) => `Board's full. Every line is paid. Waiting for ${hostName} to run the draw.`;
+/** Board fills plays once per viewer per break, stored like the reveal's once-per-viewer flag. */
+export const fullBoardKey = (breakId: string) => `breaks.full.${breakId}`;
+```
 
 Create `src/components/flight-glyph.tsx`:
 
@@ -6395,91 +7257,36 @@ export function CallerBanner({ text, rule, flight = null, play = false }: Props)
 }
 ```
 
-- [ ] **Step 13: Write the moment CSS**
+- [ ] **Step 5: Write the release, the strike and the caller CSS**
 
-Append to `src/app/globals.css`:
+Append to `src/app/globals.css`, after Task 11a's moments block:
 
 ```css
-/* ---- Mosaic claim moments (spec §7). Per-cell motion is CSS on transform and opacity only, switched on by
-   data-moment, which only cellMoments sets: nothing plays on mount or on a view switch. --i is the cell's place in
-   its stagger. The layers are Task 7's (.bc-in > .bc-*); .bc-glint and .bc-ghost (the cell as it was) are root
-   children beside .bc-in. Child combinators keep a rule off the ghost's own copy of the layers. ---- */
-[data-moment] { will-change: transform, opacity; }
-
-/* Select: the cell dips under the thumb. */
-button[data-cell] { transition: transform var(--dur-unpress) var(--ease-over); }
-button[data-cell][data-state="open"]:not([aria-disabled="true"]):active { transform: scale(0.94); transition: transform var(--dur-press) var(--ease-out); }
-
-/* Claim commits: the outlined flight drops 6 px in, the cell squashes and settles, the wire glints once in cream, the ring lands. */
-[data-moment="drop"] { contain: none; z-index: 1; animation: squash calc(var(--dur-squash) + var(--dur-settle)) linear calc(var(--i, 0) * var(--stagger-own) + var(--dur-drop)) both; }
-[data-moment="drop"] > .bc-in > .bc-glyph { --drop: 6px; animation: land var(--dur-drop) var(--ease-in) calc(var(--i, 0) * var(--stagger-own)) both; }
-[data-moment="drop"] > .bc-in > .bc-ring { animation: fadein var(--dur-drop) step-end calc(var(--i, 0) * var(--stagger-own)) both; }
-.bc-glint { position: absolute; inset: -1px; border: 1px solid color-mix(in srgb, var(--board-cream) 70%, transparent); pointer-events: none; opacity: 0; animation: glint var(--dur-glint) var(--ease-out) calc(var(--i, 0) * var(--stagger-own) + var(--dur-drop)) forwards; }
-
-/* Others claim: their flight (or the kit band) fades in. No squash, no glint. */
-[data-moment="others-in"] > .bc-in > .bc-glyph,
-[data-moment="others-in"] > .bc-in > .bc-band { animation: fadein var(--dur-others) var(--ease-out) calc(var(--i, 0) * var(--stagger-others)) both; }
-
-/* I've sent it: the outline cross-fades into the filled glyph; the sent mark fades in. */
-[data-moment="sent"] > .bc-in > .bc-glyph,
-[data-moment="sent"] > .bc-in > .bc-sent { animation: fadein var(--dur-sent) var(--ease-inout) calc(var(--i, 0) * var(--stagger-own)) both; }
-[data-moment="sent"] > .bc-ghost { z-index: 2; animation: fadein var(--dur-sent) var(--ease-inout) calc(var(--i, 0) * var(--stagger-own)) reverse both; }
-
-/* Paid: the overlay fades in; the old number on its chip and the old glyph (the ghost, above them at z-index 2) hold
-   until the fade ends, then the new ink shows and the flight seats 2 px. Never a background-color transition. */
-[data-moment="paid"] > .bc-in > .bc-face { animation: set var(--dur-set) var(--ease-out) calc(var(--i, 0) * var(--stagger-others)) both; }
-[data-moment="paid"] > .bc-in > .bc-num { animation: fadein var(--dur-set) step-end calc(var(--i, 0) * var(--stagger-others)) both; }
-[data-moment="paid"] > .bc-in > .bc-glyph { animation: fadein var(--dur-set) step-end calc(var(--i, 0) * var(--stagger-others)) both, seat var(--dur-seat) var(--ease-over) calc(var(--i, 0) * var(--stagger-others) + var(--dur-set)) both; }
-[data-moment="paid"] > .bc-ghost { z-index: 2; animation: fadein var(--dur-set) step-start calc(var(--i, 0) * var(--stagger-others)) reverse both; }
-
-/* Paid undone: the ink is back at once; the old overlay (the ghost, under the number) fades out. */
-[data-moment="paid-undo"] > .bc-ghost { z-index: 0; animation: fadein var(--dur-set) var(--ease-inout) calc(var(--i, 0) * var(--stagger-others)) reverse both; }
-
+/* ---- Mosaic claim moments, part two (spec §7): release, sniped, the caller. ---- */
 /* Release or give back: the old colour drains, its flight lifts 8 px and fades, the hatch fades. No stagger. */
 [data-moment="release"] > .bc-ghost { z-index: 0; animation: fadein var(--dur-release) var(--ease-inout) reverse both; }
 [data-moment="release"] > .bc-ghost .bc-glyph { animation: pull var(--dur-release) var(--ease-inout) both; }
+[data-moment="release"] > .bc-ghost .bc-num { visibility: hidden; }
 
 /* Line sniped: a 2 px ink strike draws across the number, left to right. */
 [data-moment="sniped"] > .bc-in > .bc-num > .bc-strike { transform-origin: left center; animation: strike var(--dur-strike) var(--ease-out) both; }
 
-/* The ghost: the old cell without its own face, showing only the layers its moment names. */
-.bc-ghost { position: absolute; inset: 0; pointer-events: none; }
-.bc-ghost > .bc { background: transparent; box-shadow: none; }
-[data-moment="sent"] > .bc-ghost .bc-in > :not(.bc-glyph),
-[data-moment="paid"] > .bc-ghost .bc-in > :not(.bc-num, .bc-glyph),
-[data-moment="paid-undo"] > .bc-ghost .bc-in > :not(.bc-face),
-[data-moment="release"] > .bc-ghost .bc-num { visibility: hidden; }
-
-/* The caller (§7): Big Shoulders 800 26/28 on the wall, a 4 px left rule; drops in with a 2 px overshoot. */
+/* The caller (§7): Big Shoulders 800 26/28 on the wall (the Display cut is pinned by Task 1), a 4 px left rule; drops in
+   with a 2 px overshoot. */
 .caller-banner { display: flex; align-items: center; gap: 10px; border-left: 4px solid var(--call, var(--kit-dark)); padding: 4px 0 4px 12px; color: var(--board-text); font-family: var(--font-big-shoulders), Impact, sans-serif; font-weight: 800; font-size: 26px; line-height: 28px; }
 .caller-banner[data-play] { --drop: 24px; animation: land var(--dur-banner) var(--ease-over) both, fadein var(--dur-banner) var(--ease-out) both; }
 
-@keyframes land { from { transform: translateY(calc(-1 * var(--drop, 6px))); opacity: 0; } to { transform: none; opacity: 1; } }
-/* 40 % = --dur-squash / (--dur-squash + --dur-settle): linear into the squash, --ease-over out of it. */
-@keyframes squash { 0% { transform: scale(1); animation-timing-function: linear; } 40% { transform: scale(0.96); animation-timing-function: cubic-bezier(.3, 1.5, .5, 1); } 100% { transform: scale(1); } }
-@keyframes glint { from { opacity: 1; } to { opacity: 0; } }
-@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
-@keyframes set { from { opacity: 0; } to { opacity: 1; } }
-@keyframes seat { from { transform: translateY(-2px); } to { transform: none; } }
 @keyframes pull { to { transform: translateY(-8px); opacity: 0; } }
 @keyframes strike { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
-/* Reduced motion: every moment is its final state at once (the global rule shortens durations, not delays). */
 @media (prefers-reduced-motion: reduce) {
-  [data-moment], [data-moment] *, .caller-banner[data-play] { animation: none !important; }
-  .bc-glint, .bc-ghost { display: none; }
-  button[data-cell]:active { transform: none !important; }
+  .caller-banner[data-play] { animation: none !important; }
 }
 ```
 
-- [ ] **Step 14: Run the render and CSS tests to see them pass**
+- [ ] **Step 6: The hook holds the draining board**
 
-Run: `pnpm test src/components/grid`
-Expected: PASS, `render.test.ts` included: no moment prop means no change to any existing assertion.
-
-- [ ] **Step 15: Write the hook**
-
-Create `src/components/grid/use-board-moments.ts`:
+Replace the whole of `src/components/grid/use-board-moments.ts` with:
 
 ```ts
 "use client";
@@ -6487,30 +7294,24 @@ import { useEffect, useState } from "react";
 import type { GridCell } from "@/domain/breaks/grid";
 import type { CellMoment } from "./cell-moments";
 import { MOTION } from "@/lib/motion";
-import { boardMoments, countMoment, drainCells, ghostsFrom, MOMENT_CLEAR_MS, type BoardSnap } from "./board-moments";
+import { MOMENT_CLEAR_MS, stepMoments, type BoardSnap, type MomentState, type PendingClaim } from "./board-moments";
 
 const NONE: ReadonlyMap<number, CellMoment> = new Map();
 const NO_GHOSTS: ReadonlyMap<number, GridCell> = new Map();
-type State = { snap: BoardSnap; moments: ReadonlyMap<number, CellMoment>; from: ReadonlyMap<number, GridCell>; held: BoardSnap | null };
-type Shown = { moments: ReadonlyMap<number, CellMoment>; from: ReadonlyMap<number, GridCell>; held: BoardSnap | null };
+type Shown = { moments: ReadonlyMap<number, CellMoment>; from: ReadonlyMap<number, GridCell>; landed: readonly number[]; held: BoardSnap | null };
 
 /**
  * The moments of the latest change to the board, against what this viewer saw last (Mosaic §3). The first render has
  * no earlier board, so it plays nothing. A change that lands mid-moment replaces the map: those cells snap to their
- * new final state. The map clears after MOMENT_CLEAR_MS, so data-moment, will-change and the ghosts never outstay the motion.
+ * new final state. The map clears after MOMENT_CLEAR_MS, so data-moment, will-change and the ghosts never outstay the
+ * motion. `claim` is the island's pending claim (recorded ruling 34); `landed` tells the island to clear it.
  * When the viewer's own last lines go (member to kit), `held` is the member-view board with those cells draining
  * (drainCells): the island draws it for --dur-release, then the kit view, still (spec §7 Release, recorded ruling 21).
  */
-export function useBoardMoments(next: BoardSnap, claimed: readonly number[]): Shown {
-  const [state, setState] = useState<State>(() => ({ snap: next, moments: NONE, from: NO_GHOSTS, held: null }));
-  let current = state;
-  if (state.snap.cells !== next.cells || state.snap.view !== next.view || state.snap.struck !== next.struck) {
-    const moments = boardMoments(state.snap, next, claimed);
-    const draining = state.snap.view === "member" && next.view === "kit" && countMoment(moments, "release") > 0;
-    const held = draining ? { cells: drainCells(state.snap.cells, moments), view: "member" as const, struck: next.struck } : null;
-    current = { snap: next, moments, from: ghostsFrom(state.snap.cells, moments), held };
-    setState(current); // adjusting state while rendering: React re-renders before it commits, so no stale frame
-  }
+export function useBoardMoments(next: BoardSnap, claim: PendingClaim | null): Shown {
+  const [state, setState] = useState<MomentState>(() => ({ snap: next, moments: NONE, from: NO_GHOSTS, landed: [], held: null }));
+  const current = stepMoments(state, next, claim);
+  if (current !== state) setState(current); // adjusting state while rendering: React re-renders before it commits, so no stale frame
   const shown = current.moments;
   const held = current.held;
   useEffect(() => {
@@ -6524,122 +7325,137 @@ export function useBoardMoments(next: BoardSnap, claimed: readonly number[]): Sh
     const id = window.setTimeout(() => setState((s) => (s.held === held ? { ...s, held: null, moments: NONE, from: NO_GHOSTS } : s)), MOTION.release);
     return () => window.clearTimeout(id);
   }, [held]);
-  return { moments: current.moments, from: current.from, held: current.held };
+  return { moments: current.moments, from: current.from, landed: current.landed, held: current.held };
 }
 ```
 
-- [ ] **Step 16: Wire the moments into the break island**
+- [ ] **Step 7: "Pay within 24 hours." in the pay sheet's pay block**
 
-In `src/components/break/pay-sheet.tsx`, replace `  onGaveBack: () => void;` with
+In `src/components/break/pay-sheet.tsx`, replace
 
 ```tsx
-  /** The lines just given back: the next refresh announces "You gave back …" for them. */
-  onGaveBack: (numbers: number[]) => void;
+  pending: boolean;
+};
 ```
 
-and replace `if (r.ok) { setConfirming(false); p.onGaveBack(); p.onClose(); return; }` with `if (r.ok) { setConfirming(false); p.onGaveBack(numbers); p.onClose(); return; }`.
+with
+
+```tsx
+  pending: boolean;
+  /** "Pay within 24 hours." while the break is open, else null: it moved here from the page head (Mosaic §8, §1.1). */
+  payWithin?: string | null;
+};
+```
+
+and replace
+
+```tsx
+              {p.owe.payByIso && p.owe.payByFallback && (
+```
+
+with
+
+```tsx
+              {/* The pay window, then the absolute deadline under it (Mosaic §8 claim sheet). */}
+              {p.payWithin && !p.owe.late && <p className="text-small" data-testid="pay-within">{p.payWithin}</p>}
+              {p.owe.payByIso && p.owe.payByFallback && (
+```
+
+In `src/components/break/break-interactive.tsx`, replace
+
+```tsx
+  underBoard?: React.ReactNode;
+```
+
+with
+
+```tsx
+  underBoard?: React.ReactNode;
+  /** "Pay within 24 hours." while open, for the pay sheet's pay block (Mosaic §8); null once the break is not open. */
+  payWithin: string | null;
+```
+
+and, in the `<PaySheet … />` element, replace
+
+```tsx
+        onGaveBack={(numbers) => { gaveBack.current = numbers; pay.setPendingOwe(null); }}
+```
+
+with
+
+```tsx
+        onGaveBack={(numbers) => { gaveBack.current = numbers; pay.setPendingOwe(null); }}
+        payWithin={p.payWithin}
+```
+
+In `src/app/b/[id]/page.tsx`, replace Task 10's import
+
+```tsx
+import { closesText, hostedByText, hostLabel, mediaText, perPersonText, pickingText, prizeLines, trustText, youHaveText } from "@/components/break/frame-copy";
+```
+
+with
+
+```tsx
+import { closesText, hostedByText, hostLabel, mediaText, payWithinText, perPersonText, pickingText, prizeLines, trustText, youHaveText } from "@/components/break/frame-copy";
+```
+
+and replace
+
+```tsx
+        initialPick={initialPick}
+        underBoard={
+```
+
+with
+
+```tsx
+        initialPick={initialPick}
+        payWithin={status === "open" ? payWithinText(b.paymentWindowHours) : null}
+        underBoard={
+```
+
+- [ ] **Step 8: Wire the drain and Board fills into the break island**
 
 In `src/components/break/break-interactive.tsx`:
 
-1. Add `useLayoutEffect` to the `react` import. Add the imports:
+1. Replace
 
 ```tsx
-import { countMoment, landingTimes, momentAnnouncements, paySheetDelay } from "@/components/grid/board-moments";
-import { useBoardMoments } from "@/components/grid/use-board-moments";
+import { prefersReducedMotion } from "@/lib/motion";
+```
+
+with
+
+```tsx
 import { prefersReducedMotion } from "@/lib/motion";
 import { CallerBanner } from "./caller-banner";
 import { BOARD_FULL_CALL, boardFullAnnouncement, fullBoardKey } from "./caller-copy";
 ```
 
-In the `./selection` import, replace `outcomeText` with `claimAnnouncement`.
-
-2. `BreakInteractiveProps.boardView` (Task 8) already says the view; moments compare cells within one view only.
-
-3. After `const [struck, setStruck] = useState<number[]>([]);` add:
+2. Replace
 
 ```tsx
-  // The lines this viewer just claimed (their flights drop when the refreshed props land) and just gave back.
-  const [claimed, setClaimed] = useState<number[]>([]);
-  const gaveBack = useRef<number[]>([]);
-  const board = useBoardMoments({ cells: p.cells, view: p.boardView, struck }, claimed);
-  // Drops not yet landed: the checkout count drops by one per landing (a text swap, never rolled).
-  const [landing, setLanding] = useState(0);
-  // Board fills: null until the once-per-viewer flag is read (the banner renders after hydration only).
-  const [fullPlay, setFullPlay] = useState<boolean | null>(null);
   const sheetTimer = useRef<number | null>(null);
 ```
 
-4. In `finish`, in the `if (r.ok)` branch, replace
+with
 
 ```tsx
-      say(outcomeText(r.data.got, taken));
-      // Built on what is already shown (a retry adds to the first claim's provisional amount); none got, none provisional.
-      pay.setPendingOwe((prev) => nextPendingOwe(p.owe ?? prev, r.data.got, p.priceCents));
-      pay.show(); // the claim is committed; now the pay step
-      return;
+  const sheetTimer = useRef<number | null>(null);
+  // Board fills: null until the once-per-viewer flag is read (the banner renders after hydration only).
+  const [fullPlay, setFullPlay] = useState<boolean | null>(null);
+```
+
+3. Replace
+
+```tsx
+  useEffect(() => () => { if (sheetTimer.current !== null) window.clearTimeout(sheetTimer.current); }, []);
 ```
 
 with
 
 ```tsx
-      const owedBefore = (p.owe ?? pay.pendingOwe)?.cents ?? 0;
-      say(claimAnnouncement(r.data.got, taken, p.hostName, owedBefore + r.data.got.length * p.priceCents));
-      setClaimed(r.data.got); // the refreshed props drop these flights in (cellMoments' `mine`)
-      // Built on what is already shown (a retry adds to the first claim's provisional amount); none got, none provisional.
-      pay.setPendingOwe((prev) => nextPendingOwe(p.owe ?? prev, r.data.got, p.priceCents));
-      // The claim is committed; the pay step opens at the last landing or at 400 ms, whichever comes first.
-      if (sheetTimer.current !== null) window.clearTimeout(sheetTimer.current);
-      const wait = paySheetDelay(r.data.got.length, prefersReducedMotion());
-      if (wait === 0) pay.show();
-      else sheetTimer.current = window.setTimeout(() => { sheetTimer.current = null; pay.show(); }, wait);
-      return;
-```
-
-5. In `onPress`, after `setOutcome(null);` add `setClaimed([]);`.
-
-6. In the reconcile effect, replace
-
-```tsx
-  const { cells: freshCells, allowance } = p;
-  useEffect(() => {
-    if (lastCells.current === freshCells) return;
-    lastCells.current = freshCells;
-```
-
-with
-
-```tsx
-  const { cells: freshCells, allowance, hostName } = p;
-  useEffect(() => {
-    if (lastCells.current === freshCells) return;
-    const before = lastCells.current;
-    lastCells.current = freshCells;
-```
-
-then, directly before `const text = said.join(" ");` in the same effect, add:
-
-```tsx
-    // Paid, paid undone, released, given back, open again (Mosaic §7): own lines only where the row says so.
-    const moved = momentAnnouncements(before, freshCells, hostName, gaveBack.current);
-    if (moved) said.push(moved);
-    gaveBack.current = [];
-```
-
-and change that effect's dependency list from `[freshCells, allowance]` to `[freshCells, allowance, hostName]`.
-
-7. After the reconcile effect, add:
-
-```tsx
-  // The checkout count drops by one per landing. Before paint, so the count never shows the lower number first.
-  useLayoutEffect(() => {
-    const drops = countMoment(board.moments, "drop");
-    if (drops === 0 || prefersReducedMotion()) { setLanding(0); return; }
-    const times = landingTimes(drops);
-    setLanding(times.length);
-    const ids = times.map((t) => window.setTimeout(() => setLanding((n) => Math.max(0, n - 1)), t));
-    return () => ids.forEach((id) => window.clearTimeout(id));
-  }, [board.moments]);
-
   // Board fills (Mosaic §7): "Board's full. Game on." drops in once per viewer per break, then shows still.
   useLayoutEffect(() => {
     if (p.status !== "filled") { setFullPlay(null); return; }
@@ -6657,16 +7473,7 @@ and change that effect's dependency list from `[freshCells, allowance]` to `[fre
   useEffect(() => () => { if (sheetTimer.current !== null) window.clearTimeout(sheetTimer.current); }, []);
 ```
 
-8. After `const pending = claimer.pending || pay.pending;` add:
-
-```tsx
-  // What the checkout count shows: the server's open count, plus the claimed lines whose flights have not landed yet.
-  const shownOpen = p.counts.open + landing;
-```
-
-Then, in the `<ClaimBar … />` element, replace Task 10's `toGo={barCheckout({ status: p.status, openCount: p.counts.open })}` with `toGo={barCheckout({ status: p.status, openCount: shownOpen })}`. Leave `openCount: p.counts.open` in the `claimBar({ … })` input (it drives Take the last N) and in the grid's label.
-
-9. In the `<Grid … />` element, replace Task 8's
+4. In the `<Grid … />` element, replace Task 8's
 
 ```tsx
             cells={cells}
@@ -6681,98 +7488,85 @@ with
             view={board.held ? board.held.view : p.boardView}
 ```
 
-and after `struck={struckSet}` add:
+5. Replace Task 10's
 
 ```tsx
-            moments={board.moments}
-            from={board.from}
+      {p.underBoard}
 ```
 
-10. Directly after the closing `</div>` of the `gridWrap` element (before `{p.underBoard}`, so the banner sits between the board and the legend; recorded ruling 22) add:
+with (the banner sits between the board and the legend; recorded ruling 22)
 
 ```tsx
       {p.status === "filled" && fullPlay !== null && (
         <div className="mt-3"><CallerBanner text={BOARD_FULL_CALL} rule="var(--kit-dark)" play={fullPlay} /></div>
       )}
+      {p.underBoard}
 ```
 
-11. In the `<PaySheet … />` element, replace `onGaveBack={() => pay.setPendingOwe(null)}` with `onGaveBack={(numbers) => { gaveBack.current = numbers; pay.setPendingOwe(null); }}`.
+- [ ] **Step 9: Run the tests to see them pass**
 
-(`src/app/b/[id]/page.tsx` already passes `boardView`, and `Grid` already draws the lamp from `heat`: Task 8.)
+Run: `pnpm test src/components/grid src/components/break`
+Expected: PASS. If the "drains the viewer's own lines" test fails because Task 9's `cellMoments` returns something other than "still" for cell 5 across the view change, stop: that breaks Review Focus 2, so it is reported as a Task 9 bug, not patched here.
 
-- [ ] **Step 17: Run every gate**
+- [ ] **Step 10: Run every gate, and walk the never list**
 
-Run: `pnpm exec tsc --noEmit && pnpm lint && pnpm test`
+Run (sandbox off): `pnpm exec tsc --noEmit && pnpm lint && pnpm test`
 Expected: all green.
 
-Run: `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e`
-Expected: all green (sandbox off, `breaks_e2e`). The pay sheet now opens up to 360 ms after the claim resolves; every spec reaches it through Playwright's auto-waiting assertions (`pay-sheet`, `pay-outcome`, `pay-amount`, `pay-sent`), so none needs a change. The journeys never assert the bar's count mid-landing. Task 20 adds "the first claim as a stranger animates only the claimed cells".
+Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e`
+Expected: all green on `breaks_e2e`, the new "Pay within" test included. The "Board's full" banner renders only after hydration on a closed break, so no spec that reads a closed break's page head moves.
 
-- [ ] **Step 18: Optional: check by hand**
+Then walk spec §7's never list for the claim moments, item by item, and put one line per item in the report (recorded ruling 37): either the test that pins it, or "verified by review" with what was read. The tests that pin items here are `motion-css.test.ts` (transform and opacity only; no background or colour transition; reduced motion), `cell-moments.test.ts` (nothing on mount or a view switch; the caps), `moments-render.test.ts` (only the given cell plays) and Task 20's first-claim e2e. The review lines cover at least: nothing travels across the cells (no sweep, ripple or chase in the moments block); the winner's colour appears nowhere but its cell and the banner; no beat is longer for a viewer who holds more; no flashing, strobing or prize-value counter; Pick for me, Claim 1 random and Take the last 3 never cycle, flicker or highlight candidate numbers (the optimistic mark shows only the requested numbers, and a random claim shows nothing until the server answers); the banner shows only the caller copy set.
 
-If you have a browser tool: `pnpm dev` and open a break at 390 × 664. Claim two lines: each flight drops in, its cell squashes, the wire around it glints once in cream, and the count drops one per landing. Then mark one paid from the host's ledger in a second window and refresh the buyer: the colour fades in and the number switches ink at the end. With the OS reduce-motion setting on, every change shows at once. Stop the server afterwards (port rule). Report the check as not performed if you cannot do it.
+- [ ] **Step 11: Optional: check by hand**
 
-- [ ] **Step 19: Commit**
+If you have a browser tool: `pnpm dev`, open a break where you hold one line at 390 × 664, and give it back: the colour drains and the flight lifts, then the board turns to the kit view with nothing else moving. Select a line, take it from a second window, then tap Claim: the strike draws across its number. Fill a break's last line: "Board's full. Game on." drops in under the board once; a reload shows it still. Stop the server afterwards (port rule). Report the check as not performed if you cannot do it.
+
+- [ ] **Step 12: Commit**
 
 ```bash
-git add src/lib/motion.ts src/lib/motion.test.ts src/app/globals.css src/components/grid src/components/flight-glyph.tsx src/components/break
-git commit -m "feat(board): claim moments on cellMoments: drop and glint, fade-ins, paid overlay, drain, strike, board full"
+git add src/components/grid src/components/flight-glyph.tsx src/components/break "src/app/b/[id]/page.tsx" src/app/globals.css e2e/layout.spec.ts
+git commit -m "feat(board): release drain, sniped strike, board full and the pay window in the pay sheet"
 ```
 
 ---
 
-### Task 12: The reveal rewrite + `reveal-plan.ts` (model: Opus)
+### Task 12a: The reveal's timeline: `reveal-plan.ts`, the places, the read-out and the house lights (model: Opus)
 
-Spec §7, from Draw starts to Replay, the totals, the caller copy and the never list; §6 "Result page and reveal for strangers"; Review Focus 4.
+Spec §7, from Draw starts to Replay: the totals, the read-out, the house lights, the caller copy and the never list; Review Focus 4.
 
-The deal of the first design (cards dealt on paper, the top spot lifting green) goes. The new sequence:
-1. **House lights.** At 0 ms Skip appears, and one board class dims every cell under `--board-wall` at 55 %. Each viewer's own glyphs stay above the dim. The banner says "Jim's break. 50 lines. Game on."
-2. **Read-out.** At 300 ms the audited order reads out as chips under the board, `min(30 ms, 1500 ms / lines)` apart. The chips appear once each and never change.
-3. **Throws.** For each prize place, 3rd, then 2nd, then the top spot, the banner calls the place, a beat passes, and one neutral dart (steel barrel, cream flight) flies in a straight line from the oche (bottom centre of the frame) to the cell. The dart's angle is fixed at launch. It is the one JS tween (`requestAnimationFrame`, ease-in `cubic-bezier(.55,0,1,.45)`).
-4. **Impact.** The dim lifts off that cell at once and the cell takes its won state: black face, bull disc, ring, and the holder's flight in the member view. It squashes, settles and shakes ±2 px (±4 px for the top spot). The banner calls "Line 9. @liz takes 3rd place."
-5. **Lift.** One fade lifts the dim off the board, and focus moves to Replay.
+`reveal-plan.ts` holds the reveal's timeline as pure functions, and the tests pin the totals and the order:
+1. **House lights.** At 0 ms the lights go down: one board class dims every cell under `--board-wall` at 55 %. Each viewer's own glyphs stay above the dim. The banner says "Jim's break. 50 lines. Game on."
+2. **Read-out.** At 300 ms the audited order reads out as chips, `min(30 ms, 1500 ms / lines)` apart. The chips appear once each and never change.
+3. **Throws.** For each prize place, 3rd, then 2nd, then the top spot: the banner calls the place, a beat passes (300, 300, then 800 ms before the top spot), the throw takes `--dur-throw`, and the landing and the call share one moment.
+4. **Lift.** One fade lifts the dim off the board.
 
-Skip ends it within one frame with every bull in the DOM. The reveal plays once per viewer, and Replay plays it again. Reduced motion shows the final state. The deal layer (chips, dart) is `aria-hidden`; the calls are announced politely.
+The places are the break's prize places from `placesOf` (Task 6), as a list: prize ranks need not be contiguous. The calls always name the entry's handle (`handleAtDraw`): the caller copy set has no handle-less call (recorded ruling 22). `withPlaces` puts each place on its line for the result page's board.
 
-`reveal-plan.ts` holds the timeline as pure functions; tests pin the totals and the order.
-
-The result page now loads the break's board in the viewer's view, with the won places set (`withPlaces`), so the reveal has cells to throw at. Task 13 restyles the page around it.
-
-The break page gets the Draw starts banner, "Jim is stepping up to the oche.", which drops in only when the draw starts while the page is open.
+This task also gives display cells (the result page's board) the `bc-dim` layer and writes the house-lights CSS. The dart, the bulls' impact, the `Reveal` component, Skip and Replay, the result page's board and Draw starts are Task 12b. Until then the first design's reveal still runs, so `reveal-plan.ts` keeps its three retired exports (`DEAL_MS`, `dealDelays`, `liftDelay`) and Task 12b deletes them.
 
 **Files:**
 - Create: `src/app/b/[id]/result/board-cells.ts`, `src/app/b/[id]/result/board-cells.test.ts`
-- Create: `src/app/b/[id]/result/dart.ts`, `src/app/b/[id]/result/dart.test.ts`
-- Rewrite: `src/app/b/[id]/result/reveal-plan.ts`, `src/app/b/[id]/result/reveal-plan.test.ts`, `src/app/b/[id]/result/reveal.tsx`
-- Modify: `src/app/b/[id]/result/page.tsx` (load the board, the new `Reveal` props)
+- Rewrite: `src/app/b/[id]/result/reveal-plan.ts`, `src/app/b/[id]/result/reveal-plan.test.ts`
 - Modify: `src/components/grid/cell.tsx` (the `bc-dim` layer on display roots), `src/components/grid/motion-css.test.ts`
-- Modify: `src/app/globals.css` (the reveal block; the first design's `deal` and `lift` keyframes go)
-- Modify: `src/components/break/caller-copy.ts`, `src/components/break/caller-copy.test.ts`, `src/components/break/break-interactive.tsx` (Draw starts)
-- Modify: `e2e/journey-2.spec.ts` (Skip lands every bull; Replay starts from house lights down)
+- Modify: `src/app/globals.css` (the house lights)
 
 **Interfaces:**
 - Consumes:
-  - From Task 11: `MOTION`, `DurationTokens`, `prefersReducedMotion`, `CallerBanner`.
+  - From Task 11a: `MOTION`, `DurationTokens` (`src/lib/motion.ts`); the display root's `{momentLayers}` in `Cell`.
   - From Task 6: `placesOf`, `Place` (`src/domain/draws/places.ts`).
-  - From Task 5: `shapeGrid` (`flight`, `kit`, `heat`, `showHolders`).
   - From Task 7: Cell's won state from `place`, `data-won`/`data-mine`, and `data-cell` on display roots.
-  - From Task 8: `Grid`'s `view`, `kit` and `heat` props (the lamp) and `data-testid="board-frame"`.
-  - `getDrawResult`, `getBreakPage`, `getCaller`, `hostLabel`.
 - Produces:
   - `src/app/b/[id]/result/board-cells.ts`: `type ResultCell = GridCell & { place: Place | null }`, `withPlaces(cells, placed: readonly { number: number; place: Place }[]): ResultCell[]` (the places from `placesOf`, Task 6).
   - `src/app/b/[id]/result/reveal-plan.ts`:
-    - the frame's `type RevealStep` and `revealPlan(order, places, tokens = MOTION): RevealPlan`;
-    - `type RevealPlan = { steps: RevealStep[]; total: number }`, `type Banner`, `type RevealState`;
+    - the frame's `type RevealStep` and `revealPlan(order, places: readonly Place[], tokens = MOTION): RevealPlan`;
+    - `type RevealPlan = { steps: RevealStep[]; total: number }`, `type Banner`, `type RevealState`, and `Place` re-exported;
     - `chipGap(lines)`, `setupMs(lines, tokens?)`, `throwOrder(order, places)`, `revealStateAt(plan, t)`;
-    - `setupCall(host, lines)`, `beatCall(place)`, `placeCall(place, line, handle)`, `bannerText(banner, copy)`;
-    - kept: `seenKey`, `topSpotText`, `placeLabel`, `dealGateScript`.
-  - `src/app/b/[id]/result/dart.ts`: `type Point`, `cubicBezier(x1, y1, x2, y2)`, `easeIn`, `dartAngle(from, to)`, `dartAt(from, to, e)`, `DART_TIP`.
-  - `Reveal` props: `{ breakId; lineCount; cells: ResultCell[]; kit; heat; order; places; handleOf; hostName; view: "member" | "kit"; headline: ReactNode; after: ReactNode }`.
-  - `caller-copy.ts`: `drawStartCall(host)`, `drawStartAnnouncement(host)`.
-  - The Cell's `bc-dim` layer on display roots.
-  - Test ids `deal`, `caller`, `reveal-skip` and `reveal-replay`.
+    - `setupCall(host, lines)`, `beatCall(place)`, `placeCall(place, line, handle: string)`, `bannerText(banner, copy)`;
+    - kept: `seenKey`, `topSpotText`, `placeLabel`, `dealGateScript`; retired until Task 12b: `DEAL_MS`, `dealDelays`, `liftDelay`.
+  - The Cell's `bc-dim` layer on display roots, and the `data-lights="down"` board class.
 
-- [ ] **Step 1: Write the failing tests for the plan, the dart and the places**
+- [ ] **Step 1: Write the failing tests for the plan, the places and the house lights**
 
 Replace the whole of `src/app/b/[id]/result/reveal-plan.test.ts` with:
 
@@ -6781,10 +7575,13 @@ import { describe, it, expect } from "vitest";
 import { MOTION } from "@/lib/motion";
 import {
   bannerText, beatCall, chipGap, dealGateScript, placeCall, placeLabel, revealPlan, revealStateAt, seenKey, setupCall, setupMs, throwOrder, topSpotText,
+  type Place,
 } from "./reveal-plan";
 
 const order50 = [23, 14, 9, ...Array.from({ length: 50 }, (_, i) => i + 1).filter((n) => ![23, 14, 9].includes(n))];
-const after = (lines: number, places: 1 | 2 | 3) => revealPlan(order50.slice(0, lines), places).total - setupMs(lines);
+/** The prize places 1..n, as placesOf gives them for a break with n contiguous prize ranks. */
+const upTo = (n: number): Place[] => ([1, 2, 3] as Place[]).slice(0, n);
+const after = (lines: number, n: number) => revealPlan(order50.slice(0, lines), upTo(n)).total - setupMs(lines);
 const at = (plan: ReturnType<typeof revealPlan>, kind: string) => plan.steps.filter((s) => s.kind === kind);
 
 describe("revealPlan: the totals (Review Focus 4)", () => {
@@ -6795,15 +7592,15 @@ describe("revealPlan: the totals (Review Focus 4)", () => {
     expect(chipGap(10)).toBe(30);
     expect(chipGap(60)).toBe(25);
   });
-  it("takes about 1.6 s for one prize and about 4.2 s for three after the read-out; 3.4 s and 6 s at most in all", () => {
+  it("takes about 1.6 s for one prize and about 4.2 s for three after the read-out; 3.38 s and 6.04 s in all at 50 lines", () => {
     expect(after(50, 1)).toBe(1580); // 800 + 260 + 80 + 140, then the 300 ms lift
     expect(after(50, 2)).toBe(2910);
     expect(after(50, 3)).toBe(4240); // 780 + 550 + 780 + 550 + 1280 + 300
-    expect(revealPlan(order50, 1).total).toBeLessThanOrEqual(3400);
-    expect(revealPlan(order50, 3).total).toBeLessThanOrEqual(6100);
+    expect(revealPlan(order50, upTo(1)).total).toBe(3380); // 1800 of set-up + 1580
+    expect(revealPlan(order50, upTo(3)).total).toBe(6040); // 1800 of set-up + 4240
   });
   it("throws 3rd, then 2nd, then the top spot, with beats of 300, 300 and 800 ms", () => {
-    const plan = revealPlan(order50, 3);
+    const plan = revealPlan(order50, upTo(3));
     expect(at(plan, "throw").map((s) => [s.place, s.number])).toEqual([[3, 9], [2, 14], [1, 23]]);
     const beats = at(plan, "beat");
     expect(at(plan, "throw").map((s, i) => s.at - beats[i].at)).toEqual([300, 300, 800]);
@@ -6813,14 +7610,16 @@ describe("revealPlan: the totals (Review Focus 4)", () => {
     expect(beats[1].at - (at(plan, "land")[0].at + MOTION.squash + MOTION.throwSettle)).toBe(MOTION.gap);
   });
   it("skips places with no prize, and places with no line", () => {
-    expect(throwOrder([7, 2, 5], 2)).toEqual([{ place: 2, number: 2 }, { place: 1, number: 7 }]);
-    expect(throwOrder([7, 2], 3)).toEqual([{ place: 2, number: 2 }, { place: 1, number: 7 }]);
-    expect(throwOrder([7], 3)).toEqual([{ place: 1, number: 7 }]);
+    expect(throwOrder([7, 2, 5], [1, 2])).toEqual([{ place: 2, number: 2 }, { place: 1, number: 7 }]);
+    expect(throwOrder([7, 2], [1, 2, 3])).toEqual([{ place: 2, number: 2 }, { place: 1, number: 7 }]);
+    expect(throwOrder([7], [1, 2, 3])).toEqual([{ place: 1, number: 7 }]);
+    // Prize ranks need not be contiguous: a 3rd-place prize with no 2nd throws 3rd, then the top spot.
+    expect(throwOrder([7, 2, 5], [1, 3])).toEqual([{ place: 3, number: 5 }, { place: 1, number: 7 }]);
   });
 });
 
 describe("revealStateAt: what the board shows at a time", () => {
-  const plan = revealPlan(order50, 3);
+  const plan = revealPlan(order50, upTo(3));
   it("dims at once, reads the order out, lands each bull at its throw, lifts at the end", () => {
     expect(revealStateAt(plan, 0)).toEqual({ lights: true, chips: 0, landed: [], banner: { kind: "setup" }, done: false });
     expect(revealStateAt(plan, MOTION.lights).chips).toBe(1);
@@ -6854,11 +7653,22 @@ describe("the caller copy (complete, the same for every viewer)", () => {
     expect(placeCall(3, 9, "liz")).toBe("Line 9. @liz takes 3rd place.");
     expect(placeCall(2, 14, "dave")).toBe("Line 14. @dave takes 2nd place.");
     expect(placeCall(1, 23, "mike")).toBe("Line 23. @mike takes the top spot.");
-    expect(placeCall(1, 23, null)).toBe("Line 23 takes the top spot.");
     const copy = { hostName: "Jim", lines: 50, handleOf: { 23: "mike" } };
     expect(bannerText({ kind: "setup" }, copy)).toBe("Jim's break. 50 lines. Game on.");
     expect(bannerText({ kind: "beat", place: 1 }, copy)).toBe("For the top spot…");
     expect(bannerText({ kind: "call", place: 1, number: 23 }, copy)).toBe("Line 23. @mike takes the top spot.");
+  });
+  it("never shows a banner outside the set (§7 never list): every banner of a three-prize reveal matches one of its lines", () => {
+    // Always the handle (the entry's handleAtDraw): the copy set has no handle-less call (recorded ruling 22).
+    const SET = [/^Jim's break\. \d+ lines\. Game on\.$/, /^For (3rd place|2nd place|the top spot)…$/, /^Line \d+\. @\w+ takes (3rd place|2nd place|the top spot)\.$/];
+    const plan = revealPlan(order50, upTo(3));
+    const copy = { hostName: "Jim", lines: 50, handleOf: Object.fromEntries(order50.map((n) => [n, `h${n}`])) };
+    for (let t = 0; t <= plan.total; t += 10) {
+      const b = revealStateAt(plan, t).banner;
+      if (!b) continue;
+      const text = bannerText(b, copy);
+      expect(SET.some((re) => re.test(text)), text).toBe(true);
+    }
   });
 });
 
@@ -6896,6 +7706,267 @@ it("marks <html data-deal> only for a first-time viewer without reduced motion, 
 });
 ```
 
+Create `src/app/b/[id]/result/board-cells.test.ts`:
+
+```ts
+import { it, expect } from "vitest";
+import type { GridCell } from "@/domain/breaks/grid";
+import { withPlaces } from "./board-cells";
+
+const cell = (number: number): GridCell => ({ number, state: "paid", mine: false, overdue: false, bonus: false, holder: null, flight: null });
+
+it("puts each place from placesOf on its line, and null everywhere else", () => {
+  // placesOf([3, 1, 4, 2], [1, 2]) (Task 6): the top spot on line 3, 2nd on line 1.
+  const cells = withPlaces([cell(1), cell(2), cell(3), cell(4)], [{ number: 3, place: 1 }, { number: 1, place: 2 }]);
+  expect(cells.map((c) => [c.number, c.place])).toEqual([[1, 2], [2, null], [3, 1], [4, null]]);
+});
+```
+
+In `src/components/grid/motion-css.test.ts`, append inside the first `describe` block, before its closing `});`:
+
+```ts
+  it("dims the board with one class: an opacity-only transition on the cells' dim, lifted at once on a won cell (§7 house lights)", () => {
+    expect(css).toContain("[data-lights=\"down\"] .bc-dim { opacity: 0.55; }");
+    expect(css).toContain("[data-lights=\"down\"] [data-won] > .bc-dim { opacity: 0; transition: none; }");
+    expect(css).toMatch(/\.bc-dim \{[^}]*transition: opacity var\(--dur-lights\)/);
+  });
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `pnpm test "src/app/b/[id]/result" src/components/grid/motion-css.test.ts`
+Expected: FAIL. `revealPlan`, `revealStateAt`, `setupMs`, `chipGap`, `throwOrder` and the call helpers are not exported; `./board-cells` does not exist; `globals.css` has no `.bc-dim` rule.
+
+- [ ] **Step 3: Write the plan and the board cells**
+
+Create `src/app/b/[id]/result/board-cells.ts`:
+
+```ts
+import type { GridCell } from "@/domain/breaks/grid";
+import type { Place } from "@/domain/draws/places";
+
+/** A result-page cell: the viewer's view of the line plus its public place (§5 accessibility: "result page only"). */
+export type ResultCell = GridCell & { place: Place | null };
+
+/** Each place from placesOf (Task 6) goes on its line; every other line gets null. */
+export function withPlaces(cells: readonly GridCell[], placed: readonly { number: number; place: Place }[]): ResultCell[] {
+  const at = new Map(placed.map((p) => [p.number, p.place]));
+  return cells.map((c) => ({ ...c, place: at.get(c.number) ?? null }));
+}
+```
+
+Replace the whole of `src/app/b/[id]/result/reveal-plan.ts` with:
+
+```ts
+import { ordinal } from "@/lib/list";
+import { MOTION, type DurationTokens } from "@/lib/motion";
+import type { Place } from "@/domain/draws/places";
+
+/**
+ * Retired with the first design's deal: the old reveal.tsx still reads these until Task 12b rewrites it, and Task 12b
+ * deletes them. Nothing new may use them.
+ */
+export const DEAL_MS = 1500;
+export function dealDelays(count: number, total = DEAL_MS): number[] {
+  if (count <= 1) return [0];
+  const step = Math.min(120, total / count);
+  return Array.from({ length: count }, (_, i) => Math.round((count - 1 - i) * step));
+}
+export const liftDelay = (count: number) => dealDelays(count)[0] + 240;
+
+export type { Place } from "@/domain/draws/places";
+export type RevealStep = { at: number; kind: "lights-down" | "chip" | "beat" | "throw" | "land" | "call" | "lights-up"; number?: number; place?: Place };
+export type RevealPlan = { steps: RevealStep[]; total: number };
+export type Banner = { kind: "setup" } | { kind: "beat"; place: Place } | { kind: "call"; place: Place; number: number };
+export type RevealState = { lights: boolean; chips: number; landed: number[]; banner: Banner | null; done: boolean };
+
+/** The read-out's spacing (§4: computed, not a token): min(30 ms, 1500 ms / lines), so it never takes more than 1.5 s. */
+export const chipGap = (lines: number): number => Math.min(30, 1500 / Math.max(1, lines));
+/** Set-up: the house lights, then the read-out. At most 1.8 s (pinned by a test). */
+export const setupMs = (lines: number, tokens: DurationTokens = MOTION): number => tokens.lights + lines * chipGap(lines);
+
+/**
+ * The throws in order: 3rd, 2nd, the top spot. `places` is the break's prize places (from placesOf, Task 6), which need
+ * not be contiguous; a place with no prize, or with no line in the draw, is skipped.
+ */
+export function throwOrder(order: readonly number[], places: readonly Place[]): { place: Place; number: number }[] {
+  return ([3, 2, 1] as const).filter((pl) => places.includes(pl) && order[pl - 1] !== undefined).map((pl) => ({ place: pl, number: order[pl - 1] }));
+}
+
+/**
+ * The reveal's timeline (§7). 0: house lights down. From --dur-lights: one chip per line of the audited order, an
+ * even tempo. Then per prize: a beat (--dur-beat-top before the top spot), the throw, the landing and the call at the
+ * same moment, then squash and settle (the shake runs inside the following gap); --dur-gap to the next beat.
+ * Last: the lights come up over --dur-lights. Pure, so the totals are pinned by tests.
+ */
+export function revealPlan(order: readonly number[], places: readonly Place[], tokens: DurationTokens = MOTION): RevealPlan {
+  const steps: RevealStep[] = [{ at: 0, kind: "lights-down" }];
+  const gap = chipGap(order.length);
+  order.forEach((n, i) => steps.push({ at: tokens.lights + i * gap, kind: "chip", number: n }));
+  let t = setupMs(order.length, tokens);
+  throwOrder(order, places).forEach(({ place, number }, i) => {
+    if (i > 0) t += tokens.gap;
+    steps.push({ at: t, kind: "beat", place });
+    const thrown = t + (place === 1 ? tokens.beatTop : tokens.beat);
+    steps.push({ at: thrown, kind: "throw", place, number });
+    const land = thrown + tokens.throw;
+    steps.push({ at: land, kind: "land", place, number }, { at: land, kind: "call", place, number });
+    t = land + tokens.squash + tokens.throwSettle;
+  });
+  steps.push({ at: t, kind: "lights-up" });
+  return { steps, total: t + tokens.lights };
+}
+
+/** The board at time `t` (ms since lights down). Infinity, and anything from `total` on, is the final state: Skip. */
+export function revealStateAt(plan: RevealPlan, t: number): RevealState {
+  const past = plan.steps.filter((s) => s.at <= t);
+  let banner: Banner | null = null;
+  for (const s of past) {
+    if (s.kind === "lights-down") banner = { kind: "setup" };
+    // Typed casts, not non-null assertions: beat and call steps always carry them (and the copy audit bans "!" in literals' lines).
+    else if (s.kind === "beat") banner = { kind: "beat", place: s.place as Place };
+    else if (s.kind === "call") banner = { kind: "call", place: s.place as Place, number: s.number as number };
+  }
+  return {
+    lights: past.some((s) => s.kind === "lights-down") && !past.some((s) => s.kind === "lights-up"),
+    chips: past.filter((s) => s.kind === "chip").length,
+    landed: past.filter((s) => s.kind === "land").map((s) => s.number as number),
+    banner,
+    done: t >= plan.total,
+  };
+}
+
+const WORDS: Record<Place, { beat: string; takes: string }> = {
+  3: { beat: "For 3rd place…", takes: "takes 3rd place." },
+  2: { beat: "For 2nd place…", takes: "takes 2nd place." },
+  1: { beat: "For the top spot…", takes: "takes the top spot." },
+};
+/**
+ * The caller copy (§7, complete). Never "You", never the prize or its value; the same for every viewer. Always the
+ * handle: the entry's handleAtDraw, set when the draw is recorded (recorded ruling 22). There is no handle-less call.
+ */
+export const setupCall = (hostName: string, lines: number) => `${hostName}'s break. ${lines} lines. Game on.`;
+export const beatCall = (place: Place) => WORDS[place].beat;
+export const placeCall = (place: Place, line: number, handle: string) => `Line ${line}. @${handle} ${WORDS[place].takes}`;
+
+export function bannerText(b: Banner, c: { hostName: string; lines: number; handleOf: Record<number, string> }): string {
+  if (b.kind === "setup") return setupCall(c.hostName, c.lines);
+  if (b.kind === "beat") return beatCall(b.place);
+  return placeCall(b.place, b.number, c.handleOf[b.number] ?? "");
+}
+
+export const seenKey = (breakId: string) => `breaks.reveal.${breakId}`;
+export const topSpotText = (line: number) => `Top spot: line ${line}`;
+export const placeLabel = (rank: number) => (rank === 1 ? "Top spot" : ordinal(rank));
+
+/**
+ * Inline, pre-paint: mark <html data-deal> when this viewer will see the reveal, so CSS hides the final state
+ * until Reveal has set the board to house lights down (no spoiler flash). Removed by Reveal, or after 4 s whatever happens.
+ */
+export function dealGateScript(breakId: string): string {
+  return `try{if(!localStorage.getItem(${JSON.stringify(seenKey(breakId))})&&!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.dataset.deal="1";setTimeout(function(){delete document.documentElement.dataset.deal},4000)}}catch(e){}`;
+}
+```
+
+- [ ] **Step 4: Run them to see them pass**
+
+Run: `pnpm test "src/app/b/[id]/result"`
+Expected: PASS. The old `reveal.tsx` still compiles: it imports `dealDelays`, `liftDelay`, `placeLabel`, `seenKey` and `topSpotText`, which this file keeps.
+
+- [ ] **Step 5: Give display cells a dim layer; write the house lights**
+
+In `src/components/grid/cell.tsx`, replace Task 11a's display root
+
+```tsx
+    return <div role="img" data-cell={cell.number} {...data} data-moment={motion.moment} aria-label={name} style={style} className={base}>{body}{momentLayers}</div>;
+```
+
+with
+
+```tsx
+    // The house-lights dim (Task 12a): the board's data-lights class fades it in on every cell at once, and a cell's
+    // data-won lifts it at impact. Only display boards (the result page) have it; the live break page and a ghost never dim.
+    return <div role="img" data-cell={cell.number} {...data} data-moment={motion.moment} aria-label={name} style={style} className={base}>{body}{momentLayers}<span aria-hidden className="bc-dim" /></div>;
+```
+
+Then append to `src/app/globals.css`:
+
+```css
+/* ---- The reveal's house lights (spec §7). One class on the board dims every cell at once; the dim lifts off a cell
+   the moment it is hit. Each viewer's own glyphs stay above the dim. ---- */
+/* The dim sits at z-index 2, over the number and the glyph (z-index 1, Task 7); your own glyphs rise to 3 above it. */
+.bc-dim { position: absolute; inset: 0; z-index: 2; background: var(--board-wall); opacity: 0; pointer-events: none; transition: opacity var(--dur-lights) var(--ease-out); }
+[data-lights="down"] .bc-dim { opacity: 0.55; }
+[data-lights="down"] [data-won] > .bc-dim { opacity: 0; transition: none; }
+[data-lights="down"] [data-mine] > .bc-in > .bc-glyph { z-index: 3; }
+```
+
+- [ ] **Step 6: Run the grid tests to see them pass**
+
+Run: `pnpm test src/components/grid`
+Expected: PASS. `render.test.ts` still passes: the dim is a child of display roots only, and no existing assertion counts their children.
+
+- [ ] **Step 7: Run every gate**
+
+Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm test:e2e`
+Expected: all green. The result page still plays the first design's deal (Task 12b replaces it); no board there sets `data-lights`, so the dim stays at opacity 0. The copy audit finds no `!` in a string literal's line in `reveal-plan.ts` (the typed casts).
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add "src/app/b/[id]/result/reveal-plan.ts" "src/app/b/[id]/result/reveal-plan.test.ts" "src/app/b/[id]/result/board-cells.ts" "src/app/b/[id]/result/board-cells.test.ts" src/components/grid/cell.tsx src/components/grid/motion-css.test.ts src/app/globals.css
+git commit -m "feat(result): the reveal's timeline, its places and the house lights, pinned by tests"
+```
+
+---
+
+### Task 12b: The reveal on the board: the dart, the bulls, the caller, Skip and Replay, Draw starts (model: Opus)
+
+Spec §7, from Draw starts to Replay, and the never list; §6 "Result page and reveal for strangers"; Review Focus 4.
+
+The deal of the first design (cards dealt on paper, the top spot lifting green) goes. `Reveal` plays Task 12a's timeline on the real board:
+1. **House lights.** At 0 ms Skip appears and the board takes `data-lights="down"` (Task 12a's dim). The banner says "Jim's break. 50 lines. Game on."
+2. **Read-out.** The chips appear under the board, once each, and stay as the scorer's column after the reveal ends.
+3. **Throws.** For each prize place one neutral dart (steel barrel, cream flight) flies in a straight line from the oche (bottom centre of the frame) to the cell. The dart's angle is fixed at launch. It is the one JS tween (`requestAnimationFrame`, ease-in `cubic-bezier(.55,0,1,.45)`).
+4. **Impact.** The dim lifts off that cell at once and the cell takes its won state: black face, bull disc, ring, and the holder's flight in the member view. It squashes, settles and shakes ±2 px (±4 px for the top spot). The banner calls "Line 9. @liz takes 3rd place."
+5. **Lift.** One fade lifts the dim off the board, and focus moves to Replay.
+
+Skip jumps to the final state with every bull in the DOM, and lifts the house lights with one fade of at most `--dur-reduced` (150 ms; spec §7, recorded ruling 35). The reveal plays once per viewer, and Replay plays it again. Reduced motion shows the final state. The deal layer (chips, dart) is `aria-hidden`; the calls are announced politely.
+
+The result page now loads the break's board in the viewer's view, with the won places set (`withPlaces`), so the reveal has cells to throw at. Task 13 restyles the page around it.
+
+The break page gets the Draw starts banner, "Jim is stepping up to the oche.", which drops in only when the draw starts while the page is open.
+
+The never list (spec §7) gets an e2e check where a test can see it (recorded ruling 37): during a throw no element on the board animates outside the targeted cell; the chips never change text; after the reveal the board's and the frame's computed styles equal a returning viewer's, who sees no reveal. The rest is a reviewer checklist in the gate step.
+
+**Files:**
+- Create: `src/app/b/[id]/result/dart.ts`, `src/app/b/[id]/result/dart.test.ts`
+- Rewrite: `src/app/b/[id]/result/reveal.tsx`
+- Modify: `src/app/b/[id]/result/reveal-plan.ts` (the retired exports go)
+- Modify: `src/app/b/[id]/result/page.tsx` (load the board, the new `Reveal` props)
+- Modify: `src/components/grid/motion-css.test.ts`
+- Modify: `src/app/globals.css` (the impact, Skip's fade; the first design's `deal` and `lift` keyframes go)
+- Modify: `src/components/break/caller-copy.ts`, `src/components/break/caller-copy.test.ts`, `src/components/break/break-interactive.tsx` (Draw starts)
+- Modify: `e2e/journey-2.spec.ts` (Skip lands every bull; Replay starts from house lights down; the polite calls; the never list)
+
+**Interfaces:**
+- Consumes:
+  - From Task 12a: `revealPlan`, `revealStateAt`, `bannerText`, `placeCall`, `seenKey`, `Place`, `withPlaces`, `ResultCell`, the `bc-dim` layer and `data-lights`.
+  - From Task 11b: `CallerBanner`, `BOARD_FULL_CALL`, `boardFullAnnouncement`, `fullBoardKey` and the board-fills banner in the island.
+  - From Task 11a: `MOTION`, `prefersReducedMotion`.
+  - From Task 6: `placesOf`, `Place` (`src/domain/draws/places.ts`).
+  - From Task 5: `shapeGrid` (`flight`, `kit`, `heat`, `showHolders`).
+  - From Task 8: `Grid`'s `view`, `kit` and `heat` props (the lamp) and `data-testid="board-frame"`.
+  - `getDrawResult`, `getBreakPage`, `getCaller`, `hostLabel`.
+- Produces:
+  - `src/app/b/[id]/result/dart.ts`: `type Point`, `cubicBezier(x1, y1, x2, y2)`, `easeIn`, `dartAngle(from, to)`, `dartAt(from, to, e)`, `DART_TIP`.
+  - `Reveal` props: `{ breakId; lineCount; cells: ResultCell[]; kit; heat; order; places: readonly Place[]; handleOf; hostName; view: "member" | "kit"; headline: ReactNode; after: ReactNode }`.
+  - `caller-copy.ts`: `drawStartCall(host)`, `drawStartAnnouncement(host)`.
+  - `data-skip` on the reveal's stage after Skip.
+  - Test ids `deal`, `caller`, `reveal-skip` and `reveal-replay`.
+
+- [ ] **Step 1: Write the failing tests for the dart and the copy**
+
 Create `src/app/b/[id]/result/dart.test.ts`:
 
 ```ts
@@ -6925,22 +7996,6 @@ describe("the neutral dart (§7 Draw: each throw)", () => {
 });
 ```
 
-Create `src/app/b/[id]/result/board-cells.test.ts`:
-
-```ts
-import { it, expect } from "vitest";
-import type { GridCell } from "@/domain/breaks/grid";
-import { withPlaces } from "./board-cells";
-
-const cell = (number: number): GridCell => ({ number, state: "paid", mine: false, overdue: false, bonus: false, holder: null, flight: null });
-
-it("puts each place from placesOf on its line, and null everywhere else", () => {
-  // placesOf([3, 1, 4, 2], [1, 2]) (Task 6): the top spot on line 3, 2nd on line 1.
-  const cells = withPlaces([cell(1), cell(2), cell(3), cell(4)], [{ number: 3, place: 1 }, { number: 1, place: 2 }]);
-  expect(cells.map((c) => [c.number, c.place])).toEqual([[1, 2], [2, null], [3, 1], [4, null]]);
-});
-```
-
 In `src/components/break/caller-copy.test.ts`, change the import to `import { BOARD_FULL_CALL, boardFullAnnouncement, drawStartAnnouncement, drawStartCall, fullBoardKey } from "./caller-copy";` and append:
 
 ```ts
@@ -6950,28 +8005,24 @@ it("says the draw-starts lines", () => {
 });
 ```
 
-- [ ] **Step 2: Run them to see them fail**
-
-Run: `pnpm test "src/app/b/[id]/result" src/components/break/caller-copy.test.ts`
-Expected: FAIL. `revealPlan`, `revealStateAt`, `setupMs`, `chipGap`, `throwOrder` and the call helpers are not exported; `./dart`, `./board-cells`, `drawStartCall` and `drawStartAnnouncement` do not exist.
-
-- [ ] **Step 3: Write the plan, the dart, the board cells and the copy**
-
-Create `src/app/b/[id]/result/board-cells.ts`:
+In `src/components/grid/motion-css.test.ts`, in the first test's list of names, add `"squash-throw", "shake"` after `"strike"`, and append inside the first `describe` block, before its closing `});`:
 
 ```ts
-import type { GridCell } from "@/domain/breaks/grid";
-import type { Place } from "@/domain/draws/places";
-
-/** A result-page cell: the viewer's view of the line plus its public place (§5 accessibility: "result page only"). */
-export type ResultCell = GridCell & { place: Place | null };
-
-/** Each place from placesOf (Task 6) goes on its line; every other line gets null. */
-export function withPlaces(cells: readonly GridCell[], placed: readonly { number: number; place: Place }[]): ResultCell[] {
-  const at = new Map(placed.map((p) => [p.number, p.place]));
-  return cells.map((c) => ({ ...c, place: at.get(c.number) ?? null }));
-}
+  it("has retired the first design's deal and lift (§4)", () => {
+    expect(css).not.toContain("--animate-deal");
+    expect(css).not.toContain("--animate-lift");
+  });
+  it("lifts the house lights after Skip with one fade of at most --dur-reduced (§7 Skip)", () => {
+    expect(css).toContain("[data-skip] .bc-dim { transition-duration: var(--dur-reduced); }");
+  });
 ```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `pnpm test "src/app/b/[id]/result" src/components/break/caller-copy.test.ts src/components/grid/motion-css.test.ts`
+Expected: FAIL. `./dart`, `drawStartCall` and `drawStartAnnouncement` do not exist; `globals.css` has no `squash-throw` or `shake` keyframes, still has `--animate-deal`, and has no `[data-skip]` rule.
+
+- [ ] **Step 3: Write the dart and the copy, and retire the old deal's exports**
 
 Create `src/app/b/[id]/result/dart.ts`:
 
@@ -7003,101 +8054,6 @@ export const dartAt = (from: Point, to: Point, e: number): Point => (e >= 1 ? to
 export const DART_TIP: Point = { x: 56, y: 7 };
 ```
 
-Replace the whole of `src/app/b/[id]/result/reveal-plan.ts` with:
-
-```ts
-import { ordinal } from "@/lib/list";
-import { MOTION, type DurationTokens } from "@/lib/motion";
-import type { Place } from "@/domain/draws/places";
-
-export type { Place } from "@/domain/draws/places";
-export type RevealStep = { at: number; kind: "lights-down" | "chip" | "beat" | "throw" | "land" | "call" | "lights-up"; number?: number; place?: Place };
-export type RevealPlan = { steps: RevealStep[]; total: number };
-export type Banner = { kind: "setup" } | { kind: "beat"; place: Place } | { kind: "call"; place: Place; number: number };
-export type RevealState = { lights: boolean; chips: number; landed: number[]; banner: Banner | null; done: boolean };
-
-/** The read-out's spacing (§4: computed, not a token): min(30 ms, 1500 ms / lines), so it never takes more than 1.5 s. */
-export const chipGap = (lines: number): number => Math.min(30, 1500 / Math.max(1, lines));
-/** Set-up: the house lights, then the read-out. At most 1.8 s (pinned by a test). */
-export const setupMs = (lines: number, tokens: DurationTokens = MOTION): number => tokens.lights + lines * chipGap(lines);
-
-/** The throws in order: 3rd, 2nd, the top spot. A place with no prize, or with no line in the draw, is skipped. */
-export function throwOrder(order: readonly number[], places: Place): { place: Place; number: number }[] {
-  return ([3, 2, 1] as const).filter((pl) => pl <= places && order[pl - 1] !== undefined).map((pl) => ({ place: pl, number: order[pl - 1] }));
-}
-
-/**
- * The reveal's timeline (§7). 0: house lights down. From --dur-lights: one chip per line of the audited order, an
- * even tempo. Then per prize: a beat (--dur-beat-top before the top spot), the throw, the landing and the call at the
- * same moment, then squash and settle (the shake runs inside the following gap); --dur-gap to the next beat.
- * Last: the lights come up over --dur-lights. Pure, so the totals are pinned by tests.
- */
-export function revealPlan(order: readonly number[], places: Place, tokens: DurationTokens = MOTION): RevealPlan {
-  const steps: RevealStep[] = [{ at: 0, kind: "lights-down" }];
-  const gap = chipGap(order.length);
-  order.forEach((n, i) => steps.push({ at: tokens.lights + i * gap, kind: "chip", number: n }));
-  let t = setupMs(order.length, tokens);
-  throwOrder(order, places).forEach(({ place, number }, i) => {
-    if (i > 0) t += tokens.gap;
-    steps.push({ at: t, kind: "beat", place });
-    const thrown = t + (place === 1 ? tokens.beatTop : tokens.beat);
-    steps.push({ at: thrown, kind: "throw", place, number });
-    const land = thrown + tokens.throw;
-    steps.push({ at: land, kind: "land", place, number }, { at: land, kind: "call", place, number });
-    t = land + tokens.squash + tokens.throwSettle;
-  });
-  steps.push({ at: t, kind: "lights-up" });
-  return { steps, total: t + tokens.lights };
-}
-
-/** The board at time `t` (ms since lights down). Infinity, and anything from `total` on, is the final state: Skip. */
-export function revealStateAt(plan: RevealPlan, t: number): RevealState {
-  const past = plan.steps.filter((s) => s.at <= t);
-  let banner: Banner | null = null;
-  for (const s of past) {
-    if (s.kind === "lights-down") banner = { kind: "setup" };
-    else if (s.kind === "beat") banner = { kind: "beat", place: s.place! };
-    else if (s.kind === "call") banner = { kind: "call", place: s.place!, number: s.number! };
-  }
-  return {
-    lights: past.some((s) => s.kind === "lights-down") && !past.some((s) => s.kind === "lights-up"),
-    chips: past.filter((s) => s.kind === "chip").length,
-    landed: past.filter((s) => s.kind === "land").map((s) => s.number!),
-    banner,
-    done: t >= plan.total,
-  };
-}
-
-const WORDS: Record<Place, { beat: string; takes: string }> = {
-  3: { beat: "For 3rd place…", takes: "takes 3rd place." },
-  2: { beat: "For 2nd place…", takes: "takes 2nd place." },
-  1: { beat: "For the top spot…", takes: "takes the top spot." },
-};
-/** The caller copy (§7, complete). Never "You", never the prize or its value; the same for every viewer. */
-export const setupCall = (hostName: string, lines: number) => `${hostName}'s break. ${lines} lines. Game on.`;
-export const beatCall = (place: Place) => WORDS[place].beat;
-export const placeCall = (place: Place, line: number, handle: string | null) =>
-  handle ? `Line ${line}. @${handle} ${WORDS[place].takes}` : `Line ${line} ${WORDS[place].takes}`;
-
-export function bannerText(b: Banner, c: { hostName: string; lines: number; handleOf: Record<number, string> }): string {
-  if (b.kind === "setup") return setupCall(c.hostName, c.lines);
-  if (b.kind === "beat") return beatCall(b.place);
-  return placeCall(b.place, b.number, c.handleOf[b.number] || null);
-}
-
-export const seenKey = (breakId: string) => `breaks.reveal.${breakId}`;
-export const topSpotText = (line: number) => `Top spot: line ${line}`;
-export const placeLabel = (rank: number) => (rank === 1 ? "Top spot" : ordinal(rank));
-
-/**
- * Inline, pre-paint: mark <html data-deal> when this viewer will see the reveal, so CSS hides the final state
- * until Reveal has set the board to house lights down (no spoiler flash). Removed by Reveal, or after 4 s whatever happens.
- */
-export function dealGateScript(breakId: string): string {
-  return `try{if(!localStorage.getItem(${JSON.stringify(seenKey(breakId))})&&!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.dataset.deal="1";setTimeout(function(){delete document.documentElement.dataset.deal},4000)}}catch(e){}`;
-}
-```
-
 Append to `src/components/break/caller-copy.ts`:
 
 ```ts
@@ -7106,27 +8062,56 @@ export const drawStartCall = (hostName: string) => `${hostName} is stepping up t
 export const drawStartAnnouncement = (hostName: string) => `${hostName} started the draw. The result is in about a minute.`;
 ```
 
+In `src/app/b/[id]/result/reveal-plan.ts`, delete the retired block Task 12a kept:
+
+```ts
+/**
+ * Retired with the first design's deal: the old reveal.tsx still reads these until Task 12b rewrites it, and Task 12b
+ * deletes them. Nothing new may use them.
+ */
+export const DEAL_MS = 1500;
+export function dealDelays(count: number, total = DEAL_MS): number[] {
+  if (count <= 1) return [0];
+  const step = Math.min(120, total / count);
+  return Array.from({ length: count }, (_, i) => Math.round((count - 1 - i) * step));
+}
+export const liftDelay = (count: number) => dealDelays(count)[0] + 240;
+```
+
+(Step 6 rewrites `reveal.tsx`, the only reader; `tsc` passes again once both steps are done.)
+
 - [ ] **Step 4: Run them to see them pass**
 
-Run: `pnpm test "src/app/b/[id]/result" src/components/break/caller-copy.test.ts`
+Run: `pnpm test "src/app/b/[id]/result/dart.test.ts" src/components/break/caller-copy.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Give display cells a target and a dim layer; write the reveal CSS**
+- [ ] **Step 5: The impact and Skip's fade; retire the first design's deal**
 
-In `src/components/grid/cell.tsx`, on the display-only root (the `role="img"` element, which carries `data-cell` since Task 7), render `<span aria-hidden className="bc-dim" />` as its last child, after `{momentLayers}`. The dim is the house-lights overlay: the board's `data-lights` class fades it in on every cell at once, and a cell's `data-won` lifts it at impact. Only display boards (the result page) have it; the live break page and a moment's ghost never dim.
-
-In `src/app/globals.css`, delete the first design's deal and lift, which §4 retires: the `--animate-deal` and `--animate-lift` lines and both `@keyframes` (`deal` and `lift`) inside the `@theme { … }` block, and then the `@theme { … }` block itself, which is left empty. Keep the `[data-deal] [data-reveal-final]` rule.
-
-Then append to `src/app/globals.css`:
+In `src/app/globals.css`, delete the first design's deal and lift, which §4 retires: the whole block
 
 ```css
-/* ---- The reveal (spec §7). House lights are one class on the board; the dim lifts off a cell the moment it is
-   hit; only the targeted cell changes during a throw. Each viewer's own glyphs stay above the dim. ---- */
-/* The dim sits at z-index 2, over the number and the glyph (z-index 1, Task 7); your own glyphs rise to 3 above it. */
-.bc-dim { position: absolute; inset: 0; z-index: 2; background: var(--board-wall); opacity: 0; pointer-events: none; transition: opacity var(--dur-lights) var(--ease-out); }
-[data-lights="down"] .bc-dim { opacity: 0.55; }
-[data-lights="down"] [data-won] > .bc-dim { opacity: 0; transition: none; }
-[data-lights="down"] [data-mine] > .bc-in > .bc-glyph { z-index: 3; }
+@theme {
+  --animate-deal: deal 240ms ease-out both;
+  --animate-lift: lift 300ms ease-out forwards;
+  @keyframes deal {
+    from { opacity: 0; transform: translateY(-16px) scale(0.9); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes lift {
+    from { transform: none; }
+    to { transform: translateY(-6px) scale(1.12); }
+  }
+}
+```
+
+(it is the file's only `@theme` block, and nothing is left in it). Keep the `[data-deal] [data-reveal-final]` rule.
+
+Then append to `src/app/globals.css`, after Task 12a's house lights:
+
+```css
+/* ---- The reveal's impact (spec §7): only the targeted cell changes during a throw. ---- */
+/* Skip: the final state at once; the lights lift in one fade of at most --dur-reduced (recorded ruling 35). */
+[data-skip] .bc-dim { transition-duration: var(--dur-reduced); }
 /* Impact: the cell (not the board) squashes, settles, then shakes one cycle on x. */
 [data-impact] { contain: none; z-index: 1; animation: squash-throw calc(var(--dur-squash) + var(--dur-throw-settle)) linear both, shake var(--dur-shake) linear calc(var(--dur-squash) + var(--dur-throw-settle)) both; }
 [data-impact="1"] { --squash-to: 0.9; --shake: 4px; }
@@ -7139,15 +8124,6 @@ Then append to `src/app/globals.css`:
 @media (prefers-reduced-motion: reduce) {
   [data-impact] { animation: none !important; }
 }
-```
-
-In `src/components/grid/motion-css.test.ts`, in the first test's list of names, add `"squash-throw", "shake"` after `"strike"`, and add the test:
-
-```ts
-  it("has retired the first design's deal and lift (§4)", () => {
-    expect(css).not.toContain("--animate-deal");
-    expect(css).not.toContain("--animate-lift");
-  });
 ```
 
 - [ ] **Step 6: Write the reveal**
@@ -7176,7 +8152,8 @@ type Props = {
   heat: HeatStep;
   /** The audited order, top spot first. */
   order: number[];
-  places: Place;
+  /** The prize places (placesOf, Task 6): one dart each, 3rd first. */
+  places: readonly Place[];
   handleOf: Record<number, string>;
   hostName: string;
   view: "member" | "kit";
@@ -7199,6 +8176,9 @@ export function Reveal(p: Props) {
   const [canReplay, setCanReplay] = useState(false);
   const [ready, setReady] = useState(false);
   const [said, setSaid] = useState({ text: "", n: 0 });
+  // Skip lifts the lights in one short fade (data-skip); the chips stay as the scorer's column once read out.
+  const [skipped, setSkipped] = useState(false);
+  const [played, setPlayed] = useState(false);
   const timers = useRef<number[]>([]);
   const raf = useRef<number | null>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -7250,22 +8230,24 @@ export function Reveal(p: Props) {
 
   const play = () => {
     stop();
+    setSkipped(false);
+    setPlayed(true);
     setT(0);
     for (const at of [...new Set(plan.steps.map((x) => x.at))].filter((x) => x > 0)) {
       timers.current.push(window.setTimeout(() => {
         setT(at);
         for (const x of plan.steps) {
           if (x.at !== at) continue;
-          if (x.kind === "throw") throwDart(x.number!);
-          if (x.kind === "land") impact(x.number!, x.place!);
-          if (x.kind === "call") setSaid((v) => ({ text: placeCall(x.place!, x.number!, p.handleOf[x.number!] || null), n: v.n + 1 }));
+          if (x.kind === "throw") throwDart(x.number as number);
+          if (x.kind === "land") impact(x.number as number, x.place as Place);
+          if (x.kind === "call") setSaid((v) => ({ text: placeCall(x.place as Place, x.number as number, p.handleOf[x.number as number] ?? ""), n: v.n + 1 }));
         }
       }, at));
     }
     timers.current.push(window.setTimeout(() => { focusReplay.current = true; setT(FINAL); }, plan.total));
   };
-  /** Skip: the final state in the same frame, every bull in the DOM; focus goes to Replay. */
-  const skip = () => { focusReplay.current = true; stop(); setT(FINAL); };
+  /** Skip: the final state in the same frame, every bull in the DOM, the lights up in one short fade; focus goes to Replay. */
+  const skip = () => { focusReplay.current = true; stop(); setSkipped(true); setT(FINAL); };
 
   const playRef = useRef(play);
   playRef.current = play;
@@ -7315,7 +8297,7 @@ export function Reveal(p: Props) {
           : canReplay && <Button variant="secondary" onClick={() => { if (!prefersReducedMotion()) play(); }} data-testid="reveal-replay">Replay the draw</Button>}
       </div>
       <div data-reveal-text>{p.headline}</div>
-      <div ref={stage} className="relative mt-6">
+      <div ref={stage} data-skip={skipped || undefined} className="relative mt-6">
         <div data-lights={s.lights ? "down" : undefined} className="relative">
           {/* The viewer's view (§6), the host's kit, and the lamp at the break's step (Grid draws it, Task 8). */}
           <Grid cells={shown} lineCount={p.lineCount} label="Lines" view={p.view} kit={p.kit} heat={p.heat} />
@@ -7331,7 +8313,7 @@ export function Reveal(p: Props) {
       <div className="mt-4 min-h-10">
         {text && <CallerBanner key={text} text={text} rule={rule} flight={flight} play={playing} />}
       </div>
-      {playing && (
+      {(playing || played) && (
         <ol aria-hidden data-testid="deal" className="mt-3 flex min-h-7 flex-wrap gap-1">
           {p.order.slice(0, s.chips).map((n) => (
             <li key={n} className="rounded-input bg-[var(--board-wall-2)] px-1.5 py-0.5 font-condensed text-small font-semibold text-[color:var(--board-text-2)] tabular">{n}</li>
@@ -7367,6 +8349,7 @@ import { withPlaces } from "./board-cells";
 ```tsx
   const res = await db.transaction((tx) => getDrawResult(tx, id));
   if (!res) notFound();
+  const handleOf: Record<number, string> = Object.fromEntries(res.entries.map((e) => [e.number, e.handleAtDraw]));
 ```
 
 with
@@ -7382,18 +8365,19 @@ with
   });
   if (!data) notFound();
   const { res, page } = data;
+  const handleOf: Record<number, string> = Object.fromEntries(res.entries.map((e) => [e.number, e.handleAtDraw]));
   // The viewer's view (§6): holders see flights, everyone else the host's kit. Won places are public here.
   const grid = shapeGrid(page, caller ? { id: caller.id, role: caller.role, globalUnpaid: 0 } : null, now);
   // The prize places (Task 6): every prize rank of 1 to 3 with its line; the reveal throws one dart per place.
   const placed = placesOf(res.ranking, res.awards.map((a) => a.rank));
-  const places = Math.max(1, placed.length) as Place;
+  const places: Place[] = placed.map((x) => x.place);
   const cells = withPlaces(grid.cells, placed);
   const winner = res.awards.find((a) => a.rank === 1);
   const others = res.awards.filter((a) => a.rank > 1);
   const handle = (n: number) => (handleOf[n] ? `@${handleOf[n]}` : "");
 ```
 
-and move the line `const handleOf: Record<number, string> = …` up to directly after `const { res, page } = data;` (the `handle` helper uses it).
+(`handleOf` now comes first: the `handle` helper uses it.)
 
 4. Replace `<Reveal breakId={id} ranking={res.ranking} handleOf={handleOf} awards={res.awards} />` with:
 
@@ -7445,9 +8429,9 @@ and move the line `const handleOf: Record<number, string> = …` up to directly 
 
 In `src/components/break/break-interactive.tsx`:
 
-1. Extend the `./caller-copy` import to `import { BOARD_FULL_CALL, boardFullAnnouncement, drawStartAnnouncement, drawStartCall, fullBoardKey } from "./caller-copy";`.
+1. Extend Task 11b's `./caller-copy` import to `import { BOARD_FULL_CALL, boardFullAnnouncement, drawStartAnnouncement, drawStartCall, fullBoardKey } from "./caller-copy";`.
 
-2. After the board-fills `useLayoutEffect` (Task 11), add:
+2. After the board-fills `useLayoutEffect` (Task 11b), add:
 
 ```tsx
   // Draw starts (Mosaic §7): "Jim is stepping up to the oche." It drops in only when the draw starts while this page
@@ -7464,7 +8448,7 @@ In `src/components/break/break-interactive.tsx`:
   }, [p.status, p.hostName]);
 ```
 
-3. Directly after the board-fills banner block (Task 11, step 16.10) add:
+3. Directly after the board-fills banner block (Task 11b, Step 8, item 5) add:
 
 ```tsx
       {p.status === "drawing" && (
@@ -7472,7 +8456,7 @@ In `src/components/break/break-interactive.tsx`:
       )}
 ```
 
-- [ ] **Step 9: Pin Skip and Replay in journey 2 (updates `e2e/journey-2.spec.ts`)**
+- [ ] **Step 9: Pin Skip, Replay, the polite calls and the never list in journey 2 (updates `e2e/journey-2.spec.ts`)**
 
 In `e2e/journey-2.spec.ts`, in section 8, replace
 
@@ -7490,29 +8474,66 @@ with
   await expect(viewer.locator("[data-lights=down]")).toHaveCount(1);
   await expect(viewer.getByTestId("deal")).toHaveAttribute("aria-hidden", "true");
   await expect(viewer.locator("[data-won]")).toHaveCount(0);
+  // Run to the first impact. During the throw nothing on the board animates outside the targeted cell, the call is
+  // announced politely, and the chips read out so far never change (Review Focus 4; §7 never list, recorded ruling 37).
+  for (let i = 0; i < 200 && (await viewer.locator("[data-impact]").count()) === 0; i++) await viewer.clock.runFor(20);
+  await expect(viewer.locator("[data-impact]")).toHaveCount(1);
+  const strays = await viewer.evaluate(() => document.getAnimations().filter((a) => {
+    const el = (a.effect as KeyframeEffect | null)?.target;
+    // The uniform dim is one class on the board and may still be fading in: it is allowed (§3). Anything else must be the hit cell.
+    return !!el && !!el.closest('[data-testid="board-frame"]') && !el.closest("[data-impact]") && !el.classList.contains("bc-dim");
+  }).length);
+  expect(strays).toBe(0);
+  await expect(viewer.locator('[role="status"][aria-live="polite"]').filter({ hasText: "takes" })).toContainText(/^Line \d+\. @\S+ takes 2nd place\.$/);
+  const chipsAtThrow = await viewer.getByTestId("deal").locator("li").allTextContents();
   // Skip ends it in one step: every bull in the DOM (two prizes, two places), the lights up, the top-spot call.
   await viewer.getByTestId("reveal-skip").click();
   await expect(viewer.locator("[data-won]")).toHaveCount(2);
   await expect(viewer.locator("[data-lights=down]")).toHaveCount(0);
   await expect(viewer.getByTestId("caller")).toContainText("takes the top spot.");
   await expect(viewer.getByTestId("reveal-replay")).toBeFocused();
+  const chipsAfter = await viewer.getByTestId("deal").locator("li").allTextContents();
+  expect(chipsAfter.slice(0, chipsAtThrow.length)).toEqual(chipsAtThrow);
+  // The board and its frame as the reveal left them: compared with a returning viewer's below.
+  const boardStyles = () => viewer.evaluate(() => {
+    const pick = (el: Element | null) => {
+      if (!el) return "";
+      const s = getComputedStyle(el);
+      return [s.backgroundColor, s.boxShadow, s.transform, s.translate, s.opacity].join("|");
+    };
+    const frame = document.querySelector('[data-testid="board-frame"]');
+    return [pick(frame), ...[...document.querySelectorAll("[data-cell]:not([data-won])")].map((el) => `${el.getAttribute("data-cell")}:${pick(el)}:${pick(el.querySelector(".bc-dim"))}`)];
+  });
+  // Skip's fade runs on the compositor's clock, not the paused one: wait for every dim to reach 0 first.
+  await expect.poll(() => viewer.evaluate(() => [...document.querySelectorAll(".bc-dim")].every((d) => getComputedStyle(d).opacity === "0"))).toBe(true);
+  const afterReveal = await boardStyles();
   // Replay plays it again from house lights down.
   await viewer.getByTestId("reveal-replay").click();
   await expect(viewer.getByTestId("reveal-skip")).toBeVisible();
   await expect(viewer.locator("[data-won]")).toHaveCount(0);
   await viewer.getByTestId("reveal-skip").click();
+  // A returning viewer sees no reveal: the same board, the same frame, cell for cell (§7: the reveal leaves nothing behind).
+  await viewer.reload();
+  await expect(viewer.getByTestId("reveal-replay")).toBeVisible();
+  await expect.poll(boardStyles).toEqual(afterReveal);
+  await viewer.getByTestId("reveal-replay").click();
+  await expect(viewer.getByTestId("reveal-skip")).toBeVisible();
 ```
 
-- [ ] **Step 10: Run every gate**
+(The section ends as before: the reveal is playing under the paused clock when the share button is clicked.)
 
-Run: `pnpm exec tsc --noEmit && pnpm lint && pnpm test`
-Expected: all green. `motion-css.test.ts` passes with the two new keyframes and with `deal`/`lift` gone.
+- [ ] **Step 10: Run every gate, and walk the never list**
 
-Run: `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e`
-Expected: all green (sandbox off, `breaks_e2e`).
+Run (sandbox off): `pnpm exec tsc --noEmit && pnpm lint && pnpm test`
+Expected: all green. `motion-css.test.ts` passes with the two new keyframes, the Skip rule and with `deal`/`lift` gone.
+
+Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e`
+Expected: all green on `breaks_e2e`.
 - Journey 1's host lands on the result as a first-time viewer, so the reveal plays. `winner` is server-rendered, and `toContainText` reads it while it is out of sight.
 - Journey 2 section 6 reads `[data-reveal-final]`, which still holds the award lines in the headline.
-- Section 8 now checks Skip and Replay against the bulls.
+- Section 8 now checks Skip, Replay, the polite call, the chips and the board left as a returning viewer sees it.
+
+Then walk spec §7's never list for the reveal, item by item, and put one line per item in the report (recorded ruling 37): the test that pins it, or "verified by review" with what was read. Pinned here: one class dims the board (`motion-css.test.ts`); only the targeted cell animates during a throw, the chips never change, the reveal leaves no residue (journey 2 section 8); every banner is in the caller copy set and the order never cycles (`reveal-plan.test.ts`). The review lines cover at least: the dart never spins, turns or curves (`dartAngle` is set once at launch, `dartAt` is linear); no candidate number is ever highlighted; the winner's colour appears only in its cell and the banner's rule and glyph; no beat is longer for a viewer who holds more; no flashing, strobing, confetti, sound or prize-value counter.
 
 - [ ] **Step 11: Optional: check by hand**
 
@@ -7526,8 +8547,8 @@ Stop the server afterwards (port rule). Report the check as not performed if you
 - [ ] **Step 12: Commit**
 
 ```bash
-git add "src/app/b/[id]/result" src/components/grid/cell.tsx src/components/grid/motion-css.test.ts src/app/globals.css src/components/break e2e/journey-2.spec.ts
-git commit -m "feat(result): the reveal on the real board: house lights, the read-out, one straight dart per place, the caller"
+git add "src/app/b/[id]/result" src/components/grid/motion-css.test.ts src/app/globals.css src/components/break e2e/journey-2.spec.ts
+git commit -m "feat(result): the reveal on the real board: one straight dart per place, the bulls, the caller, Skip and Replay"
 ```
 
 ---
@@ -7536,9 +8557,9 @@ git commit -m "feat(result): the reveal on the real board: house lights, the rea
 
 Spec §1.1 (the §5.7 row), §8 "Result `/b/{id}/result`", §4 type table, §6 "Result page and reveal for strangers".
 
-The result page is a wall route; Task 1 set its `theme-color`, and this task switches the wall on with `data-wall` on its `<main>` (recorded ruling 12). It puts the content on the wall in this order:
-1. "Top spot: line 7" in Big Shoulders Display 800 at 40/40, above the winner's handle, with the prize lines under it.
-2. The board in the viewer's view with the black bulls (Task 12's `Reveal`), then the caller's banner.
+The result page is a wall route: this task switches the wall on with `data-wall` on its `<main>` and exports `viewport = wallViewport` (Task 1) from the page, so its browser chrome changes with it (recorded ruling 12). It puts the content on the wall in this order:
+1. "Top spot: line 7" in Big Shoulders 800 (the Display cut, Task 1) at 40/40, above the winner's handle, with the prize lines under it.
+2. The board in the viewer's view with the black bulls (Task 12b's `Reveal`), then the caller's banner.
 3. The full order.
 4. Replay, Share and Skip in paper style.
 5. Technical details (unchanged) and the entries list.
@@ -7547,13 +8568,14 @@ The entries list shows handles as text with no glyph, because no surface puts a 
 
 **Files:**
 - Modify: `src/app/b/[id]/result/page.tsx` (whole file)
+- Modify: `src/app/b/[id]/result/verify.tsx` (the status line's ink on the wall), `src/app/b/[id]/result/share-button.tsx` (the fallback field on a paper card)
 - Modify: `e2e/journey-2.spec.ts` (the result's board, bulls and caller; the stranger's view)
 
 **Interfaces:**
 - Consumes:
-  - From Task 12: `Reveal` and its props, `withPlaces`, `topSpotText`, `placeLabel` and `dealGateScript`.
+  - From Task 12b: `Reveal` and its props; from Task 12a: `withPlaces`, `topSpotText`, `placeLabel` and `dealGateScript`.
   - From Task 6: `placesOf`, `Place`.
-  - From Task 1: the board text tokens, the `font-shoulders` and `text-wall-display` utilities, and the `data-wall` rule.
+  - From Task 1: the board text tokens, the `font-shoulders` and `text-wall-display` utilities, the `data-wall` rule and `wallViewport`.
   - From Task 5: `shapeGrid`.
 - Produces:
   - Test ids `full-order` (the paper list) and `entries` (the entries fold).
@@ -7578,9 +8600,13 @@ add:
   await expect(host.getByTestId("full-order").locator("li")).toHaveCount(4);
   await expect(host.getByTestId("entries").locator("svg, [data-flight]")).toHaveCount(0);
   await expect(host.getByTestId("entries")).toContainText("Line 1: @");
-  // A stranger sees the same bulls in the host's kit: no flight on any cell, a text-only call.
+  // A stranger sees the same bulls in the host's kit: no flight on any cell, a text-only call. A first-time viewer, so
+  // the reveal plays: a paused clock keeps Skip on screen (a live clock would race it, as section 8 explains).
   const stranger = await (await browser.newContext()).newPage();
+  await stranger.clock.install();
+  await stranger.clock.pauseAt(new Date(Date.now() + 1000));
   await stranger.goto(`${url}/result`);
+  await expect(stranger.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#17161A"); // a wall route (Mosaic §8)
   await stranger.getByTestId("reveal-skip").click();
   await expect(stranger.locator("[data-won]")).toHaveCount(2);
   await expect(stranger.locator("[data-flight]")).toHaveCount(0);
@@ -7591,8 +8617,8 @@ add:
 
 - [ ] **Step 2: Run the journey to see it fail**
 
-Run: `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e e2e/journey-2.spec.ts`
-Expected: FAIL at `getByTestId("full-order")`: no element has that id yet. The board, the bulls and the caller already pass after Task 12.
+Run (sandbox off): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e e2e/journey-2.spec.ts`
+Expected: FAIL at `getByTestId("full-order")`: no element has that id yet. The board, the bulls and the caller already pass after Task 12b.
 
 - [ ] **Step 3: Rewrite the page on the wall**
 
@@ -7623,8 +8649,12 @@ import { dealGateScript, placeLabel, topSpotText } from "./reveal-plan";
 import { ShareButton } from "./share-button";
 import { Reveal } from "./reveal";
 import { Verify } from "./verify";
+import { wallViewport } from "@/app/wall";
 
 type Props = { params: Promise<{ id: string }> };
+
+/** A wall route from this task on: its browser chrome follows the page (Mosaic §8, recorded ruling 12). */
+export const viewport = wallViewport;
 
 // The wall's text (Mosaic §4): titles 16.8:1, captions 11.5:1, meta 8.1:1. Big Shoulders 800 for the result headline (40/40).
 const TEXT = "text-[color:var(--board-text)]";
@@ -7657,7 +8687,7 @@ export default async function ResultPage({ params }: Props) {
   const grid = shapeGrid(page, caller ? { id: caller.id, role: caller.role, globalUnpaid: 0 } : null, now);
   // The prize places (Task 6): every prize rank of 1 to 3 with its line; the reveal throws one dart per place.
   const placed = placesOf(res.ranking, res.awards.map((a) => a.rank));
-  const places = Math.max(1, placed.length) as Place;
+  const places: Place[] = placed.map((x) => x.place);
   const cells = withPlaces(grid.cells, placed);
   const winner = res.awards.find((a) => a.rank === 1);
   const others = res.awards.filter((a) => a.rank > 1);
@@ -7762,15 +8792,45 @@ export default async function ResultPage({ params }: Props) {
 }
 ```
 
-The `Entries` assertion `toContainText("Line 1: @")` reads the collapsed `<details>`: Playwright's `toContainText` reads `textContent`, which includes closed `<details>` content. If `verify.tsx` or `share-button.tsx` render ink text straight on the page background (not inside a `bg-card` box), give that text `text-[color:var(--board-text-2)]` too, so axe (Task 20) finds no contrast failure on the wall.
+The `Entries` assertion `toContainText("Line 1: @")` reads the collapsed `<details>`: Playwright's `toContainText` reads `textContent`, which includes closed `<details>` content.
+
+Two components draw text straight on the page, which is now the wall; everything else they draw sits on a `bg-card` box and keeps its ink.
+
+In `src/app/b/[id]/result/verify.tsx`, the status line inherits the body's ink (black on the wall). Replace
+
+```tsx
+      <p data-testid="verify-status" role="status" className={state && !state.ok ? "font-semibold text-red" : "font-semibold"}>{status}</p>
+```
+
+with
+
+```tsx
+      {/* On the wall (Mosaic §4): cream text; a failed check keeps its red on a paper chip, since red on the wall is about 3:1. */}
+      <p data-testid="verify-status" role="status" className={state && !state.ok ? "inline-block rounded-input bg-card px-2 font-semibold text-red" : "font-semibold text-[color:var(--board-text)]"}>{status}</p>
+```
+
+In `src/app/b/[id]/result/share-button.tsx`, the fallback field's label is `text-ink-2` straight on the page. Replace
+
+```tsx
+      {failed && <CopyField label="Share text" value={value} />}
+```
+
+with
+
+```tsx
+      {/* The fallback field stays paper: a card under its label and input (the result page is on the wall). */}
+      {failed && <div className="rounded-card border border-wire bg-card p-3 text-ink"><CopyField label="Share text" value={value} /></div>}
+```
+
+The Share button itself is a paper button (`CopyButton`) and needs no change.
 
 - [ ] **Step 4: Run every gate**
 
-Run: `pnpm exec tsc --noEmit && pnpm lint && pnpm test`
+Run (sandbox off): `pnpm exec tsc --noEmit && pnpm lint && pnpm test`
 Expected: all green.
 
-Run: `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e`
-Expected: all green (sandbox off, `breaks_e2e`). Journey 2's new assertions pass:
+Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e`
+Expected: all green on `breaks_e2e`. If an axe test reports a contrast failure on an element drawn straight on the wall, give that element `text-[color:var(--board-text-2)]` (one round, recorded ruling 8); an element inside a paper card keeps its ink. Journey 2's new assertions pass:
 - the host's board shows two bulls;
 - `full-order` lists four lines;
 - `entries` has no glyph;
@@ -7817,12 +8877,12 @@ The text:
 
 The fonts are three static TTFs read from disk at module load and never shipped to browsers. `ogModel` gains `hostedBy` and the new caption; the route now passes the ran break's `places` (`placesOf`, Task 6) into Task 5's `places` input, which makes the "won" tone, and the draw's time as `OgDraw`. Its output still has no holder, handle of a buyer or flight, and `og.test.ts` keeps "has no flight key".
 
-No PNG byte snapshots: the renderer's bytes differ across platforms (recorded ruling 25). The tests pin `ogModel`'s JSON per status (open 0 %, 50 %, closed, running, ran) and kit, render every status in two kits to a 1200 × 630 PNG (the IHDR), and call the route for an open, a closed and a ran break (200, a 1200 × 630 PNG) and a draft (404). One PNG per status is written to `.superpowers/og-preview/` for a by-eye check and is never committed.
+No PNG byte snapshots: the renderer's bytes differ across platforms (recorded ruling 25). The tests pin `ogModel`'s JSON per status (open 0 %, 50 %, closed, running, ran) and kit, render every status in two kits to a 1200 × 630 PNG (the IHDR), and call the route for an open, a closed and a ran break (200, a 1200 × 630 PNG) and a draft (404). One PNG per status and kit is written to `.superpowers/og-preview/` for a by-eye check and is never committed.
 
 **Files:**
 - Create: `assets/og/BigShouldersDisplay-800.ttf`, `assets/og/BarlowCondensed-600.ttf`, `assets/og/Barlow-500.ttf` (downloaded, not hand-made)
 - Create: `src/app/b/[id]/og/fonts.ts`, `src/app/b/[id]/og/image.tsx`, `src/app/b/[id]/og/image.test.ts`, `src/app/b/[id]/og/route.test.ts`
-- Write, never commit: `.superpowers/og-preview/*.png` (one per status, for the by-eye check)
+- Write, never commit: `.superpowers/og-preview/*.png` (one per status and kit, for the by-eye check)
 - Modify: `src/app/b/[id]/og/route.tsx` (whole file), `src/domain/breaks/og.ts`, `src/domain/breaks/og.test.ts`
 - Modify: `next.config.ts` (`outputFileTracingIncludes`)
 
@@ -7856,13 +8916,14 @@ fetch_ttf() { # $1 css2 family spec, $2 output file
   url=$(curl -fsS "https://fonts.googleapis.com/css2?family=$1" | grep -o 'https://fonts.gstatic.com/[^)]*\.ttf' | head -1)
   test -n "$url" && curl -fsS -o "assets/og/$2" "$url"
 }
-fetch_ttf "Big+Shoulders+Display:wght@800" BigShouldersDisplay-800.ttf
+# Big Shoulders is one family with an opsz axis (Task 1 Step 1): the Display cut is opsz 72, the axis maximum.
+fetch_ttf "Big+Shoulders:opsz,wght@72,800" BigShouldersDisplay-800.ttf
 fetch_ttf "Barlow+Condensed:wght@600" BarlowCondensed-600.ttf
 fetch_ttf "Barlow:wght@500" Barlow-500.ttf
 file assets/og/*.ttf
 ```
 
-Expected: three lines reading `TrueType Font data`. Google serves TTF to a client that sends no browser user agent, as `curl` does. If the Big Shoulders request returns no URL, use the family name Task 1 confirmed for `next/font/google` (spec §4: "Google has reorganised the family"), with `+` for spaces. If the network is refused, stop and report **BLOCKED: fonts** (Global Constraints). Do not draw, convert or substitute a font.
+Expected: three lines reading `TrueType Font data`. Google serves TTF to a client that sends no browser user agent, as `curl` does, and a request with one value per axis returns that static instance: the Display cut at weight 800, the same cut Task 1 pins on the page. If Task 1 Step 1 printed an `opsz` maximum other than 72, use that value in the request. If the Big Shoulders request returns no URL, stop and report **BLOCKED: fonts** with the URL tried (a request without `opsz` would return the text cut, which the preview's title must not use). If the network is refused, stop and report **BLOCKED: fonts** (Global Constraints). Do not draw, convert or substitute a font.
 
 - [ ] **Step 2: Write the failing model tests**
 
@@ -7872,7 +8933,7 @@ In `src/domain/breaks/og.test.ts`:
 
 2. In the test "draws the grid as an anonymous viewer sees it", in the expected object, change `caption: "3 of 6 left, $5 a line",` to `caption: "3 to go, $5 a line",` and add `hostedBy: "Hosted by @jim",` after it. In Task 5's test "has no flight key (Review Focus 1)", replace `["caption", "cells", "columns", "heat", "kit", "title"]` with `["caption", "cells", "columns", "heat", "hostedBy", "kit", "title"]`.
 
-3. If that test asserts each cell's keys with `Object.keys(c).sort().join() === "number,tone"`, keep it: no cell before the draw has a place.
+3. That test's last line, `expect(m.cells.every((c) => Object.keys(c).sort().join() === "number,tone")).toBe(true);` (there before Plan C, kept by Task 5), stays as it is: no cell before the draw has a place.
 
 4. Replace the whole `describe("ogCaption", …)` block with:
 
@@ -7992,7 +9053,42 @@ export const ogHostedBy = (h: { handle: string | null; displayName: string | nul
   `Hosted by ${h.handle ? `@${h.handle}` : h.displayName ?? "the host"}`;
 ```
 
-4. In `OgPage` (Task 5), replace `host: Pick<BreakPage["host"], "kit">;` with `host: Pick<BreakPage["host"], "kit" | "handle" | "displayName">;`. These fields are public; never add the payment handles. In `ogModel`'s signature, keep the first parameter as `page: OgPage` and add a third parameter: `draw: OgDraw | null = null`. Then replace the body of `ogModel` from `const grid = shapeGrid(shaped, null, now);` to the closing `}` of the function with:
+4. In `OgPage` (Task 5), replace `host: Pick<BreakPage["host"], "kit">;` with `host: Pick<BreakPage["host"], "kit" | "handle" | "displayName">;`. These fields are public; never add the payment handles. Replace the signature line
+
+```ts
+export function ogModel(page: OgPage, now: Date): OgModel | null {
+```
+
+with
+
+```ts
+export function ogModel(page: OgPage, now: Date, draw: OgDraw | null = null): OgModel | null {
+```
+
+Then replace Task 5's tail of the function
+
+```ts
+  const grid = shapeGrid(shaped, null, now);
+  const placeOf = new Map(b.status === "drawn" ? (page.places ?? []).map((p) => [p.number, p.place]) : []);
+  const cells: OgCell[] = grid.cells
+    .filter((c) => !c.bonus && c.number <= b.lineCount)
+    .map((c): OgCell => {
+      const place = placeOf.get(c.number);
+      return place ? { number: c.number, tone: "won", place } : { number: c.number, tone: c.state === "sent" ? "taken" : c.state };
+    });
+  const title = b.title.length > MAX_TITLE ? `${b.title.slice(0, MAX_TITLE - 1)}…` : b.title;
+  return {
+    title,
+    caption: ogCaption(b.status, grid.counts.open, b.lineCount, b.linePriceCents),
+    cells,
+    columns: Math.min(10, Math.max(4, Math.ceil(Math.sqrt(cells.length)))),
+    kit: grid.kit,
+    heat: grid.heat,
+  };
+}
+```
+
+with:
 
 ```ts
   const grid = shapeGrid(shaped, null, now);
@@ -8038,8 +9134,8 @@ import { OG_FONTS } from "./fonts";
 import { fillerCount, OG_SIZE, ogImage } from "./image";
 
 // No PNG byte snapshots: the renderer's bytes differ across platforms (recorded ruling 25). Every status renders in two
-// kits to a 1200 × 630 PNG. With OG_PREVIEW=1, one PNG per status (default kit) goes to .superpowers/og-preview/ for a
-// by-eye check; that folder is never committed.
+// kits to a 1200 × 630 PNG. With OG_PREVIEW=1, one PNG per status and kit goes to .superpowers/og-preview/ for a by-eye
+// check (spec §12: the default and one other kit); that folder is never committed.
 const PREVIEW_DIR = ".superpowers/og-preview";
 const KITS: [string, Kit][] = [["default", DEFAULT_KIT], ["plum-lime", { dark: "plum", light: "lime" }]];
 const fifty = (f: (n: number) => Omit<OgCell, "number">): OgCell[] => Array.from({ length: 50 }, (_, i) => ({ number: i + 1, ...f(i + 1) }));
@@ -8069,9 +9165,9 @@ describe("the link-preview image (Mosaic §6)", () => {
         expect(png.subarray(1, 4).toString("ascii")).toBe("PNG");
         // The IHDR chunk: width, then height, as big-endian 32-bit integers at bytes 16 and 20.
         expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630]);
-        if (process.env.OG_PREVIEW === "1" && kitName === "default") {
+        if (process.env.OG_PREVIEW === "1") {
           mkdirSync(PREVIEW_DIR, { recursive: true });
-          writeFileSync(`${PREVIEW_DIR}/${status}.png`, png);
+          writeFileSync(`${PREVIEW_DIR}/${status}-${kitName}.png`, png);
         }
       }, 30_000);
     }
@@ -8082,7 +9178,7 @@ describe("the link-preview image (Mosaic §6)", () => {
 Create `src/app/b/[id]/og/route.test.ts`:
 
 ```ts
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { withTx } from "../../../../../tests/helpers/db";
 import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../../../tests/helpers/fixtures";
@@ -8092,11 +9188,14 @@ import type { Caller } from "@/domain/types";
 import { GET } from "./route";
 
 // The route reads through db.transaction; here that runs inside the test's own transaction, which rolls back.
+// withTx (tests/helpers/db.ts) imports this same db, so the mock must never break it: with no test transaction
+// current, db.transaction is the real one (recorded panel fix ruling 7).
 let current: Tx | null = null;
-vi.mock("@/db/client", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/db/client")>()),
-  db: { transaction: <T>(fn: (tx: Tx) => Promise<T>) => fn(current!) },
-}));
+vi.mock("@/db/client", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/db/client")>();
+  return { ...real, db: { transaction: <T>(fn: (tx: Tx) => Promise<T>) => (current ? fn(current) : real.db.transaction(fn)) } };
+});
+afterEach(() => { current = null; });
 
 const get = (id: string) => GET(new Request(`http://localhost/b/${id}/og`), { params: Promise.resolve({ id }) });
 const as = (u: { id: string }, role: Caller["role"] = "member"): Caller => ({ id: u.id, role, onboarded: true, banned: false });
@@ -8127,7 +9226,7 @@ describe("GET /b/{id}/og (recorded ruling 25)", () => {
 
 - [ ] **Step 7: Run them to see them fail**
 
-Run: `pnpm test "src/app/b/[id]/og"` (sandbox off: the route test uses `breaks_test`)
+Run (sandbox off: the route test uses `breaks_test`): `pnpm test "src/app/b/[id]/og"`
 Expected: FAIL: `./fonts` and `./image` do not exist, and the route still imports neither.
 
 - [ ] **Step 8: Write the fonts module, the image and the route**
@@ -8299,8 +9398,8 @@ export default nextConfig;
 
 - [ ] **Step 9: Run them, write the previews and look at them**
 
-Run: `OG_PREVIEW=1 pnpm test "src/app/b/[id]/og"` (sandbox off)
-Expected: PASS, writing four PNGs (`open-0`, `open-50`, `closed`, `ran`) to `.superpowers/og-preview/`. They are for the eye only: never `git add` them.
+Run (sandbox off): `OG_PREVIEW=1 pnpm test "src/app/b/[id]/og"`
+Expected: PASS, writing eight PNGs (`open-0`, `open-50`, `closed` and `ran`, each as `-default` and `-plum-lime`) to `.superpowers/og-preview/`. They are for the eye only: never `git add` them. If `ImageResponse` cannot load under vitest (its WebAssembly renderer fails to load in the node environment), stop and report **BLOCKED: og-renderer**; never mock the renderer.
 
 Open each PNG (the Read tool shows images) and check it against §6:
 
@@ -8316,22 +9415,40 @@ Open each PNG (the Read tool shows images) and check it against §6:
 | Fonts | The title and caption are Big Shoulders, the numbers Barlow Condensed. |
 | Swatch | The 40 × 20 kit swatch follows "Hosted by @jim". |
 
-If the frame is missing (Satori ignored the spread), replace the `boxShadow` with nested boxes and set `GRID_PX` to 452 (§6):
-1. Wrap the grid `div` in four `display: flex` boxes. From the outside in, their backgrounds are light, dark, `TOKENS.boardRing` and `TOKENS.boardSteel`, with paddings 2, 8, 12 and 2.
-2. Run the update again.
+If the frame is missing (Satori ignored the spread), draw it as nested boxes instead (§6): in `image.tsx` set `export const GRID_PX = 452;`, and replace
+
+```tsx
+        <div style={{
+          display: "flex", flexWrap: "wrap", width: cell * m.columns + 2, padding: 1, background: TOKENS.boardSteel,
+          boxShadow: `0 0 0 2px ${TOKENS.boardSteel}, 0 0 0 14px ${TOKENS.boardRing}, 0 0 0 22px ${dark}, 0 0 0 24px ${light}`,
+        }}>
+```
+
+with
+
+```tsx
+        {/* The surround ×2 as nested boxes, outside in: 2 px kit light, 8 px kit dark, 12 px ring, 2 px steel. */}
+        <div style={{ display: "flex", padding: 2, background: light }}>
+        <div style={{ display: "flex", padding: 8, background: dark }}>
+        <div style={{ display: "flex", padding: 12, background: TOKENS.boardRing }}>
+        <div style={{ display: "flex", padding: 2, background: TOKENS.boardSteel }}>
+        <div style={{ display: "flex", flexWrap: "wrap", width: cell * m.columns + 2, padding: 1, background: TOKENS.boardSteel }}>
+```
+
+and the grid's closing `</div>` (the one after the filler slots) with five: `</div></div></div></div></div>`. Then run the update again.
 
 Report what you saw. If you cannot view images, report the eye check as not performed. The JSON, size and route tests still guard the preview.
 
-Run: `pnpm test "src/app/b/[id]/og" src/domain/breaks/og.test.ts`
+Run (sandbox off): `pnpm test "src/app/b/[id]/og" src/domain/breaks/og.test.ts`
 Expected: PASS.
 
 - [ ] **Step 10: Run every gate**
 
-Run: `pnpm exec tsc --noEmit && pnpm lint && pnpm test`
+Run (sandbox off): `pnpm exec tsc --noEmit && pnpm lint && pnpm test`
 Expected: all green.
 
-Run: `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e`
-Expected: all green (sandbox off, `breaks_e2e`). The webServer build also proves the route bundles its fonts. The pages spec's preview test (status 200, `image/png`, the cache header, 1200 × 630 from the IHDR chunk, a draft's 404) passes unchanged.
+Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e`
+Expected: all green on `breaks_e2e`. The webServer build also proves the route bundles its fonts. The pages spec's preview test (status 200, `image/png`, the cache header, 1200 × 630 from the IHDR chunk, a draft's 404) passes unchanged.
 
 - [ ] **Step 11: Commit**
 
@@ -8342,31 +9459,25 @@ git commit -m "feat(share): link preview in the host's kit with the lamp, bulls,
 
 ---
 
-### Task 15: Feed cards, sort chips, landing hero, host profile record and framing (model: Sonnet, Opus review of the host record)
+### Task 15a: Feed cards, sort chips and the landing hero on the wall (model: Sonnet)
 
-Mosaic §8 and §9, §1.1 rows "§5.2 Landing hero", "§5.3 Feed sort chips", "§5.9 Host profile", "§6 Feed sort". The feed card sits on the wall: its thumbnail is the kit view of the board (line state only, no flight) inside a 6 px frame (1 px steel, 4 px kit dark, 1 px kit light) with the lamp at the break's heat step behind it, then the title, "12 to go", "$5 a line" and the host. The fill bar is dropped: the framed thumbnail is the fill. The sort chips are "Newest" and "Closest to full" (today's `almost` sort, fewest open numbered lines first); "Filling fast" and "Almost full" are retired, and an old `?sort=filling` link falls back to Newest. The landing hero is the kit board of the most recent ran break with its black bull cells (one per place, the ring carrying the place), captioned as before. The host profile shows the host record, "41 breaks run since Mar 2026. 40 draws verified." (counts only, no other state words), with the stall line "Closed 3 days ago, not drawn yet." under it while a Closed break has waited three days or more; every card there is framed in the host's kit. `hostTrust` grows the record (verified draws from active draws' `verified_at`, the oldest stalled Closed break), the profile and the ledger header both read it.
+Mosaic §8 and §9, §1.1 rows "§5.2 Landing hero", "§5.3 Feed sort chips", "§6 Feed sort". The feed card sits on the wall: its thumbnail is the kit view of the board (line state only, no flight) inside a 6 px frame (1 px steel, 4 px kit dark, 1 px kit light) with the lamp at the break's heat step behind it, then the title, "12 to go", "$5 a line" and the host. The fill bar is dropped: the framed thumbnail is the fill. The sort chips are "Newest" and "Closest to full" (today's `almost` sort, fewest open numbered lines first); "Filling fast" and "Almost full" are retired, and an old `?sort=filling` link falls back to Newest. The landing hero is the kit board of the most recent ran break with its black bull cells (one per place, the ring carrying the place: a 3 px double red ring for the top spot, since a 2 px CSS double border renders solid), captioned as before. `/breaks` and `/` go on the wall: `data-wall` on their `<main>` and `export const viewport = wallViewport` in the same commit (recorded ruling 12); the feed's title is Big Shoulders 800. The host profile and the ledger header are Task 15b.
 
 **Files:**
 - Create: `src/components/kit-thumb-model.ts`, `src/components/kit-thumb.tsx`, `src/components/kit-thumb.test.ts`
 - Modify: `src/components/break-card.tsx` (whole file)
 - Modify: `src/app/breaks/params.ts` (whole file), `src/app/breaks/params.test.ts` (whole file), `src/app/breaks/page.tsx`
 - Modify: `src/app/page.tsx`, `src/app/landing-copy.ts`, `src/app/landing-copy.test.ts`
-- Modify: `src/domain/breaks/queries.ts` (`HostTrust`, `hostTrust`, `HostProfile`, `hostProfile`), `src/domain/breaks/queries.test.ts`, `src/domain/breaks/page-view.ts`
-- Modify: `src/components/break/frame-copy.ts` (`hostRecordText`, `hostRecordLines`, `stallText`; `profileTrustText` removed), `src/components/break/frame-copy.test.ts`
-- Modify: `src/app/h/[handle]/page.tsx`
-- Modify: `src/components/ledger/ledger-sheet.tsx` (`record`), `src/app/b/[id]/page.tsx` (pass it)
-- Modify: `e2e/pages.spec.ts` (the feed, profile and landing tests)
+- Modify: `e2e/pages.spec.ts` (the feed and landing tests), `e2e/layout.spec.ts` (the theme-color test's wall list)
 
 **Interfaces:**
-- Consumes: `FLIGHT_COLOURS`, `LAMP`, `heatStep`, `kitFor`, `Kit`, `HeatStep` (`src/domain/flights.ts`, Task 2); `OgTone` (`src/domain/breaks/og.ts`, Task 5); `hostProfiles.kitDark`, `hostProfiles.kitLight` and the `draws.verified_at` column, set by `finaliseDraw` when the draw is recorded (Task 4); `FeedBreak.kit: Kit`, `FeedBreak.heat: HeatStep` and `HostProfile.kit` (Task 5); `LatestRan` gaining `places: { number: number; place: Place }[]` (from `placesOf`), `kit: Kit`, `heat` and `cells: ThumbCell[]` while keeping `topLine`, and `Place` (`src/domain/draws/places.ts`) (Task 6); `toGoText(open: number): string` in `frame-copy.ts` ("12 to go", Task 10); the `font-shoulders` and `text-wall-display` utilities for Big Shoulders 800 (Task 1); Task 1's `data-wall` rule, which this task switches on for `/breaks`, `/` and `/h/{handle}` (recorded ruling 12); `thumbColumns`, `formatMonthYear`, `daysSince`, `plural`, `formatMoney`.
+- Consumes: `FLIGHT_COLOURS`, `LAMP`, `heatStep`, `Kit`, `HeatStep` (`src/domain/flights.ts`, Task 2); `OgTone` (`src/domain/breaks/og.ts`, Task 5); `FeedBreak.kit: Kit` and `FeedBreak.heat: HeatStep` (Task 5); `LatestRan` gaining `places: { number: number; place: Place }[]` (from `placesOf`), `kit: Kit`, `heat` and `cells: ThumbCell[]` while keeping `topLine`, and `Place` (`src/domain/draws/places.ts`) (Task 6); `toGoText(open: number): string` in `frame-copy.ts` ("12 to go", Task 10); the `font-shoulders`, `text-wall-title` and `text-wall-display` utilities for Big Shoulders 800, the `data-wall` rule, `wallViewport` and the theme-color e2e test's `wall` list (Task 1, with the break page added by Task 8); `thumbColumns`, `formatMoney`.
 - Produces:
   - `src/components/kit-thumb-model.ts`: `type ThumbTone = { number: number; tone: OgTone; place: 1 | 2 | 3 | null }`; `kitThumbCells(cells: readonly ThumbCell[], places?: readonly { number: number; place: Place }[]): ThumbTone[]`; `thumbFillers(n: number, cols: number): number`.
   - `KitThumb({ cells: readonly ThumbTone[]; kit: Kit; heat: HeatStep; size: number })`: server-safe, `aria-hidden`, test id `thumb`; cells carry `data-tone` and, when won, `data-place`.
   - `src/app/breaks/params.ts`: `FEED_CHIPS = ["newest", "almost"] as const`; `type FeedChip`; `FeedParams.sort: FeedChip`; `SORT_LABELS: Record<FeedChip, string>` = Newest, Closest to full; `parseFeedParams`, `feedHref` as before.
-  - `src/domain/breaks/queries.ts`: `type HostTrust = { breaksRun: number; since: Date; drawsVerified: number; stalledSince: Date | null }`; `hostTrust(tx, hostId): Promise<HostTrust>`; `HostProfile` gains `drawsVerified`, `stalledSince` and `kit`.
-  - `frame-copy.ts`: `hostRecordText(t: { breaksRun: number; drawsVerified: number; since: Date }): string`; `stallText(days: number): string`; `hostRecordLines(t: { breaksRun: number; drawsVerified: number; since: Date; stalledSince: Date | null }, now: Date): string[]`.
-  - `LedgerSheetProps.record?: readonly string[]` (and so `HostTools`).
-  - Test ids: `thumb`, `host-record`, `host-stall`, `ledger-record`, `ledger-stall`; `profile-trust` is retired.
+  - `/breaks` and `/` carry `data-wall` and export `viewport = wallViewport`.
+  - Test id: `thumb`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -8463,86 +9574,12 @@ describe("KitThumb", () => {
 });
 ```
 
-In `src/components/break/frame-copy.test.ts`, in the import from `./frame-copy`, replace `profileTrustText` with `hostRecordLines, hostRecordText, stallText`, and replace the four lines
-
-```ts
-    expect(profileTrustText({ breaksRun: 0, since })).toBe("New host. No breaks run yet.");
-    expect(profileTrustText({ breaksRun: 1, since })).toBe("New host. 1 break run.");
-    expect(profileTrustText({ breaksRun: 3, since })).toBe("New host. 3 breaks run.");
-    expect(profileTrustText({ breaksRun: 12, since })).toBe("12 breaks run since Oct 2026.");
-```
-
-with
-
-```ts
-    expect(hostRecordText({ breaksRun: 0, drawsVerified: 0, since })).toBe("No breaks run yet.");
-    expect(hostRecordText({ breaksRun: 1, drawsVerified: 1, since })).toBe("1 break run since Oct 2026. 1 draw verified.");
-    expect(hostRecordText({ breaksRun: 41, drawsVerified: 40, since })).toBe("41 breaks run since Oct 2026. 40 draws verified.");
-    expect(hostRecordText({ breaksRun: 2, drawsVerified: 0, since })).toBe("2 breaks run since Oct 2026. 0 draws verified.");
-    expect(stallText(3)).toBe("Closed 3 days ago, not drawn yet.");
-    const now = new Date("2026-10-14T12:00:00Z");
-    // The record is never only good news: a Closed break waiting 3 days or more adds the stall line under it.
-    expect(hostRecordLines({ breaksRun: 2, drawsVerified: 2, since, stalledSince: new Date("2026-10-10T11:00:00Z") }, now))
-      .toEqual(["2 breaks run since Oct 2026. 2 draws verified.", "Closed 4 days ago, not drawn yet."]);
-    expect(hostRecordLines({ breaksRun: 2, drawsVerified: 2, since, stalledSince: new Date("2026-10-12T12:00:00Z") }, now))
-      .toEqual(["2 breaks run since Oct 2026. 2 draws verified."]);
-    expect(hostRecordLines({ breaksRun: 2, drawsVerified: 2, since, stalledSince: null }, now))
-      .toEqual(["2 breaks run since Oct 2026. 2 draws verified."]);
-```
-
-In `src/domain/breaks/queries.test.ts`, inside `describe("hostProfile", …)`, test `"shows a host's public figures by handle, ignoring case, and nothing private"`, replace
-
-```ts
-      expect(p).toMatchObject({ id: host.id, handle: host.handle, displayName: host.handle, breaksRun: 1, pastCount: 2 });
-```
-
-with
-
-```ts
-      // The drawn break's draw verified when it was recorded (Task 4), so the record reads 1 run, 1 verified.
-      expect(p).toMatchObject({ id: host.id, handle: host.handle, displayName: host.handle, breaksRun: 1, pastCount: 2, drawsVerified: 1, stalledSince: null, kit: { dark: "blue", light: "yellow" } });
-```
-
-and replace the `expect(Object.keys(p!).sort())…` line (as Task 5 left it) with
-
-```ts
-      expect(Object.keys(p!).sort()).toEqual(["breaksRun", "displayName", "drawsVerified", "handle", "id", "kit", "pastCount", "since", "stalledSince"]);
-```
-
-Append to `src/domain/breaks/queries.test.ts`:
-
-```ts
-describe("hostTrust record (Mosaic §9)", () => {
-  it("counts verified draws from active draws only and finds the oldest Closed break still waiting for its draw", async () => {
-    await withTx(async (tx) => {
-      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
-      await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
-      const voided = await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
-      // The second draw is voided (the one update draws allow): the break is Closed again and has waited four days.
-      await tx.execute(sql`update draws set voided_at = now(), voided_by = ${host.id}::uuid, void_reason = 'test' where id = ${voided.drawId}::uuid`);
-      await tx.execute(sql`update breaks set status = 'filled', filled_at = now() - interval '4 days' where id = ${voided.id}::uuid`);
-      const t = await hostTrust(tx, host.id);
-      expect(t).toMatchObject({ breaksRun: 1, drawsVerified: 1 });
-      expect(t.stalledSince).toBeInstanceOf(Date);
-      expect(Date.now() - t.stalledSince!.getTime()).toBeGreaterThan(3.9 * 86_400_000);
-    });
-  });
-  it("has nothing verified and nothing stalled for a host who has run nothing", async () => {
-    await withTx(async (tx) => {
-      const host = await makeUser(tx, { role: "host" });
-      await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
-      expect(await hostTrust(tx, host.id)).toMatchObject({ breaksRun: 0, drawsVerified: 0, stalledSince: null });
-    });
-  });
-});
-```
-
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `pnpm test src/app/breaks src/components/kit-thumb.test.ts src/components/break/frame-copy.test.ts src/domain/breaks/queries.test.ts`
-Expected: FAIL: `FEED_CHIPS` is not exported and `?sort=filling` parses as `filling`; `./kit-thumb` and `./kit-thumb-model` do not exist; `hostRecordText`, `hostRecordLines` and `stallText` are not exported; `hostTrust` has no `drawsVerified` or `stalledSince`; `hostProfile` has no `drawsVerified` or `stalledSince` key.
+Run: `pnpm test src/app/breaks src/components/kit-thumb.test.ts`
+Expected: FAIL: `FEED_CHIPS` is not exported and `?sort=filling` parses as `filling`; `./kit-thumb` and `./kit-thumb-model` do not exist.
 
-- [ ] **Step 3: Write the params, the copy and the thumbnail model**
+- [ ] **Step 3: Write the params and the thumbnail**
 
 Replace the whole of `src/app/breaks/params.ts` with:
 
@@ -8578,54 +9615,6 @@ export function feedHref(p: FeedParams): string {
   if (p.host) q.set("host", p.host);
   const s = q.toString();
   return s ? `/breaks?${s}` : "/breaks";
-}
-```
-
-In `src/components/break/frame-copy.ts`, replace
-
-```ts
-import { formatMonthYear } from "@/lib/time";
-```
-
-with
-
-```ts
-import { daysSince, formatMonthYear } from "@/lib/time";
-```
-
-and replace
-
-```ts
-/**
- * The profile's one-sentence trust line (design §5.9, interim). Never "0 breaks run"; the date only from 5 breaks on,
- * where the page drops its separate "On Breaks since" line so the date is never said twice.
- */
-export function profileTrustText(t: { breaksRun: number; since: Date }): string {
-  if (t.breaksRun === 0) return "New host. No breaks run yet.";
-  if (t.breaksRun < 5) return `New host. ${t.breaksRun} ${plural(t.breaksRun, "break", "breaks")} run.`;
-  return `${t.breaksRun} breaks run since ${formatMonthYear(t.since)}.`;
-}
-```
-
-with
-
-```ts
-/**
- * The host record (Mosaic §9) on the profile and in the ledger header: counts only, and no other state words.
- * "41 breaks run since Mar 2026. 40 draws verified." Never "0 breaks run" (Plan B).
- */
-export function hostRecordText(t: { breaksRun: number; drawsVerified: number; since: Date }): string {
-  if (t.breaksRun === 0) return "No breaks run yet.";
-  return `${t.breaksRun} ${plural(t.breaksRun, "break", "breaks")} run since ${formatMonthYear(t.since)}. ${t.drawsVerified} ${plural(t.drawsVerified, "draw", "draws")} verified.`;
-}
-
-/** The platform §9 stall line, written as the first design writes it: no em-dash, no "Filled". */
-export const stallText = (days: number) => `Closed ${days} ${plural(days, "day", "days")} ago, not drawn yet.`;
-
-/** The record, then the stall line while a Closed break has waited 3 days or more for its draw: never only good news. */
-export function hostRecordLines(t: { breaksRun: number; drawsVerified: number; since: Date; stalledSince: Date | null }, now: Date): string[] {
-  const days = t.stalledSince ? daysSince(t.stalledSince, now) : null;
-  return days !== null && days >= 3 ? [hostRecordText(t), stallText(days)] : [hostRecordText(t)];
 }
 ```
 
@@ -8672,7 +9661,8 @@ const FACE: Record<ThumbTone["tone"], string> = {
   won: "var(--board-ring)",
 };
 /** The place is the ring shape (Mosaic §5): double red for the top spot, single green for 2nd, dashed green for 3rd. */
-const RING: Record<1 | 2 | 3, string> = { 1: "2px double var(--red)", 2: "1.5px solid var(--green)", 3: "1.5px dashed var(--green)" };
+// 3 px for the double ring: a 2 px CSS double border renders solid, and the top spot would read as 2nd.
+const RING: Record<1 | 2 | 3, string> = { 1: "3px double var(--red)", 2: "1.5px solid var(--green)", 3: "1.5px dashed var(--green)" };
 /** 1 px steel, 4 px kit dark, 1 px kit light: the 6 px thumbnail frame (Mosaic §8), spread, never border or padding. */
 const FRAME = "0 0 0 1px var(--board-steel), 0 0 0 5px var(--kit-dark), 0 0 0 6px var(--kit-light)";
 
@@ -8701,6 +9691,474 @@ export function KitThumb({ cells, kit, heat, size }: { cells: readonly ThumbTone
       </span>
     </span>
   );
+}
+```
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `pnpm test src/app/breaks src/components/kit-thumb.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Put the feed card on the wall**
+
+Replace the whole of `src/components/break-card.tsx` with:
+
+```tsx
+import Link from "next/link";
+import type { FeedBreak, ThumbCell } from "@/domain/breaks/feed";
+import { formatMoney } from "@/lib/money";
+import { hostedByText, toGoText, trustText } from "@/components/break/frame-copy";
+import { KitThumb } from "@/components/kit-thumb";
+import { kitThumbCells } from "@/components/kit-thumb-model";
+
+/**
+ * A feed card on the wall (Mosaic §8): the kit-framed thumbnail under the break's lamp, then the title, "12 to go",
+ * "$5 a line" and the host. No fill bar: the framed thumbnail is the fill. The feed, the landing page and the host
+ * profile all use it, so every card is framed in its own host's kit.
+ */
+export function BreakCard({ b, cells }: { b: FeedBreak; cells: ThumbCell[] }) {
+  const hostRef = b.host.handle ? `@${b.host.handle}` : b.host.displayName ?? "the host";
+  return (
+    <li data-testid="break-card">
+      <Link href={`/b/${b.id}`} className="flex items-center gap-3 py-2">
+        <KitThumb cells={kitThumbCells(cells)} kit={b.kit} heat={b.heat} size={96} />
+        <span className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="line-clamp-2 font-semibold" style={{ color: "var(--board-text)" }}>{b.title}</span>
+          <span className="flex flex-wrap items-baseline gap-x-3">
+            <span className="font-condensed text-[20px] leading-6 font-semibold tabular" style={{ color: "var(--board-text)" }}>{toGoText(b.open)}</span>
+            <span className="text-small" style={{ color: "var(--board-text-2)" }}>{formatMoney(b.linePriceCents)} a line</span>
+          </span>
+          <span className="text-small" style={{ color: "var(--board-text-3)" }}>{hostedByText(hostRef, trustText(b.host))}</span>
+        </span>
+      </Link>
+    </li>
+  );
+}
+```
+
+In `src/app/breaks/page.tsx`, replace
+
+```tsx
+import { FEED_SORTS, feedHosts, feedThumbs, listFeed } from "@/domain/breaks/feed";
+```
+
+with
+
+```tsx
+import { feedHosts, feedThumbs, listFeed } from "@/domain/breaks/feed";
+```
+
+replace
+
+```tsx
+import { feedHref, parseFeedParams, SORT_LABELS } from "./params";
+```
+
+with
+
+```tsx
+import { FEED_CHIPS, feedHref, parseFeedParams, SORT_LABELS } from "./params";
+```
+
+replace
+
+```tsx
+  const sorts = FEED_SORTS.map((s) => ({ value: s, label: SORT_LABELS[s], href: feedHref({ ...params, sort: s }) }));
+```
+
+with
+
+```tsx
+  const sorts = FEED_CHIPS.map((s) => ({ value: s, label: SORT_LABELS[s], href: feedHref({ ...params, sort: s }) }));
+```
+
+replace
+
+```tsx
+export const metadata: Metadata = { title: "Browse breaks" };
+```
+
+with
+
+```tsx
+export const metadata: Metadata = { title: "Browse breaks" };
+/** A wall route from this task on: its browser chrome follows the page (Mosaic §8, recorded ruling 12). */
+export const viewport = wallViewport;
+```
+
+and add `import { wallViewport } from "@/app/wall";` below the `./params` import; replace
+
+```tsx
+    <main className="mx-auto max-w-[600px] space-y-4 px-4 py-6 sm:px-6">
+      <h1 className="font-condensed text-title font-semibold">Browse breaks</h1>
+```
+
+with
+
+```tsx
+    // A wall route (Mosaic §8): data-wall switches on Task 1's wall background (recorded ruling 12), so its text takes the wall inks.
+    <main data-wall className="mx-auto max-w-[600px] space-y-4 px-4 py-6 sm:px-6" style={{ color: "var(--board-text)" }}>
+      {/* Wall titles are Big Shoulders 800 (Mosaic §1.1): the page's one display title. */}
+      <h1 className="font-shoulders text-wall-title font-extrabold">Browse breaks</h1>
+```
+
+and replace
+
+```tsx
+        <p className="text-ink-2" data-testid="feed-empty">
+```
+
+with
+
+```tsx
+        <p style={{ color: "var(--board-text-2)" }} data-testid="feed-empty">
+```
+
+- [ ] **Step 6: The landing hero is the kit board of the most recent ran break**
+
+In `src/app/page.tsx`, replace
+
+```tsx
+import { BreakCard } from "@/components/break-card";
+import { thumbColumns } from "@/components/grid/layout";
+import { heroNumbers, ranText } from "./landing-copy";
+
+/** The board after a draw: every line paid (black), the winning line green. Decorative; the caption says it. */
+function HeroGrid({ lineCount, topLine }: { lineCount: number; topLine: number }) {
+  const numbers = heroNumbers(lineCount, topLine);
+  return (
+    <span aria-hidden className="grid shrink-0 border-t border-l border-wire-strong" style={{ width: 112, gridTemplateColumns: `repeat(${thumbColumns(numbers.length)}, minmax(0, 1fr))` }}>
+      {numbers.map((n) => (
+        <span key={n} className={`aspect-square border-r border-b border-wire-strong ${n === topLine ? "bg-green" : "bg-ink"}`} />
+      ))}
+    </span>
+  );
+}
+```
+
+with
+
+```tsx
+import { heatStep } from "@/domain/flights";
+import { BreakCard } from "@/components/break-card";
+import { KitThumb } from "@/components/kit-thumb";
+import { kitThumbCells } from "@/components/kit-thumb-model";
+import { ranText } from "./landing-copy";
+import { wallViewport } from "./wall";
+
+/** A wall route from this task on: its browser chrome follows the page (Mosaic §8, recorded ruling 12). */
+export const viewport = wallViewport;
+```
+
+replace
+
+```tsx
+    <main className="mx-auto max-w-[600px] space-y-8 px-4 py-6 sm:px-6">
+      {hero && (
+        <Link href={`/b/${hero.breakId}/result`} data-testid="hero" className="flex items-center gap-4 rounded-card border border-wire bg-card p-3">
+          <HeroGrid lineCount={hero.lineCount} topLine={hero.topLine} />
+          <span className="min-w-0 flex-1 space-y-1">
+            <span className="block font-semibold">{hero.title}</span>
+            <span className="block text-small">Top spot: line {hero.topLine}.</span>
+            <span className="block text-small text-ink-2">{ranText(hero.ranAt, now, zone.tz)} Anyone can check the draw.</span>
+          </span>
+        </Link>
+      )}
+      <section className="space-y-4">
+        <h1 className="font-condensed text-display font-semibold">Group buys for darts gear.</h1>
+```
+
+with
+
+```tsx
+    // A wall route (Mosaic §8): data-wall switches on Task 1's wall background (recorded ruling 12), so its text takes the wall inks.
+    <main data-wall className="mx-auto max-w-[600px] space-y-8 px-4 py-6 sm:px-6" style={{ color: "var(--board-text)" }}>
+      {hero && (
+        <Link href={`/b/${hero.breakId}/result`} data-testid="hero" className="flex items-center gap-4 py-2">
+          {/* The kit board of the most recent ran break with its black bulls (Mosaic §8); a ran break is closed, so the lamp is up. */}
+          <KitThumb cells={kitThumbCells(hero.cells, hero.places)} kit={hero.kit} heat={heatStep(0, hero.lineCount, true)} size={112} />
+          <span className="min-w-0 flex-1 space-y-1">
+            <span className="block font-semibold">{hero.title}</span>
+            <span className="block text-small">Top spot: line {hero.topLine}.</span>
+            <span className="block text-small" style={{ color: "var(--board-text-2)" }}>{ranText(hero.ranAt, now, zone.tz)} Anyone can check the draw.</span>
+          </span>
+        </Link>
+      )}
+      <section className="space-y-4">
+        <h1 className="font-shoulders text-wall-display font-extrabold">Group buys for darts gear.</h1>
+```
+
+and replace
+
+```tsx
+      <p className="text-small text-ink-2">Hosting on Facebook now? Breaks is invite-only for hosts.</p>
+```
+
+with
+
+```tsx
+      <p className="text-small" style={{ color: "var(--board-text-3)" }}>Hosting on Facebook now? Breaks is invite-only for hosts.</p>
+```
+
+In `src/app/landing-copy.ts`, delete
+
+```ts
+
+/** The hero grid's numbers: every numbered line, plus the winning line when it is a bonus line above N. */
+export function heroNumbers(lineCount: number, topLine: number): number[] {
+  const numbers = Array.from({ length: lineCount }, (_, i) => i + 1);
+  return topLine > lineCount ? [...numbers, topLine] : numbers;
+}
+```
+
+(`kitThumbCells` keeps a placed bonus line, which is what `heroNumbers` did). In `src/app/landing-copy.test.ts`, replace `import { heroNumbers, ranText } from "./landing-copy";` with `import { ranText } from "./landing-copy";` and delete
+
+```ts
+
+describe("heroNumbers", () => {
+  it("is every numbered line, plus the winner when it is a bonus line", () => {
+    expect(heroNumbers(4, 2)).toEqual([1, 2, 3, 4]);
+    expect(heroNumbers(4, 5)).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+```
+
+- [ ] **Step 7: Pin the cards, the chips and the hero in the specs (updates `e2e/pages.spec.ts` and `e2e/layout.spec.ts`)**
+
+In the test `"the feed lists an open break and never a draft; the host filter and sorts live in the URL"`, replace
+
+```ts
+  await expect(card).toContainText("4 of 4 left");
+```
+
+with
+
+```ts
+  await expect(card).toContainText("4 to go");
+  // The kit view only: a framed thumbnail with no flight on any cell.
+  await expect(card.getByTestId("thumb")).toBeVisible();
+  await expect(card.locator("[data-flight]")).toHaveCount(0);
+```
+
+and replace
+
+```ts
+  await visitor.getByRole("radio", { name: "Almost full" }).click();
+  await expect(visitor).toHaveURL(new RegExp(`/breaks\\?sort=almost&host=${handle}$`));
+  await expect(visitor.getByRole("radio", { name: "Almost full" })).toHaveAttribute("aria-checked", "true");
+```
+
+with
+
+```ts
+  await expect(visitor.getByRole("radio", { name: "Filling fast" })).toHaveCount(0);
+  await visitor.getByRole("radio", { name: "Closest to full" }).click();
+  await expect(visitor).toHaveURL(new RegExp(`/breaks\\?sort=almost&host=${handle}$`));
+  await expect(visitor.getByRole("radio", { name: "Closest to full" })).toHaveAttribute("aria-checked", "true");
+  // A link from before Mosaic still opens: the retired sort falls back to Newest.
+  await visitor.goto(`/breaks?sort=filling&host=${handle}`);
+  await expect(visitor.getByRole("radio", { name: "Newest" })).toHaveAttribute("aria-checked", "true");
+```
+
+In the test `"the landing page leads with the newest ran break and links to the feed"`, replace
+
+```ts
+  await visitor.getByTestId("browse-breaks").click();
+  await expect(visitor).toHaveURL(/\/breaks$/);
+});
+```
+
+with
+
+```ts
+  // The kit board with its bull: one won cell, ringed as the top spot, and no flight anywhere.
+  await expect(hero.locator('[data-tone="won"][data-place="1"]')).toHaveCount(1);
+  await expect(hero.locator("[data-flight]")).toHaveCount(0);
+  await visitor.getByTestId("browse-breaks").click();
+  await expect(visitor).toHaveURL(/\/breaks$/);
+});
+```
+
+In `e2e/layout.spec.ts`, in the theme-color test, replace
+
+```ts
+  const wall: string[] = [url];
+```
+
+with
+
+```ts
+  const wall: string[] = [url, "/", "/breaks"];
+```
+
+- [ ] **Step 8: Optional: check by hand**
+
+If you have a browser tool: in `pnpm dev`, open `/breaks` and `/` at 390 wide and at 1024; check the kit frame sits clear of the next card, the lamp reads behind the thumbnail, and the hero's bulls show their rings (the top spot's double ring reads as two bands). Stop the server afterwards (port rule). Report the check as not performed if you cannot do it.
+
+- [ ] **Step 9: Run every gate**
+
+Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm test:e2e`
+Expected: all green. `pnpm test:concurrency` is not needed: no command changes lines or draws. Journey 2 keys on `break-card` by title, which still holds. The axe test in `e2e/layout.spec.ts` now covers `/` and `/breaks` on the wall: if it reports a contrast failure on an element drawn straight on the wall, give that element `color: var(--board-text-2)` (one round, recorded ruling 8); an element inside a paper card keeps its ink. The host profile is still on paper (Task 15b).
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add src/components/kit-thumb-model.ts src/components/kit-thumb.tsx src/components/kit-thumb.test.ts src/components/break-card.tsx src/app/breaks src/app/page.tsx src/app/landing-copy.ts src/app/landing-copy.test.ts e2e/pages.spec.ts e2e/layout.spec.ts
+git commit -m "feat(feed): kit-framed cards, Closest to full and the kit hero on the wall"
+```
+
+---
+
+### Task 15b: The host record and kit framing on the profile and the ledger header (model: Opus)
+
+> **Reviewer: Opus** (a controller note: the controller dispatches this review after the implementer reports; the implementer lists this focus in its report). Focus: `hostTrust`, `hostProfile`, `hostRecordText`, `hostRecordLines` and the profile and ledger markup. The record is counts only (no prize totals, money raised, win counts, rankings, "New host" or any other state word in the sentence); `drawsVerified` counts active draws of drawn breaks only, so it can never exceed `breaksRun`; a voided draw counts neither as run nor as verified; the stall line shows from 3 days and is never hidden by a good record; every subquery binds the host id as a parameter (no bare `id`); `HostProfile`'s keys are exactly the nine the test lists (nothing private: no email, payment name, payment handles); the thumbnails select no owner. The implementer fixes the findings once; anything that needs a ruling is recorded.
+
+Mosaic §8 and §9, §1.1 row "§5.9 Host profile". The host profile shows the host record, "41 breaks run since Mar 2026. 40 draws verified." (counts only, no other state words), with the stall line "Closed 3 days ago, not drawn yet." under it while a Closed break has waited three days or more. The record sits under a board in the host's kit (a decorative 16-cell open board, recorded ruling 20), stacked, and every card there is framed in the host's kit (Task 15a's `BreakCard`). The profile's title is Big Shoulders 800. `hostTrust` grows the record (verified draws from active draws' `verified_at`, the oldest stalled Closed break); the profile and the ledger header both read it. `/h/{handle}` goes on the wall: `data-wall` on its `<main>` and `export const viewport = wallViewport` in the same commit (recorded ruling 12).
+
+**Files:**
+- Modify: `src/domain/breaks/queries.ts` (`HostTrust`, `hostTrust`, `HostProfile`, `hostProfile`), `src/domain/breaks/queries.test.ts`, `src/domain/breaks/page-view.ts`
+- Modify: `src/components/break/frame-copy.ts` (`hostRecordText`, `hostRecordLines`, `stallText`; `profileTrustText` removed), `src/components/break/frame-copy.test.ts`
+- Modify: `src/app/h/[handle]/page.tsx`
+- Modify: `src/components/ledger/ledger-sheet.tsx` (`record`), `src/app/b/[id]/page.tsx` (pass it)
+- Modify: `e2e/pages.spec.ts` (the profile and landing tests), `e2e/layout.spec.ts` (the theme-color test's wall list)
+
+**Interfaces:**
+- Consumes: `kitFor`, `Kit` (`src/domain/flights.ts`, Task 2); `hostProfiles.kitDark`, `hostProfiles.kitLight` and the `draws.verified_at` column, set by `finaliseDraw` when the draw is recorded (Task 4a); `HostProfile.kit` (Task 5); `KitThumb`, `kitThumbCells` and the wall list `[url, "/", "/breaks"]` (Task 15a); the `font-shoulders` and `text-wall-title` utilities, the `data-wall` rule and `wallViewport` (Task 1); `formatMonthYear`, `daysSince`, `plural`.
+- Produces:
+  - `src/domain/breaks/queries.ts`: `type HostTrust = { breaksRun: number; since: Date; drawsVerified: number; stalledSince: Date | null }`; `hostTrust(tx, hostId): Promise<HostTrust>`; `HostProfile` gains `drawsVerified`, `stalledSince` and `kit`.
+  - `frame-copy.ts`: `hostRecordText(t: { breaksRun: number; drawsVerified: number; since: Date }): string`; `stallText(days: number): string`; `hostRecordLines(t: { breaksRun: number; drawsVerified: number; since: Date; stalledSince: Date | null }, now: Date): string[]`.
+  - `LedgerSheetProps.record?: readonly string[]` (and so `HostTools`).
+  - `/h/{handle}` carries `data-wall` and exports `viewport = wallViewport`.
+  - Test ids: `host-record`, `host-stall`, `ledger-record`, `ledger-stall`; `profile-trust` is retired.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `src/components/break/frame-copy.test.ts`, in the import from `./frame-copy`, replace `profileTrustText` with `hostRecordLines, hostRecordText, stallText`, and replace the four lines
+
+```ts
+    expect(profileTrustText({ breaksRun: 0, since })).toBe("New host. No breaks run yet.");
+    expect(profileTrustText({ breaksRun: 1, since })).toBe("New host. 1 break run.");
+    expect(profileTrustText({ breaksRun: 3, since })).toBe("New host. 3 breaks run.");
+    expect(profileTrustText({ breaksRun: 12, since })).toBe("12 breaks run since Oct 2026.");
+```
+
+with
+
+```ts
+    expect(hostRecordText({ breaksRun: 0, drawsVerified: 0, since })).toBe("No breaks run yet.");
+    expect(hostRecordText({ breaksRun: 1, drawsVerified: 1, since })).toBe("1 break run since Oct 2026. 1 draw verified.");
+    expect(hostRecordText({ breaksRun: 41, drawsVerified: 40, since })).toBe("41 breaks run since Oct 2026. 40 draws verified.");
+    expect(hostRecordText({ breaksRun: 2, drawsVerified: 0, since })).toBe("2 breaks run since Oct 2026. 0 draws verified.");
+    expect(stallText(3)).toBe("Closed 3 days ago, not drawn yet.");
+    const now = new Date("2026-10-14T12:00:00Z");
+    // The record is never only good news: a Closed break waiting 3 days or more adds the stall line under it.
+    expect(hostRecordLines({ breaksRun: 2, drawsVerified: 2, since, stalledSince: new Date("2026-10-10T11:00:00Z") }, now))
+      .toEqual(["2 breaks run since Oct 2026. 2 draws verified.", "Closed 4 days ago, not drawn yet."]);
+    expect(hostRecordLines({ breaksRun: 2, drawsVerified: 2, since, stalledSince: new Date("2026-10-12T12:00:00Z") }, now))
+      .toEqual(["2 breaks run since Oct 2026. 2 draws verified."]);
+    expect(hostRecordLines({ breaksRun: 2, drawsVerified: 2, since, stalledSince: null }, now))
+      .toEqual(["2 breaks run since Oct 2026. 2 draws verified."]);
+```
+
+In `src/domain/breaks/queries.test.ts`, inside `describe("hostProfile", …)`, test `"shows a host's public figures by handle, ignoring case, and nothing private"`, replace
+
+```ts
+      expect(p).toMatchObject({ id: host.id, handle: host.handle, displayName: host.handle, breaksRun: 1, pastCount: 2 });
+```
+
+with
+
+```ts
+      // The drawn break's draw verified when it was recorded (Task 4a), so the record reads 1 run, 1 verified.
+      expect(p).toMatchObject({ id: host.id, handle: host.handle, displayName: host.handle, breaksRun: 1, pastCount: 2, drawsVerified: 1, stalledSince: null, kit: { dark: "blue", light: "yellow" } });
+```
+
+and replace the `expect(Object.keys(p!).sort())…` line (as Task 5 left it) with
+
+```ts
+      expect(Object.keys(p!).sort()).toEqual(["breaksRun", "displayName", "drawsVerified", "handle", "id", "kit", "pastCount", "since", "stalledSince"]);
+```
+
+Append to `src/domain/breaks/queries.test.ts`:
+
+```ts
+describe("hostTrust record (Mosaic §9)", () => {
+  it("counts verified draws from active draws only and finds the oldest Closed break still waiting for its draw", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
+      const voided = await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id] });
+      // The second draw is voided (the one update draws allow): the break is Closed again and has waited four days.
+      await tx.execute(sql`update draws set voided_at = now(), voided_by = ${host.id}::uuid, void_reason = 'test' where id = ${voided.drawId}::uuid`);
+      await tx.execute(sql`update breaks set status = 'filled', filled_at = now() - interval '4 days' where id = ${voided.id}::uuid`);
+      const t = await hostTrust(tx, host.id);
+      expect(t).toMatchObject({ breaksRun: 1, drawsVerified: 1 });
+      expect(t.stalledSince).toBeInstanceOf(Date);
+      expect(Date.now() - t.stalledSince!.getTime()).toBeGreaterThan(3.9 * 86_400_000);
+    });
+  });
+  it("has nothing verified and nothing stalled for a host who has run nothing", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      expect(await hostTrust(tx, host.id)).toMatchObject({ breaksRun: 0, drawsVerified: 0, stalledSince: null });
+    });
+  });
+});
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run (sandbox off: `queries.test.ts` uses `breaks_test`): `pnpm test src/components/break/frame-copy.test.ts src/domain/breaks/queries.test.ts`
+Expected: FAIL: `hostRecordText`, `hostRecordLines` and `stallText` are not exported; `hostTrust` has no `drawsVerified` or `stalledSince`; `hostProfile` has no `drawsVerified` or `stalledSince` key.
+
+- [ ] **Step 3: Write the record copy**
+
+In `src/components/break/frame-copy.ts`, replace
+
+```ts
+import { formatMonthYear } from "@/lib/time";
+```
+
+with
+
+```ts
+import { daysSince, formatMonthYear } from "@/lib/time";
+```
+
+and replace
+
+```ts
+/**
+ * The profile's one-sentence trust line (design §5.9, interim). Never "0 breaks run"; the date only from 5 breaks on,
+ * where the page drops its separate "On Breaks since" line so the date is never said twice.
+ */
+export function profileTrustText(t: { breaksRun: number; since: Date }): string {
+  if (t.breaksRun === 0) return "New host. No breaks run yet.";
+  if (t.breaksRun < 5) return `New host. ${t.breaksRun} ${plural(t.breaksRun, "break", "breaks")} run.`;
+  return `${t.breaksRun} breaks run since ${formatMonthYear(t.since)}.`;
+}
+```
+
+with
+
+```ts
+/**
+ * The host record (Mosaic §9) on the profile and in the ledger header: counts only, and no other state words.
+ * "41 breaks run since Mar 2026. 40 draws verified." Never "0 breaks run" (Plan B).
+ */
+export function hostRecordText(t: { breaksRun: number; drawsVerified: number; since: Date }): string {
+  if (t.breaksRun === 0) return "No breaks run yet.";
+  return `${t.breaksRun} ${plural(t.breaksRun, "break", "breaks")} run since ${formatMonthYear(t.since)}. ${t.drawsVerified} ${plural(t.drawsVerified, "draw", "draws")} verified.`;
+}
+
+/** The platform §9 stall line, written as the first design writes it: no em-dash, no retired state word. */
+export const stallText = (days: number) => `Closed ${days} ${plural(days, "day", "days")} ago, not drawn yet.`;
+
+/** The record, then the stall line while a Closed break has waited 3 days or more for its draw: never only good news. */
+export function hostRecordLines(t: { breaksRun: number; drawsVerified: number; since: Date; stalledSince: Date | null }, now: Date): string[] {
+  const days = t.stalledSince ? daysSince(t.stalledSince, now) : null;
+  return days !== null && days >= 3 ? [hostRecordText(t), stallText(days)] : [hostRecordText(t)];
 }
 ```
 
@@ -8805,215 +10263,10 @@ with
 
 - [ ] **Step 5: Run the tests to see them pass**
 
-Run: `pnpm test src/app/breaks src/components/kit-thumb.test.ts src/components/break/frame-copy.test.ts src/domain/breaks/queries.test.ts`
+Run (sandbox off): `pnpm test src/components/break/frame-copy.test.ts src/domain/breaks/queries.test.ts`
 Expected: PASS.
 
-- [ ] **Step 6: Put the feed card on the wall**
-
-Replace the whole of `src/components/break-card.tsx` with:
-
-```tsx
-import Link from "next/link";
-import type { FeedBreak, ThumbCell } from "@/domain/breaks/feed";
-import { formatMoney } from "@/lib/money";
-import { hostedByText, toGoText, trustText } from "@/components/break/frame-copy";
-import { KitThumb } from "@/components/kit-thumb";
-import { kitThumbCells } from "@/components/kit-thumb-model";
-
-/**
- * A feed card on the wall (Mosaic §8): the kit-framed thumbnail under the break's lamp, then the title, "12 to go",
- * "$5 a line" and the host. No fill bar: the framed thumbnail is the fill. The feed, the landing page and the host
- * profile all use it, so every card is framed in its own host's kit.
- */
-export function BreakCard({ b, cells }: { b: FeedBreak; cells: ThumbCell[] }) {
-  const hostRef = b.host.handle ? `@${b.host.handle}` : b.host.displayName ?? "the host";
-  return (
-    <li data-testid="break-card">
-      <Link href={`/b/${b.id}`} className="flex items-center gap-3 py-2">
-        <KitThumb cells={kitThumbCells(cells)} kit={b.kit} heat={b.heat} size={96} />
-        <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="line-clamp-2 font-semibold" style={{ color: "var(--board-text)" }}>{b.title}</span>
-          <span className="flex flex-wrap items-baseline gap-x-3">
-            <span className="font-condensed text-[20px] leading-6 font-semibold tabular" style={{ color: "var(--board-text)" }}>{toGoText(b.open)}</span>
-            <span className="text-small" style={{ color: "var(--board-text-2)" }}>{formatMoney(b.linePriceCents)} a line</span>
-          </span>
-          <span className="text-small" style={{ color: "var(--board-text-3)" }}>{hostedByText(hostRef, trustText(b.host))}</span>
-        </span>
-      </Link>
-    </li>
-  );
-}
-```
-
-In `src/app/breaks/page.tsx`, replace
-
-```tsx
-import { FEED_SORTS, feedHosts, feedThumbs, listFeed } from "@/domain/breaks/feed";
-```
-
-with
-
-```tsx
-import { feedHosts, feedThumbs, listFeed } from "@/domain/breaks/feed";
-```
-
-replace
-
-```tsx
-import { feedHref, parseFeedParams, SORT_LABELS } from "./params";
-```
-
-with
-
-```tsx
-import { FEED_CHIPS, feedHref, parseFeedParams, SORT_LABELS } from "./params";
-```
-
-replace
-
-```tsx
-  const sorts = FEED_SORTS.map((s) => ({ value: s, label: SORT_LABELS[s], href: feedHref({ ...params, sort: s }) }));
-```
-
-with
-
-```tsx
-  const sorts = FEED_CHIPS.map((s) => ({ value: s, label: SORT_LABELS[s], href: feedHref({ ...params, sort: s }) }));
-```
-
-replace
-
-```tsx
-    <main className="mx-auto max-w-[600px] space-y-4 px-4 py-6 sm:px-6">
-      <h1 className="font-condensed text-title font-semibold">Browse breaks</h1>
-```
-
-with
-
-```tsx
-    // A wall route (Mosaic §8): data-wall switches on Task 1's wall background (recorded ruling 12), so its text takes the wall inks.
-    <main data-wall className="mx-auto max-w-[600px] space-y-4 px-4 py-6 sm:px-6" style={{ color: "var(--board-text)" }}>
-      <h1 className="font-condensed text-title font-semibold">Browse breaks</h1>
-```
-
-and replace
-
-```tsx
-        <p className="text-ink-2" data-testid="feed-empty">
-```
-
-with
-
-```tsx
-        <p style={{ color: "var(--board-text-2)" }} data-testid="feed-empty">
-```
-
-- [ ] **Step 7: The landing hero is the kit board of the most recent ran break**
-
-In `src/app/page.tsx`, replace
-
-```tsx
-import { BreakCard } from "@/components/break-card";
-import { thumbColumns } from "@/components/grid/layout";
-import { heroNumbers, ranText } from "./landing-copy";
-
-/** The board after a draw: every line paid (black), the winning line green. Decorative; the caption says it. */
-function HeroGrid({ lineCount, topLine }: { lineCount: number; topLine: number }) {
-  const numbers = heroNumbers(lineCount, topLine);
-  return (
-    <span aria-hidden className="grid shrink-0 border-t border-l border-wire-strong" style={{ width: 112, gridTemplateColumns: `repeat(${thumbColumns(numbers.length)}, minmax(0, 1fr))` }}>
-      {numbers.map((n) => (
-        <span key={n} className={`aspect-square border-r border-b border-wire-strong ${n === topLine ? "bg-green" : "bg-ink"}`} />
-      ))}
-    </span>
-  );
-}
-```
-
-with
-
-```tsx
-import { heatStep } from "@/domain/flights";
-import { BreakCard } from "@/components/break-card";
-import { KitThumb } from "@/components/kit-thumb";
-import { kitThumbCells } from "@/components/kit-thumb-model";
-import { ranText } from "./landing-copy";
-```
-
-replace
-
-```tsx
-    <main className="mx-auto max-w-[600px] space-y-8 px-4 py-6 sm:px-6">
-      {hero && (
-        <Link href={`/b/${hero.breakId}/result`} data-testid="hero" className="flex items-center gap-4 rounded-card border border-wire bg-card p-3">
-          <HeroGrid lineCount={hero.lineCount} topLine={hero.topLine} />
-          <span className="min-w-0 flex-1 space-y-1">
-            <span className="block font-semibold">{hero.title}</span>
-            <span className="block text-small">Top spot: line {hero.topLine}.</span>
-            <span className="block text-small text-ink-2">{ranText(hero.ranAt, now, zone.tz)} Anyone can check the draw.</span>
-          </span>
-        </Link>
-      )}
-      <section className="space-y-4">
-        <h1 className="font-condensed text-display font-semibold">Group buys for darts gear.</h1>
-```
-
-with
-
-```tsx
-    // A wall route (Mosaic §8): data-wall switches on Task 1's wall background (recorded ruling 12), so its text takes the wall inks.
-    <main data-wall className="mx-auto max-w-[600px] space-y-8 px-4 py-6 sm:px-6" style={{ color: "var(--board-text)" }}>
-      {hero && (
-        <Link href={`/b/${hero.breakId}/result`} data-testid="hero" className="flex items-center gap-4 py-2">
-          {/* The kit board of the most recent ran break with its black bulls (Mosaic §8); a ran break is closed, so the lamp is up. */}
-          <KitThumb cells={kitThumbCells(hero.cells, hero.places)} kit={hero.kit} heat={heatStep(0, hero.lineCount, true)} size={112} />
-          <span className="min-w-0 flex-1 space-y-1">
-            <span className="block font-semibold">{hero.title}</span>
-            <span className="block text-small">Top spot: line {hero.topLine}.</span>
-            <span className="block text-small" style={{ color: "var(--board-text-2)" }}>{ranText(hero.ranAt, now, zone.tz)} Anyone can check the draw.</span>
-          </span>
-        </Link>
-      )}
-      <section className="space-y-4">
-        <h1 className="font-shoulders text-wall-display font-extrabold">Group buys for darts gear.</h1>
-```
-
-and replace
-
-```tsx
-      <p className="text-small text-ink-2">Hosting on Facebook now? Breaks is invite-only for hosts.</p>
-```
-
-with
-
-```tsx
-      <p className="text-small" style={{ color: "var(--board-text-3)" }}>Hosting on Facebook now? Breaks is invite-only for hosts.</p>
-```
-
-In `src/app/landing-copy.ts`, delete
-
-```ts
-
-/** The hero grid's numbers: every numbered line, plus the winning line when it is a bonus line above N. */
-export function heroNumbers(lineCount: number, topLine: number): number[] {
-  const numbers = Array.from({ length: lineCount }, (_, i) => i + 1);
-  return topLine > lineCount ? [...numbers, topLine] : numbers;
-}
-```
-
-(`kitThumbCells` keeps a placed bonus line, which is what `heroNumbers` did). In `src/app/landing-copy.test.ts`, replace `import { heroNumbers, ranText } from "./landing-copy";` with `import { ranText } from "./landing-copy";` and delete
-
-```ts
-
-describe("heroNumbers", () => {
-  it("is every numbered line, plus the winner when it is a bonus line", () => {
-    expect(heroNumbers(4, 2)).toEqual([1, 2, 3, 4]);
-    expect(heroNumbers(4, 5)).toEqual([1, 2, 3, 4, 5]);
-  });
-});
-```
-
-- [ ] **Step 8: The host profile shows the record under a board in the host's kit**
+- [ ] **Step 6: The host profile shows the record under a board in the host's kit**
 
 In `src/app/h/[handle]/page.tsx`, replace
 
@@ -9027,12 +10280,16 @@ with
 import { hostRecordLines, hostRecordText, pastText } from "@/components/break/frame-copy";
 import { KitThumb } from "@/components/kit-thumb";
 import { kitThumbCells } from "@/components/kit-thumb-model";
+import { wallViewport } from "@/app/wall";
 ```
 
 below `type Props = { params: Promise<{ handle: string }> };` add
 
 ```tsx
-/** The decorative board beside the record: sixteen open cells in the host's kit (recorded ruling 20: no break is named for it). */
+/** A wall route from this task on: its browser chrome follows the page (Mosaic §8, recorded ruling 12). */
+export const viewport = wallViewport;
+
+/** The decorative board over the record: sixteen open cells in the host's kit (recorded ruling 20: no break is named for it). */
 const KIT_BOARD = kitThumbCells(Array.from({ length: 16 }, (_, i) => ({ number: i + 1, state: "open" as const, bonus: false })));
 ```
 
@@ -9084,6 +10341,18 @@ with
 replace
 
 ```tsx
+          <h1 className="font-condensed text-title font-semibold">@{profile.handle}</h1>
+```
+
+with (wall titles are Big Shoulders 800, Mosaic §1.1)
+
+```tsx
+          <h1 className="font-shoulders text-wall-title font-extrabold">@{profile.handle}</h1>
+```
+
+replace
+
+```tsx
           {profile.displayName && profile.displayName !== profile.handle && <p className="text-ink-2">{profile.displayName}</p>}
 ```
 
@@ -9106,7 +10375,8 @@ replace
 with
 
 ```tsx
-      <section aria-label="Record" className="flex items-center gap-4">
+      {/* The record under a board in the host's kit (Mosaic §8): the board first, the record stacked beneath it. */}
+      <section aria-label="Record" className="flex flex-col items-start gap-3">
         <KitThumb cells={KIT_BOARD} kit={profile.kit} heat={0} size={64} />
         <div className="min-w-0 space-y-1">
           {/* Counts only (Mosaic §9): no other state words, no money, no ranking against other hosts. */}
@@ -9142,7 +10412,7 @@ with
       <p className="text-small" style={{ color: "var(--board-text-3)" }} data-testid="profile-past">{pastText(profile.pastCount)}</p>
 ```
 
-- [ ] **Step 9: The ledger header gains the host record**
+- [ ] **Step 7: The ledger header gains the host record**
 
 In `src/components/ledger/ledger-sheet.tsx`, in `LedgerSheetProps` replace
 
@@ -9192,42 +10462,7 @@ with
             />
 ```
 
-- [ ] **Step 10: Pin the cards, the chips, the hero and the record in the page spec (updates `e2e/pages.spec.ts`)**
-
-In the test `"the feed lists an open break and never a draft; the host filter and sorts live in the URL"`, replace
-
-```ts
-  await expect(card).toContainText("4 of 4 left");
-```
-
-with
-
-```ts
-  await expect(card).toContainText("4 to go");
-  // The kit view only: a framed thumbnail with no flight on any cell.
-  await expect(card.getByTestId("thumb")).toBeVisible();
-  await expect(card.locator("[data-flight]")).toHaveCount(0);
-```
-
-and replace
-
-```ts
-  await visitor.getByRole("radio", { name: "Almost full" }).click();
-  await expect(visitor).toHaveURL(new RegExp(`/breaks\\?sort=almost&host=${handle}$`));
-  await expect(visitor.getByRole("radio", { name: "Almost full" })).toHaveAttribute("aria-checked", "true");
-```
-
-with
-
-```ts
-  await expect(visitor.getByRole("radio", { name: "Filling fast" })).toHaveCount(0);
-  await visitor.getByRole("radio", { name: "Closest to full" }).click();
-  await expect(visitor).toHaveURL(new RegExp(`/breaks\\?sort=almost&host=${handle}$`));
-  await expect(visitor.getByRole("radio", { name: "Closest to full" })).toHaveAttribute("aria-checked", "true");
-  // A link from before Mosaic still opens: the retired sort falls back to Newest.
-  await visitor.goto(`/breaks?sort=filling&host=${handle}`);
-  await expect(visitor.getByRole("radio", { name: "Newest" })).toHaveAttribute("aria-checked", "true");
-```
+- [ ] **Step 8: Pin the record in the specs (updates `e2e/pages.spec.ts` and `e2e/layout.spec.ts`)**
 
 In the test `"a host profile shows public figures, the open breaks and a past count, and nothing private"`, replace
 
@@ -9253,9 +10488,6 @@ In the test `"the landing page leads with the newest ran break and links to the 
 with
 
 ```ts
-  // The kit board with its bull: one won cell, ringed as the top spot, and no flight anywhere.
-  await expect(hero.locator('[data-tone="won"][data-place="1"]')).toHaveCount(1);
-  await expect(hero.locator("[data-flight]")).toHaveCount(0);
   await visitor.getByTestId("browse-breaks").click();
   await expect(visitor).toHaveURL(/\/breaks$/);
   // The host record counts the run and its verified draw.
@@ -9264,40 +10496,57 @@ with
 });
 ```
 
-- [ ] **Step 11: Opus review of the host record**
+In `e2e/layout.spec.ts`, in the theme-color test, replace
 
-Request the Opus review of `hostTrust`, `hostProfile`, `hostRecordText`, `hostRecordLines` and the profile and ledger markup before the gates. The reviewer checks: the record is counts only (no prize totals, money raised, win counts, rankings, "New host" or any other state word in the sentence); `drawsVerified` counts active draws of drawn breaks only, so it can never exceed `breaksRun`; a voided draw counts neither as run nor as verified; the stall line shows from 3 days and is never hidden by a good record; every subquery binds the host id as a parameter (no bare `id`); `HostProfile`'s keys are exactly the nine the test lists (nothing private: no email, payment name, payment handles); the thumbnails select no owner. Fix what it finds in this task; record anything that needs a ruling.
+```ts
+  const wall: string[] = [url, "/", "/breaks"];
+```
 
-- [ ] **Step 12: Optional: check by hand**
+with
 
-If you have a browser tool: in `pnpm dev`, open `/breaks`, `/` and a host profile at 390 wide and at 1024; check the kit frame sits clear of the next card, the lamp reads behind the thumbnail, and the hero's bulls show their rings. Stop the server afterwards (port rule). Report the check as not performed if you cannot do it.
+```ts
+  const wall: string[] = [url, "/", "/breaks", `/h/lh${run}`];
+```
 
-- [ ] **Step 13: Run every gate**
+- [ ] **Step 9: Optional: check by hand**
 
-Run (sandbox off): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm test:e2e`
-Expected: all green. `pnpm test:concurrency` is not needed: no command changes lines or draws. Journey 2 keys on `break-card` by title, which still holds.
+If you have a browser tool: in `pnpm dev`, open a host profile at 390 wide and at 1024; check the record sits under the small kit board, the cards are framed in the host's kit, and the ledger header (as the host, on a break page) shows the record under the paid count. Stop the server afterwards (port rule). Report the check as not performed if you cannot do it.
 
-- [ ] **Step 14: Commit**
+- [ ] **Step 10: Run every gate**
+
+Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm test:e2e`
+Expected: all green. `pnpm test:concurrency` is not needed: no command changes lines or draws. The axe test in `e2e/layout.spec.ts` now covers `/h/{handle}` on the wall: if it reports a contrast failure on an element drawn straight on the wall, give that element `color: var(--board-text-2)` (one round, recorded ruling 8); an element inside a paper card keeps its ink.
+
+- [ ] **Step 11: Commit**
 
 ```bash
-git add src/components/kit-thumb-model.ts src/components/kit-thumb.tsx src/components/kit-thumb.test.ts src/components/break-card.tsx src/app/breaks src/app/page.tsx src/app/landing-copy.ts src/app/landing-copy.test.ts src/domain/breaks/queries.ts src/domain/breaks/queries.test.ts src/domain/breaks/page-view.ts src/components/break/frame-copy.ts src/components/break/frame-copy.test.ts "src/app/h/[handle]/page.tsx" src/components/ledger/ledger-sheet.tsx "src/app/b/[id]/page.tsx" e2e/pages.spec.ts
-git commit -m "feat(feed): kit-framed cards, Closest to full, the kit hero and the host record"
+git add src/domain/breaks/queries.ts src/domain/breaks/queries.test.ts src/domain/breaks/page-view.ts src/components/break/frame-copy.ts src/components/break/frame-copy.test.ts "src/app/h/[handle]/page.tsx" src/components/ledger/ledger-sheet.tsx "src/app/b/[id]/page.tsx" e2e/pages.spec.ts e2e/layout.spec.ts
+git commit -m "feat(host): the host record under a kit board on the profile and in the ledger header"
 ```
 
 ---
 
 ### Task 16: `/account` flight and kit pickers, `/host/new` nudge, "This is your flight" (model: Sonnet, Opus review)
 
+> **Reviewer: Opus** (a controller note: the controller dispatches this review after the implementer reports; the implementer lists this focus in its report). Focus:
+> - **(a)** No `aria-label` carries a flight name, and the line shows only the viewer's own stored flight.
+> - **(b)** The line's condition matches spec §8: `flight_chosen_at` is null and this is the first claim in this break, with nothing stored.
+> - **(c)** No copy near a kit uses a betting word ("back", "favourite", "pick your side") or ties a kit to results.
+> - **(d)** `/account` stays paper.
+> - **(e)** `saveKit` reaches `updateHostKit`, which enforces the host or admin role (recorded ruling 31).
+>
+> The implementer fixes the findings once; anything left is recorded (Plan B rule).
+
 Spec §8 "`/account`" and the break-page paragraph on "This is your flight"; §4 "Default flight" and "The host kit"; §3 "Flights and kits are a fixed free set"; §13 "Hosts may share a kit". `/account` stays paper.
 
 **"Your flight":**
 - The picker is one radio grid of the 32 flights: eight columns (the dark tier's three colours, then the light tier's five) by four rows of shapes, each 44.75 px at 390, the current one ringed.
 - Above it sit one 88 px preview cell and a row of seven 44 px cells (open, taken, yours, yours sent, paid, yours paid, won), all drawn in the picked flight.
-- Saving calls `updateFlight` (Task 4), which sets `flight_chosen_at`.
+- Saving calls `updateFlight` (Task 4b), which sets `flight_chosen_at`.
 
 **"Your kit"** (hosts and admins only):
 - Two radio groups (dark three, light five) and a framed four-cell board preview in the picked kit.
-- Saving calls `updateHostKit` (Task 4).
+- Saving calls `updateHostKit` (Task 4b).
 
 **The `/host/new` nudge:** it shows while the host is on the default kit (both kit columns null). No copy ties a kit to results or uses a betting word.
 
@@ -9319,11 +10568,12 @@ Condition (b) needs no stored flag: a second claim in the same break always find
 
 **Interfaces:**
 - Consumes:
-  - From Task 4: `updateFlight` (`@/domain/users/commands`) and `updateHostKit` (`@/domain/breaks/commands`); `parseFlight`/`parseKit` (`src/app/account/parse.ts`); the columns `users.flightColour`, `users.flightShape`, `users.flightChosenAt`, `hostProfiles.kitDark` and `hostProfiles.kitLight`.
+  - From Task 4b: `updateFlight` (`@/domain/users/commands`) and `updateHostKit` (`@/domain/breaks/commands`); `parseFlight`/`parseKit` (`src/app/account/parse.ts`). From Task 4a: the columns `users.flightColour`, `users.flightShape`, `users.flightChosenAt`, `hostProfiles.kitDark` and `hostProfiles.kitLight`.
   - From Task 2: `flightOf`, `kitFor`, `DEFAULT_KIT`, `DARK_COLOURS`, `LIGHT_COLOURS`, `FLIGHT_COLOURS`, `FLIGHT_SHAPES`, `Flight`, `Kit`.
   - From Task 7: `Cell` with `flight` and `place`.
-  - From Task 11: `FlightGlyph`.
-  - From Task 12: `ResultCell`.
+  - From Task 8: `boardView`, the `BreakInteractiveProps` order and the break page's `legendFlight`.
+  - From Task 11b: `FlightGlyph`.
+  - From Task 12a: `ResultCell`.
 - Produces:
   - `src/domain/users/queries.ts`: `Account` gains `flight: Flight; flightChosen: boolean; kit: Kit; kitChosen: boolean`; `viewerFlightOf(tx, userId): Promise<{ flight: Flight; chosen: boolean } | null>`.
   - `src/domain/breaks/queries.ts`: `hostKit(tx, hostId): Promise<{ kit: Kit; chosen: boolean }>`.
@@ -9389,7 +10639,7 @@ describe("hostKit", () => {
 });
 ```
 
-(Use the file's existing `withTx` and `makeUser` imports; add them if it has none, from `../../../tests/helpers/db` and `../../../tests/helpers/fixtures`.)
+(`src/domain/breaks/queries.test.ts` already imports `withTx` from `../../../tests/helpers/db` and `makeUser` from `../../../tests/helpers/fixtures`; use those imports.)
 
 In `src/domain/breaks/page-view.test.ts`, in the test "gives the ledger to the host only, and the viewer's unpaid count across breaks", after `expect(asBuyer).toMatchObject({ globalUnpaid: 3, ledger: [] });` add:
 
@@ -9437,8 +10687,8 @@ it("previews a kit in the kit view: no flight on any cell", () => {
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `pnpm test src/domain/users/queries.test.ts src/domain/breaks/queries.test.ts src/domain/breaks/page-view.test.ts src/app/account/preview-cells.test.ts`
-Expected: FAIL. `accountOf` has no `flight` or `kit`; `viewerFlightOf`, `hostKit` and `./preview-cells` do not exist; `viewerFlight` is undefined. (Sandbox off: the query tests use `breaks_test`.)
+Run (sandbox off: the query tests use `breaks_test`): `pnpm test src/domain/users/queries.test.ts src/domain/breaks/queries.test.ts src/domain/breaks/page-view.test.ts src/app/account/preview-cells.test.ts`
+Expected: FAIL. `accountOf` has no `flight` or `kit`; `viewerFlightOf`, `hostKit` and `./preview-cells` do not exist; `viewerFlight` is undefined.
 
 - [ ] **Step 3: Write the queries**
 
@@ -9540,7 +10790,7 @@ export const KIT_PREVIEW: ResultCell[] = [cell(1, {}), cell(2, { state: "taken" 
 
 - [ ] **Step 5: Run them to see them pass**
 
-Run: `pnpm test src/domain/users/queries.test.ts src/domain/breaks/queries.test.ts src/domain/breaks/page-view.test.ts src/app/account/preview-cells.test.ts`
+Run (sandbox off): `pnpm test src/domain/users/queries.test.ts src/domain/breaks/queries.test.ts src/domain/breaks/page-view.test.ts src/app/account/preview-cells.test.ts`
 Expected: PASS (sandbox off).
 
 - [ ] **Step 6: Write the actions and the two pickers**
@@ -9651,7 +10901,7 @@ import { KIT_PREVIEW } from "./preview-cells";
 /** The surround (§4): 1 px steel, the 6 px numbers ring, 4 px kit dark, a 1 px light pinstripe; spread, never a border. */
 const SURROUND = "0 0 0 1px var(--board-steel), 0 0 0 7px var(--board-ring), 0 0 0 11px var(--kit-dark), 0 0 0 12px var(--kit-light)";
 
-/** The form fields parseKit reads (Task 4): "kitDark" and "kitLight" (recorded ruling 9). */
+/** The form fields parseKit reads (Task 4b): "kitDark" and "kitLight" (recorded ruling 9). */
 function ColourGroup({ legend, name, options, value, onChange }: { legend: string; name: "kitDark" | "kitLight"; options: readonly FlightColour[]; value: FlightColour; onChange: (c: FlightColour) => void }) {
   return (
     <fieldset className="space-y-2">
@@ -9822,7 +11072,19 @@ In `src/app/b/[id]/page.tsx`:
 
 1. Change the destructuring to `const { page, trust, globalUnpaid, top, ledger, viewerFlight } = view;`.
 
-2. After `boardView={boardView}` (Task 8) add:
+2. The legend's flight falls back to the viewer's stored flight, so a host or admin with no line here sees their own colour, not the kit's (spec §5: "paid has no single colour, so its mini cell is in the viewer's own colour"; recorded ruling 20). Replace Task 8's
+
+```tsx
+  const legendFlight = grid.cells.find((c) => c.mine && c.flight)?.flight ?? null;
+```
+
+with
+
+```tsx
+  const legendFlight = grid.cells.find((c) => c.mine && c.flight)?.flight ?? viewerFlight?.flight ?? null;
+```
+
+3. After `boardView={boardView}` (Task 8) add:
 
 ```tsx
         myFlight={viewerFlight?.flight ?? null}
@@ -9895,24 +11157,13 @@ test("a host on the default kit is nudged from /host/new and picks a kit in /acc
 
 - [ ] **Step 10: Run every gate**
 
-Run: `pnpm exec tsc --noEmit && pnpm lint && pnpm test`
-Expected: all green (sandbox off).
+Run (sandbox off): `pnpm exec tsc --noEmit && pnpm lint && pnpm test`
+Expected: all green.
 
-Run: `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e`
-Expected: all green (sandbox off, `breaks_e2e`). The two new tests pass. The existing `/account` test still edits the names, because the profile form is unchanged and its status line stays empty until it saves. The layout spec's axe pass over `/account` covers the pickers: each radio is named by its content, and the checked state is native.
+Run (sandbox off, 10-minute timeout): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm test:e2e`
+Expected: all green on `breaks_e2e`. The two new tests pass. If the axe test reports a violation on the pickers, fix it in this task (one round, recorded ruling 8) and record anything left. The existing `/account` test still edits the names, because the profile form is unchanged and its status line stays empty until it saves. The layout spec's axe pass over `/account` covers the pickers: each radio is named by its content, and the checked state is native.
 
-- [ ] **Step 11: Ask for the Opus review**
-
-This task is Sonnet with an Opus review (task map). Hand the diff to an Opus reviewer with this focus:
-- **(a)** No `aria-label` carries a flight name, and the line shows only the viewer's own stored flight.
-- **(b)** The line's condition matches spec §8: `flight_chosen_at` is null and this is the first claim in this break, with nothing stored.
-- **(c)** No copy near a kit uses a betting word ("back", "favourite", "pick your side") or ties a kit to results.
-- **(d)** `/account` stays paper.
-- **(e)** `saveKit` reaches `updateHostKit`, which enforces the host role.
-
-Fix the findings once; record anything left (Plan B rule).
-
-- [ ] **Step 12: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add src/domain/users src/domain/breaks src/app/account src/app/host/new/page.tsx src/components/break "src/app/b/[id]/page.tsx" e2e/pages.spec.ts
@@ -9923,7 +11174,9 @@ git commit -m "feat(account): flight and kit pickers, the default-kit nudge, and
 
 ### Task 17: Copy audit pass (model: Sonnet, Opus review)
 
-Mosaic §3 and §12 task 17, the Plan C Global Constraints copy line, and the Plan B deferred finding "Copy-audit rule catches a state word only directly after `>`; widen if a miss slips through". The audit learns to read copy rather than code: the text of string literals and of JSX between tags, with comments removed and `${…}` blanked, so identifiers such as `heatStep`, `HeatStep` and the domain's `filling` sort key never match. On that copy it bans the heat words (hot, heat, warm, fire, cold, on fire, filling fast), streaks and levels, winnings, win rates and "You won", "lucky colour", caps chips and caps words, betting words near a kit ("back", "favourite", "pick your side"), the retired counts and sorts ("19 of 50 left", "of N open", "Almost full", "You hold"), "his", and state words anywhere in JSX text. A small allowlist, each entry with its reason, keeps the two known exceptions. Then one sweep fixes what the rules find; anything that needs a design decision is recorded, not argued (recorded ruling 8).
+> **Reviewer: Opus** (a controller note: the controller dispatches this review after the implementer reports; the implementer lists this focus in its report). Focus: the new rules, the allowlist and the sweep. The reviewer checks the rules for holes (copy in `aria-label` and `alt` strings is a literal, so it is read; copy built by concatenation with `+` is read piece by piece; a JSX expression `{"…"}` is a literal); that no rule reads identifiers or comments; that every `ALLOW` entry is narrow (a path and a text pattern) and carries its reason; and that the sweep changed copy only, never a test id, a status value or a URL. The reviewer judges the sweep by the list Step 2 printed. The implementer fixes the findings once; anything left is recorded (Plan B rule).
+
+Mosaic §3 and §12 task 17, the Plan C Global Constraints copy line, and the Plan B deferred finding "Copy-audit rule catches a state word only directly after `>`; widen if a miss slips through". The audit learns to read copy rather than code: the text of string literals and of JSX between tags, with comments removed and `${…}` blanked, so identifiers such as `heatStep`, `HeatStep` and the domain's `filling` sort key never match. On that copy it bans the heat words (hot, heat, warm, fire, cold, on fire, filling fast), streaks and levels, winnings, win rates and "You won", "lucky colour", caps chips and caps words, betting words near a kit ("back", "favourite", "pick your side"), the retired counts and sorts ("19 of 50 left", "of N open", "Almost full", "You hold"), "his", and state words anywhere in JSX text. A small allowlist, each entry with its reason, keeps the four known exceptions (recorded ruling 28): the community's caps idiom in share text, a Unicode normalisation form, an `Intl` locale tag and two algorithm names on the draw explainer. Then one sweep fixes what the rules find; anything that needs a design decision is recorded, not argued (recorded ruling 8).
 
 **Files:**
 - Modify: `src/lib/copy-audit.test.ts`
@@ -9931,7 +11184,7 @@ Mosaic §3 and §12 task 17, the Plan C Global Constraints copy line, and the Pl
 - Modify or create: `docs/superpowers/plans/2026-10-14-plan-c-deferred-findings.md` (the sweep's record)
 
 **Interfaces:**
-- Consumes: the copy written by Tasks 10, 13, 15 and 16; `toGoText` (Task 10) and `statusWord` for the sweep's replacements.
+- Consumes: the copy written by Tasks 10, 13, 15a, 15b and 16; `toGoText` (Task 10) and `statusWord` for the sweep's replacements.
 - Produces (test-local): `type Seg = { path; kind: "literal" | "jsx"; text }`, `segments`, `uiSegments`, `shown`, `ALLOW`, `copyHits(re, list?)`, which reports `path: snippet` so a failure says what to fix.
 
 - [ ] **Step 1: Write the new rules**
@@ -9972,8 +11225,11 @@ const shown = segments.filter((g) => g.path.endsWith(".tsx") || COPY_MODULE.test
  * copy is worth more than an allowlist that grows.
  */
 const ALLOW: { path: RegExp; text: RegExp; why: string }[] = [
-  { path: /^src\/lib\/share-text\.ts$/, text: /CLOSED n RAN/, why: "the community idiom quoted in share text, the one caps exception (Plan B Global Constraints)" },
-  { path: /^src\/components\/handle-field\.tsx$/, text: /^NFKC$/, why: "a Unicode normalisation form passed to String.normalize, not copy" },
+  // Every share-text state line opens with the community's caps idiom: "CLOSED n RAN", and "CLOSED." before the draw lines.
+  { path: /^src\/lib\/share-text\.ts$/, text: /^CLOSED\b/, why: "the community idiom quoted in share text, the one caps exception (Plan B Global Constraints)" },
+  { path: /^src\/components\/handle-field-copy\.ts$/, text: /^NFKC$/, why: "a Unicode normalisation form passed to String.normalize, not copy" },
+  { path: /^src\/app\/landing-copy\.ts$/, text: /^en-US$/, why: "an Intl locale tag passed to a date formatter, not copy" },
+  { path: /^src\/app\/legal\/draw\/page\.tsx$/, text: /\b(SHA-256|HMAC)\b/, why: "algorithm names on the draw explainer, spelled as their standards spell them" },
 ];
 const allowed = (g: Seg) => ALLOW.some((a) => a.path.test(g.path) && a.text.test(g.text));
 const copyHits = (re: RegExp, list: Seg[] = segments) =>
@@ -10033,7 +11289,7 @@ describe("copy audit, Mosaic (spec §3, Plan C Global Constraints)", () => {
 - [ ] **Step 2: Run the audit**
 
 Run: `pnpm test src/lib/copy-audit.test.ts`
-Expected: the existing rules and the guard test pass; each new rule passes or fails with a list of `path: snippet` entries, which is Step 3's sweep list. Likely entries at the time of writing: `src/app/dev/components/page.tsx` (`Lines, 7 of 50 open` and `Lines, 2 of 6 open`, unless Task 8 relabelled them), and `leftText` in `src/components/break/frame-copy.ts` if Task 10 kept it. If the guard test fails, the parser is wrong: fix `SEG` or `stripComments` before sweeping.
+Expected: the existing rules and the guard test pass; each new rule passes or fails with a list of `path: snippet` entries, which is Step 3's sweep list. The failure is open by design for an audit task: copy the printed list into the report, because the reviewer judges the sweep by it. Likely entries at the time of writing: `src/app/dev/components/page.tsx` (`Lines, 7 of 50 open` and `Lines, 2 of 6 open`, unless Task 8 relabelled them), and `leftText` in `src/components/break/frame-copy.ts` if Task 10 kept it. If the guard test fails, the parser is wrong: fix `SEG` or `stripComments` before sweeping.
 
 - [ ] **Step 3: Sweep what the rules found (one round)**
 
@@ -10066,16 +11322,12 @@ Re-run `pnpm test src/lib/copy-audit.test.ts` once. If an entry would need a des
 Run: `pnpm test src/lib/copy-audit.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Opus review**
-
-Request the Opus review of the new rules, the allowlist and the sweep. The reviewer checks the rules for holes (copy in `aria-label` and `alt` strings is a literal, so it is read; copy built by concatenation with `+` is read piece by piece; a JSX expression `{"…"}` is a literal); that no rule reads identifiers or comments; that every `ALLOW` entry is narrow (a path and a text pattern) and carries its reason; and that the sweep changed copy only, never a test id, a status value or a URL. Fix what it finds in this task.
-
-- [ ] **Step 6: Run every gate**
+- [ ] **Step 5: Run every gate**
 
 Run (sandbox off): `/usr/sbin/lsof -ti tcp:3000 -sTCP:LISTEN | xargs -r kill; pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm test:e2e`
 Expected: all green. If the sweep changed copy an e2e spec keys on (`e2e/journey-1.spec.ts`, `journey-2.spec.ts`, `layout.spec.ts`, `pages.spec.ts`), update that spec in this commit and say so in the report.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/lib/copy-audit.test.ts src docs/superpowers/plans/2026-10-14-plan-c-deferred-findings.md e2e
@@ -10099,7 +11351,7 @@ Mosaic §8 (`/me`) and §9 (the plain history), and two Plan B deferred findings
 - Modify or create: `docs/superpowers/plans/2026-10-14-plan-c-deferred-findings.md` (the render-test record)
 
 **Interfaces:**
-- Consumes: `flightOf`, `Flight` (`src/domain/flights.ts`, Task 2); `users.flightColour`, `users.flightShape` (Task 4); `CellData` gaining `flight: Flight | null` and `place: 1 | 2 | 3 | null`, and Cell (`px`) drawing a flight and setting `data-flight="<colour>-<shape>"` on every cell that carries one, display-only cells included (Task 7); the `flightOf` import in `src/domain/users/queries.ts` (Task 16); `myLines`, `MyBreak` (Plan B); `StatusPill`, `AppRouterContext`; `joinAnd`.
+- Consumes: `flightOf`, `Flight` (`src/domain/flights.ts`, Task 2); `users.flightColour`, `users.flightShape` (Task 4a); `CellData` gaining `flight: Flight | null` and `place: 1 | 2 | 3 | null`, and Cell (`px`) drawing a flight and setting `data-flight="<colour>-<shape>"` on every cell that carries one, display-only cells included (Task 7); the `flightOf` import in `src/domain/users/queries.ts` (Task 16); `myLines`, `MyBreak` (Plan B); `StatusPill`, `AppRouterContext`; `joinAnd`.
 - Produces:
   - `src/domain/users/queries.ts`: `myFlight(tx, userId: string): Promise<Flight>`.
   - `src/components/me/me-copy.ts`: `unpaidNote(numbers: readonly number[], hostName: string): string`; `MyBreakCardProps.unpaidNote: string | null`.
@@ -10281,7 +11533,7 @@ describe("myFlight", () => {
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `pnpm test src/components/me src/app/me src/domain/users/queries.test.ts`
+Run (sandbox off: `queries.test.ts` uses `breaks_test`): `pnpm test src/components/me src/app/me src/domain/users/queries.test.ts`
 Expected: FAIL: `unpaidNote`, `myFlight` and `./my-history-row` do not exist; `toCardProps` has no flight argument, its cells carry no `flight` or `place`, and its props have no `unpaidNote`; the card has no steel-wire wrapper and no `my-unpaid` note.
 
 - [ ] **Step 3: Write the copy, the props and the query**
@@ -10504,7 +11756,7 @@ with
 
 - [ ] **Step 6: Run the tests to see them pass**
 
-Run: `pnpm test src/components/me src/app/me src/domain/users/queries.test.ts`
+Run (sandbox off): `pnpm test src/components/me src/app/me src/domain/users/queries.test.ts`
 Expected: PASS.
 
 - [ ] **Step 7: Pin your flight on `/me` in the page spec (creates `e2e/db.ts`, updates `e2e/pages.spec.ts`)**
@@ -10532,16 +11784,16 @@ export async function setFlight(handle: string, f: Flight): Promise<void> {
 }
 ```
 
-In `e2e/pages.spec.ts`, replace
+In `e2e/pages.spec.ts`, replace the helpers import as Task 16 left it
 
 ```ts
-import { composeBreak, loginAs } from "./helpers";
+import { composeBreak, gotoReady, loginAs } from "./helpers";
 ```
 
 with
 
 ```ts
-import { composeBreak, loginAs } from "./helpers";
+import { composeBreak, gotoReady, loginAs } from "./helpers";
 import { setFlight } from "./db";
 ```
 
@@ -10624,7 +11876,7 @@ Mosaic §1.1 "Binding text elsewhere that this design amends" and §12 task 19. 
 - Modify or create: `docs/superpowers/plans/2026-10-14-plan-c-deferred-findings.md`
 
 **Interfaces:**
-- Consumes: the Plan C Global Constraints (the amended wording), Mosaic §1.1, §4, §9, §10; `scripts/verify-draws.ts` (Task 4), run with `DATABASE_URL` set to the database it backfills; migration `0004_flights_kits` (Task 4).
+- Consumes: the Plan C Global Constraints (the amended wording), Mosaic §1.1, §4, §9, §10; `scripts/verify-draws.ts` (Task 4a), run with `DATABASE_URL` set to the database it backfills; migration `0004_flights_kits` (Task 4a).
 - Produces: no code. Every amended line ends "(Amended by Plan C, Mosaic spec §1.1.)" (recorded ruling 30).
 
 - [ ] **Step 1: Amend Plan B's Global Constraints**
@@ -10676,7 +11928,7 @@ Fonts. Replace
 with
 
 ```markdown
-- Fonts: `next/font/google` Barlow (400, 500, 600), Barlow Condensed (600) and Big Shoulders Display (800, wall routes only): five files, fetched at build time. If the build fails or hangs fetching fonts.googleapis.com or fonts.gstatic.com (symptom: the build sits in, or errors from, `next-font-loader`; in CI the same symptom), stop and report BLOCKED: fonts; the rule applies to all three families. Do not vendor fonts or change `fonts.ts` (Plan C Task 1 added Big Shoulders Display there). (Amended by Plan C, Mosaic spec §1.1.)
+- Fonts: `next/font/google` Barlow (400, 500, 600), Barlow Condensed (600) and Big Shoulders (one variable file with the `opsz` axis, used at weight 800 with the Display cut pinned, not preloaded): five files, fetched at build time. If the build fails or hangs fetching fonts.googleapis.com or fonts.gstatic.com (symptom: the build sits in, or errors from, `next-font-loader`; in CI the same symptom), stop and report BLOCKED: fonts; the rule applies to all three families. Do not vendor fonts or change `fonts.ts` (Plan C Task 1 added Big Shoulders there). (Amended by Plan C, Mosaic spec §1.1.)
 ```
 
 Feed thumbnails and the link preview. Replace
@@ -10750,7 +12002,7 @@ with
 > and their uses on paper surfaces. The board has new tokens with new names (`--board-*`, `--lamp-0` … `--lamp-4`,
 > `--kit-dark`, `--kit-light`). On the board, mine is the inner ring, green marks only the 2nd and 3rd place rings,
 > red marks the top-spot ring and the host-view overdue edge, and flight faces are never red or green. Wall routes
-> add Big Shoulders Display 800 for titles, the caller banner, the checkout count and the result display. Motion
+> add Big Shoulders 800 (the Display cut, pinned) for titles, the caller banner, the checkout count and the result display. Motion
 > below is replaced in full by Mosaic §7. "No caps labels" stands.
 
 ### Colour
@@ -10877,7 +12129,7 @@ with
 
 ```markdown
 - Tokens live in `src/app/tokens.css` (raw colours on `:root`, mapped through Tailwind v4 `@theme inline`); there is no `tailwind.config`. Use `bg-paper`, `text-ink-2`, `border-wire-strong`, `font-condensed`, `text-title` and friends, never Tailwind's default palette. Paper surfaces (the ledger, sheets, forms, `/host`, `/me`, `/account`) keep the first design's tokens. Wall routes (`/b/{id}`, `/b/{id}/result`, `/breaks`, `/`, `/h/{handle}`) use the Mosaic board tokens, all new names: `--board-wall`, `--board-wall-2`, `--board-cream`, `--board-cream-2`, `--board-ink`, `--board-ink-2`, `--board-steel`, `--board-ring`, `--board-text`, `--board-text-2`, `--board-text-3`, the lamp steps `--lamp-0` … `--lamp-4`, and `--kit-dark` / `--kit-light`, set per break from the host's kit. No existing token changed value; `tokens.test.ts` pins every pair. The flight palette, the kits and the heat steps live in `src/domain/flights.ts`; its keys never reorder or rename.
-- Fonts (`src/app/fonts.ts`, `next/font/google`, fetched at build time): Barlow 400, 500 and 600, Barlow Condensed 600 for cell numbers, and Big Shoulders Display 800 for titles, the caller banner, the checkout count and the result display on wall routes: five font files. The link preview reads three static TTFs from disk instead; they are not shipped to browsers. A build that cannot reach Google Fonts is BLOCKED: fonts; do not vendor the files.
+- Fonts (`src/app/fonts.ts`, `next/font/google`, fetched at build time): Barlow 400, 500 and 600, Barlow Condensed 600 for cell numbers, and Big Shoulders (one variable file with the `opsz` axis, weight 800, the Display cut pinned with `font-variation-settings`, not preloaded) for titles, the caller banner, the checkout count and the result display on wall routes: five font files. The link preview reads three static TTFs from disk instead; they are not shipped to browsers. A build that cannot reach Google Fonts is BLOCKED: fonts; do not vendor the files.
 ```
 
 replace
@@ -10947,10 +12199,8 @@ deferred or recorded under the one-round fix-loop rule (recorded ruling 8).
 - Levels, tiers, streaks, trophies and win counts stay out until it lands (Mosaic §9).
 
 ### Smaller items, any plan
-- The domain's `filling` sort and `FeedBreak.paidLastDay` are unused since Task 15 (the chips are Newest and
+- The domain's `filling` sort and `FeedBreak.paidLastDay` are unused since Task 15a (the chips are Newest and
   Closest to full): drop them with their `feed.test.ts` case.
-- `GridPreview` (Task 8) has no caller once Task 15 draws card thumbnails with `KitThumb` and Task 20 rewrites
-  `/dev/components`: drop it, or move the board's own thumbnail onto it.
 
 ## Fix-loop records (one round, then record)
 
@@ -10961,6 +12211,8 @@ deferred or recorded under the one-round fix-loop rule (recorded ruling 8).
 ### Copy audit (Task 17)
 
 ### E2E (Task 20)
+
+## Budget (Mosaic §11, Task 20)
 
 ## Open bug reports (not yet reproduced)
 
@@ -10995,9 +12247,9 @@ git commit -m "docs: amend Plan B constraints for Mosaic, mark superseded sectio
 
 ---
 
-### Task 20: E2E: participant and stranger views, `/account`, axe, journey 2, fixtures (model: Sonnet)
+### Task 20: E2E: participant and stranger views, `/account`, axe, journey 2, fixtures, the budget (model: Opus)
 
-Mosaic §12 task 20, Review Focus 1, 2 and 5, and the Plan C Global Constraints e2e privacy assertion: no cell rendered for an anonymous or non-holder viewer carries `data-flight` or a `--fc` custom property, and no `aria-label` ever contains a handle or a flight name. A new `e2e/mosaic.spec.ts` checks the stranger, non-holder, holder and host views of one break whose buyers wear flights from both tiers (Yellow kite, Blue standard) under a host kit (Plum with Lime); the first claim as a stranger, where only the two claimed cells may carry an animation (`data-moment`) and nothing animates on load (Review Focus 2); the `/account` flight and kit pickers reaching the board; and the 50-line density check on `/dev/components` at 390 × 664 (Review Focus 5). The axe test adds the result page (kit view and member view) and the host's break view with an overdue line. Journey 2 learns the new copy and the result page. The unit fixtures can give a user a flight and a host a kit. `/dev/components` shows every Mosaic §5 state.
+Mosaic §12 task 20, Review Focus 1, 2 and 5, and the Plan C Global Constraints e2e privacy assertion: no cell rendered for an anonymous or non-holder viewer carries `data-flight` or a `--fc` custom property, and no `aria-label` ever contains a handle or a flight name. A new `e2e/mosaic.spec.ts` checks the stranger, non-holder, holder and host views of one break whose buyers wear flights from both tiers (Yellow kite, Blue standard) under a host kit (Plum with Lime); the first claim as a stranger, where only the two claimed cells may carry an animation (`data-moment`) and nothing animates on load (Review Focus 2); the `/account` flight and kit pickers reaching the board; and the 50-line density check on `/dev/components` at 390 × 664 (Review Focus 5). The axe test adds the result page (kit view and member view) and the host's break view with an overdue line. Journey 2 learns the new copy and the result page. The unit fixtures can give a user a flight and a host a kit. `/dev/components` shows every Mosaic §5 state. Last, the spec's §11 budget is measured against the build this plan started from: at most 6 KB more CSS and 2 KB more JS, gzip (recorded ruling 36). The task runs on Opus: privacy e2e, motion timing through a `MutationObserver`, fixture changes and a fix loop that may touch app code.
 
 **Files:**
 - Create: `e2e/mosaic.spec.ts`
@@ -11008,7 +12260,7 @@ Mosaic §12 task 20, Review Focus 1, 2 and 5, and the Plan C Global Constraints 
 - Modify: `docs/superpowers/plans/2026-10-14-plan-c-deferred-findings.md` (axe and e2e records, if any)
 
 **Interfaces:**
-- Consumes: `FLIGHT_COLOURS`, `FLIGHT_SHAPES`, `Flight`, `Kit` (Task 2); `users.flightColour`, `users.flightShape`, `hostProfiles.kitDark`, `hostProfiles.kitLight` (Task 4); `GridCell.flight` (Task 5); `CellData.flight` and `CellData.place`, Cell sizing its marks from its own box, the accessible names of Mosaic §5 ("Line 23, top spot", "Line 3, taken, overdue") (Task 7); `Grid` taking `view`, `kit: Kit` and `heat: HeatStep`, `BoardLegend({ view, flight, kit })`, test id `board-frame` with `--kit-dark` / `--kit-light` set on it or above it (Task 8); a cell that is playing a moment carries `data-moment="<CellMoment>"` on its `[data-cell]` element (Task 11); `data-won="1|2|3"` on won cells (Task 7); test ids `caller` (Task 11), `reveal-skip`, `reveal-replay` (Task 12); the flight radios carry `flight-<colour>-<shape>` and save with `flight-save`, the kit is two radio groups named by colour with `kit-<dark>-<light>` on the framed preview and saves with `kit-save`, each confirmed by "Saved." (Task 16); `flight-line` in the claim outcome while `flight_chosen_at` is null (Task 16); `setFlight`, `withDb` (Task 18).
+- Consumes: `FLIGHT_COLOURS`, `FLIGHT_SHAPES`, `Flight`, `Kit` (Task 2); `users.flightColour`, `users.flightShape`, `hostProfiles.kitDark`, `hostProfiles.kitLight` (Task 4a); `GridCell.flight` (Task 5); `CellData.flight` and `CellData.place`, Cell sizing its marks from its own box, the accessible names of Mosaic §5 ("Line 23, top spot", "Line 3, taken, overdue") (Task 7); `Grid` taking `view`, `kit: Kit` and `heat: HeatStep`, `BoardLegend({ view, flight, kit })`, test id `board-frame` with `--kit-dark` / `--kit-light` set on it or above it (Task 8); a cell that is playing a moment carries `data-moment="<CellMoment>"` on its `[data-cell]` element (Task 11a); `data-won="1|2|3"` on won cells (Task 7); test ids `caller` (Task 11b), `reveal-skip`, `reveal-replay` (Task 12b); the List view's `ol[aria-label="Lines"]` (from before Plan C); the flight radios carry `flight-<colour>-<shape>` and save with `flight-save`, the kit is two radio groups named by colour with `kit-<dark>-<light>` on the framed preview and saves with `kit-save`, each confirmed by "Saved." (Task 16); `flight-line` in the claim outcome while `flight_chosen_at` is null (Task 16); `setFlight`, `withDb` (Task 18).
 - Produces: `e2e/db.ts`: `setKit(handle: string, k: Kit): Promise<void>`, `ageClaims(breakId: string, numbers: number[], hours: number): Promise<void>`; `makeUser(tx, { …, flight?: Flight; kit?: Kit })`; fixtures `YELLOW_KITE`, `BLUE_STANDARD`, `PLUM_LIME`; `/dev/components` test ids `states-member`, `states-kit`, `won-sizes`, `density`.
 
 - [ ] **Step 1: Give the unit fixtures flights from both tiers and a host kit (failing test first)**
@@ -11036,7 +12288,7 @@ and change its fixtures import to
 import { makeUser, openBreakWithLines, lineRows, assertInvariants, YELLOW_KITE, BLUE_STANDARD, PLUM_LIME } from "./fixtures";
 ```
 
-Run: `pnpm test tests/helpers/fixtures.test.ts`
+Run (sandbox off: the fixtures test uses `breaks_test`): `pnpm test tests/helpers/fixtures.test.ts`
 Expected: FAIL: `YELLOW_KITE`, `BLUE_STANDARD` and `PLUM_LIME` are not exported; `makeUser` takes no `flight` or `kit`.
 
 In `tests/helpers/fixtures.ts`, replace
@@ -11052,7 +12304,7 @@ import { users, breaks, breakItems, breakSecrets, prizes, lines, hostProfiles } 
 import type { Flight, Kit } from "@/domain/flights";
 ```
 
-and replace the whole `makeUser` function (if Task 5 already added a `flight` option, keep one option of that name) with:
+and replace the whole `makeUser` function with:
 
 ```ts
 /** Flights from both ink tiers and a kit other than the default, for privacy and render tests (Mosaic §4, §6). */
@@ -11077,7 +12329,7 @@ export async function makeUser(tx: Tx, opts: { role?: "member" | "host" | "admin
 }
 ```
 
-Run: `pnpm test tests/helpers/fixtures.test.ts`
+Run (sandbox off): `pnpm test tests/helpers/fixtures.test.ts`
 Expected: PASS.
 
 - [ ] **Step 2: Add the e2e database helpers**
@@ -11161,7 +12413,8 @@ const MEMBER: { name: string; cell: CellData; selected?: boolean; struck?: boole
   { name: "Bonus", cell: cell(51, { state: "paid", bonus: true, flight: THEM[4] }) },
   { name: "Won, top spot", cell: cell(23, { state: "paid", flight: THEM[0], place: 1 }) },
   { name: "Won, 2nd", cell: cell(14, { state: "paid", flight: THEM[1], place: 2 }) },
-  { name: "Won, 3rd", cell: cell(31, { state: "paid", mine: true, flight: YOU, place: 3 }) },
+  // Yours and won: named by its place alone, with no yours ring (Mosaic §5, recorded ruling 19).
+  { name: "Won, 3rd, yours", cell: cell(31, { state: "paid", mine: true, flight: YOU, place: 3 }) },
 ];
 /** The kit view (anyone not holding a line, and every public surface): no flight on any cell. */
 const KIT_VIEW: { name: string; cell: CellData }[] = [
@@ -11355,6 +12608,11 @@ test("strangers see the board in the host's kit, holders see the flights, and no
     await expect(page.getByTestId("cell-4")).not.toHaveAttribute("data-flight");
     expect(await badNames(page, holders)).toEqual([]);
   }
+  // The List view is text only (Mosaic §5: "List rows carry handles as text, never glyphs").
+  await alice.getByRole("radio", { name: "List" }).click();
+  const list = alice.getByRole("list", { name: "Lines" });
+  await expect(list).toContainText(`@${aliceHandle}`);
+  await expect(list.locator("svg, [data-flight]")).toHaveCount(0);
 });
 
 test("the first claim as a stranger animates only the claimed cells, and nothing animates on load (Review Focus 2)", async ({ browser }) => {
@@ -11435,16 +12693,21 @@ test("/account: a host picks a kit and a member picks a flight, and the board we
   await expect(member.getByTestId("cell-2")).toHaveAttribute("data-flight", "plum-pear");
 });
 
-test("the 50-line board fits a 390 × 664 phone: eight 44.75 px columns in the gutter, and the small won cell's sizes (Review Focus 5)", async ({ browser }) => {
+test("the 50-line board fits a 390 × 664 phone: eight 44.75 px cells on 1 px wires, the frame in the gutter, and the small won cell's sizes (Review Focus 5)", async ({ browser }) => {
   const page = await newPage(browser, undefined, "member", { width: 390, height: 664 });
   expect((await page.goto("/dev/components"))?.status()).toBe(200);
   const rows = page.getByTestId("density").locator("[data-grid-rows]").first();
   const cols = await rows.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").filter(Boolean).length);
   expect(cols).toBe(8);
+  // Recorded ruling 33: the rows are 365 px (3.5 px into each gutter), eight 44.75 px cells on 1 px wires. The cell keeps
+  // the 44 pt floor, and the pitch (a cell plus its wire) is 45.75.
   const first = await rows.locator(":scope > *").first().boundingBox();
+  const second = await rows.locator(":scope > *").nth(1).boundingBox();
   expect(first).not.toBeNull();
-  expect(first!.width).toBeCloseTo(44.75, 0);
-  // The 12 px frame is spread into the 16 px gutter: nothing scrolls sideways.
+  expect(second).not.toBeNull();
+  expect(first!.width).toBeGreaterThanOrEqual(44);
+  expect(second!.x - first!.x).toBeCloseTo(45.75, 1);
+  // The 12 px frame reaches 15.5 px into the 16 px gutter: nothing scrolls sideways.
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   const top = page.getByTestId("density").getByRole("img", { name: "Line 23, top spot" });
   const sizes = await top.evaluate((el) => {
@@ -11560,7 +12823,7 @@ with
   //    in about 4 s, so Skip would race it (the layout spec's pattern).
 ```
 
-and, in the Skip block Task 12 wrote, replace
+and, in the Skip block Task 12b wrote, replace
 
 ```ts
   await expect(viewer.getByTestId("caller")).toContainText("takes the top spot.");
@@ -11573,7 +12836,7 @@ with
   // The caller copy (Mosaic §7): always the handle, never "You", never the prize.
   await expect(viewer.getByTestId("caller")).toHaveText(/^Line \d+\. @\S+ takes the top spot\.$/);
   await expect(viewer.getByTestId("reveal-replay")).toBeFocused();
-  // Two prizes, two black bulls on the visible board (the aria-hidden deal layer is gone after Skip).
+  // Two prizes, two black bulls on the visible board (the deal layer's chips, aria-hidden, hold no won cell).
   await expect(viewer.locator("[data-won]:visible")).toHaveCount(2);
 ```
 
@@ -11586,7 +12849,38 @@ Expected: PASS. A failure is fixed in this task when the cause is the spec (a se
 
 In `docs/superpowers/plans/2026-10-14-plan-c-deferred-findings.md`, under `### Axe (Task 20)` and `### E2E (Task 20)`, add one line per finding left after Step 7: `- where: what failed, and the decision it needs`. If nothing is left, write `- None.` under each.
 
-- [ ] **Step 9: Run every gate, the full suite**
+- [ ] **Step 9: Measure the §11 budget against the build this plan started from**
+
+Spec §11: at most 6 KB more CSS and 2 KB more JS than before Plan C, gzip (recorded ruling 36). CSS is every stylesheet the build emits; JS is the first-load JS of the break page (`/b/[id]`), the board's busiest route.
+
+Run (sandbox off; `breaks_e2e` is not touched):
+
+```bash
+cat > "$TMPDIR/budget.mjs" <<'EOF'
+// gzip bytes of a built app: every emitted stylesheet, and the first-load JS of /b/[id] (app-build-manifest.json).
+import { readFileSync, readdirSync } from "node:fs";
+import { gzipSync } from "node:zlib";
+import { join } from "node:path";
+const root = join(process.argv[2], ".next");
+const gz = (f) => gzipSync(readFileSync(join(root, f)), { level: 9 }).length;
+const css = readdirSync(join(root, "static/css")).filter((f) => f.endsWith(".css")).reduce((n, f) => n + gz(`static/css/${f}`), 0);
+const page = JSON.parse(readFileSync(join(root, "app-build-manifest.json"), "utf8")).pages["/b/[id]/page"];
+const js = [...new Set(page.filter((f) => f.endsWith(".js")))].reduce((n, f) => n + gz(f), 0);
+console.log(JSON.stringify({ css, js }));
+EOF
+base="$TMPDIR/plan-c-base"
+git worktree add --detach "$base" "$(git merge-base HEAD main)"
+cp .env.local "$base/.env.local"
+(cd "$base" && pnpm install --frozen-lockfile && pnpm build) > "$TMPDIR/base-build.log" 2>&1
+pnpm build > "$TMPDIR/plan-build.log" 2>&1
+node "$TMPDIR/budget.mjs" "$base"
+node "$TMPDIR/budget.mjs" .
+git worktree remove --force "$base"
+```
+
+Expected: two lines of the form `{"css":<bytes>,"js":<bytes>}`, before and after. The difference must be at most 6144 bytes of CSS and 2048 bytes of JS. Record both lines and the two differences under `## Budget (Mosaic §11, Task 20)` in `docs/superpowers/plans/2026-10-14-plan-c-deferred-findings.md`, as `- before: css <n>, js <n>; after: css <n>, js <n>; +<n> B CSS, +<n> B JS`. If either build fails, or `app-build-manifest.json` or `.next/static/css` is missing, stop and report **BLOCKED: budget** with the log. If a difference is over the limit, fix it when the cause is local (an unused rule, a duplicated keyframe, a client import that belongs on the server), one round; otherwise record the breach with the numbers and report it as DONE_WITH_CONCERNS. Never remove a spec'd behaviour to fit the budget.
+
+- [ ] **Step 10: Run every gate, the full suite**
 
 Run (sandbox off):
 
@@ -11598,7 +12892,7 @@ pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm test:concurrency && pnp
 
 Expected: all green, on a freshly emptied `breaks_e2e`: journey 1, journey 2 (both tests), the layout spec, the page spec and the Mosaic spec; the second Mosaic run passes too (no flake tolerated).
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add e2e tests/helpers/fixtures.ts tests/helpers/fixtures.test.ts src/app/dev/components/page.tsx README.md docs/superpowers/plans/2026-10-14-plan-c-deferred-findings.md
