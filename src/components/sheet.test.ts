@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createElement } from "react";
+import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Sheet } from "./sheet";
 
 const bodyClass = (full: boolean) => {
-  const children = createElement("p", null, "You have lines 1 and 3.");
-  const html = renderToStaticMarkup(createElement(Sheet, { open: true, onClose: () => {}, title: "Pay for your lines", full, children }));
+  const props = { open: true, onClose: () => {}, title: "Pay for your lines", full } as ComponentProps<typeof Sheet>;
+  const html = renderToStaticMarkup(createElement(Sheet, props, createElement("p", null, "You have lines 1 and 3.")));
   const m = html.match(/<div class="([^"]*overflow-y-auto[^"]*)"><p>/);
   if (!m) throw new Error("sheet body not found");
   return m[1].split(/\s+/);
