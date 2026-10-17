@@ -47,6 +47,8 @@ export function Sheet({ open, onClose, title, children, full = false, testId, hi
 
   // `open:flex` (not `flex`): a display utility on a closed <dialog> would override display: none.
   // The header stays put and the body scrolls inside the sheet, so the sheet never exceeds 85dvh.
+  // The body is `flex-auto`, never `flex-1`: Safari resolves a 0% flex basis to zero height in a dialog sized by its
+  // content, which collapsed the pay sheet to its header.
   const shape = full
     ? "m-0 h-dvh max-h-dvh w-full max-w-none bg-paper open:flex open:flex-col sm:mx-auto sm:max-w-[960px]"
     : "m-0 mt-auto max-h-[85dvh] w-full max-w-none rounded-t-card bg-card shadow-sheet open:flex open:flex-col sm:mx-auto sm:mb-auto sm:max-w-[600px] sm:rounded-card";
@@ -69,7 +71,7 @@ export function Sheet({ open, onClose, title, children, full = false, testId, hi
           Close
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-safe">{children}</div>
+      <div className="min-h-0 flex-auto overflow-y-auto overscroll-contain px-4 pt-4 pb-safe">{children}</div>
     </dialog>
   );
 }
