@@ -1,5 +1,5 @@
 import { it, expect } from "vitest";
-import { bonusGoesWith, commitmentShort, nextPendingOwe, giveBackPrompt, lateReleaseText, payeeFor, payHeadline, releaseText, retryRandomLabel, SENT_HINT } from "./pay-copy";
+import { bonusGoesWith, commitmentShort, nextPendingOwe, owedAfterClaim, giveBackPrompt, lateReleaseText, payeeFor, payHeadline, releaseText, retryRandomLabel, SENT_HINT } from "./pay-copy";
 
 it("writes the pay block", () => {
   expect(payHeadline(1000, "@Jim-Roberts-36")).toBe("Send $10 to @Jim-Roberts-36");
@@ -44,4 +44,13 @@ it("names the bonus lines a give-back takes with it (recorded ruling 6)", () => 
   expect(giveBackPrompt([4])).toEqual({ text: "Give back line 4? It goes back on the board.", confirm: "Give back 1 line" });
   const base = { numbers: [5], cents: 500, payByIso: null, payByFallback: null, late: false, bonusLost: [51] };
   expect(nextPendingOwe(base, [6], 500)?.bonusLost).toEqual([51]);
+});
+
+it("says what is owed after a claim without counting a line twice, whichever lands first (§7 Claim commits)", () => {
+  // Answer first: the owe shown does not hold the new lines yet.
+  expect(owedAfterClaim({ numbers: [2], cents: 500 }, [4, 11], 500)).toBe(1500);
+  // Props first: the refreshed owe already holds them.
+  expect(owedAfterClaim({ numbers: [2, 4, 11], cents: 1500 }, [4, 11], 500)).toBe(1500);
+  expect(owedAfterClaim(null, [4], 500)).toBe(500);
+  expect(owedAfterClaim(null, [], 500)).toBe(0);
 });

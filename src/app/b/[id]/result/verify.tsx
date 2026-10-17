@@ -17,8 +17,8 @@ export function Verify({ inputs, seed, relayUrl }: { inputs: PublicInputs; seed:
 
   return (
     <section className="mt-6 space-y-3">
-      <p data-testid="verify-status" role="status" className={state && !state.ok ? "font-semibold text-red" : "font-semibold"}>{status}</p>
-      <details className="rounded-card border border-wire bg-card">
+      <p data-testid="verify-status" role="status" className={state && !state.ok ? "inline-block rounded-input bg-card px-2 font-semibold text-red" : "font-semibold text-[color:var(--board-text)]"}>{status}</p>
+      <details className="rounded-card border border-wire bg-card text-ink">
         <summary data-testid="verify-fold" className="flex min-h-11 cursor-pointer items-center px-4 font-semibold">Check it yourself</summary>
         <div className="space-y-4 px-4 pb-4">
           <p className="max-w-[65ch] text-small text-ink-2">This recomputes the draw in your browser from the published inputs. Anyone can do the same with the verify script.</p>

@@ -4,20 +4,13 @@ import { feedThumbs, latestRanBreak, listFeed } from "@/domain/breaks/feed";
 import { viewerZone } from "@/lib/zone";
 import { ButtonLink } from "@/components/button";
 import { BreakCard } from "@/components/break-card";
-import { thumbColumns } from "@/components/grid/layout";
-import { heroNumbers, ranText } from "./landing-copy";
+import { KitThumb } from "@/components/kit-thumb";
+import { kitThumbCells } from "@/components/kit-thumb-model";
+import { ranText } from "./landing-copy";
+import { wallViewport } from "./wall";
 
-/** The board after a draw: every line paid (black), the winning line green. Decorative; the caption says it. */
-function HeroGrid({ lineCount, topLine }: { lineCount: number; topLine: number }) {
-  const numbers = heroNumbers(lineCount, topLine);
-  return (
-    <span aria-hidden className="grid shrink-0 border-t border-l border-wire-strong" style={{ width: 112, gridTemplateColumns: `repeat(${thumbColumns(numbers.length)}, minmax(0, 1fr))` }}>
-      {numbers.map((n) => (
-        <span key={n} className={`aspect-square border-r border-b border-wire-strong ${n === topLine ? "bg-green" : "bg-ink"}`} />
-      ))}
-    </span>
-  );
-}
+/** A wall route from this task on: its browser chrome follows the page (Mosaic §8, recorded ruling 12). */
+export const viewport = wallViewport;
 
 export default async function Home() {
   const now = new Date();
@@ -28,19 +21,21 @@ export default async function Home() {
     return { hero, cards, thumbs: await feedThumbs(tx, cards.map((c) => c.id)) };
   });
   return (
-    <main className="mx-auto max-w-[600px] space-y-8 px-4 py-6 sm:px-6">
+    // A wall route (Mosaic §8): data-wall switches on Task 1's wall background (recorded ruling 12), so its text takes the wall inks.
+    <main data-wall className="mx-auto max-w-[600px] space-y-8 px-4 py-6 sm:px-6" style={{ color: "var(--board-text)" }}>
       {hero && (
-        <Link href={`/b/${hero.breakId}/result`} data-testid="hero" className="flex items-center gap-4 rounded-card border border-wire bg-card p-3">
-          <HeroGrid lineCount={hero.lineCount} topLine={hero.topLine} />
+        <Link href={`/b/${hero.breakId}/result`} data-testid="hero" className="flex items-center gap-4 py-2">
+          {/* The kit board of the most recent ran break with its black bulls (Mosaic §8); a ran break is closed, so the lamp is up. */}
+          <KitThumb cells={kitThumbCells(hero.cells, hero.places)} kit={hero.kit} heat={hero.heat} size={112} />
           <span className="min-w-0 flex-1 space-y-1">
             <span className="block font-semibold">{hero.title}</span>
             <span className="block text-small">Top spot: line {hero.topLine}.</span>
-            <span className="block text-small text-ink-2">{ranText(hero.ranAt, now, zone.tz)} Anyone can check the draw.</span>
+            <span className="block text-small" style={{ color: "var(--board-text-2)" }}>{ranText(hero.ranAt, now, zone.tz)} Anyone can check the draw.</span>
           </span>
         </Link>
       )}
       <section className="space-y-4">
-        <h1 className="font-condensed text-display font-semibold">Group buys for darts gear.</h1>
+        <h1 className="font-shoulders text-wall-display font-extrabold">Group buys for darts gear.</h1>
         <p className="max-w-[65ch]">See every host&apos;s record, and check every draw yourself.</p>
         <div className="flex flex-wrap gap-3">
           <ButtonLink href="/breaks" data-testid="browse-breaks">Browse breaks</ButtonLink>
@@ -54,7 +49,7 @@ export default async function Home() {
         </section>
       )}
       {/* No contact address yet (design §8): the invite contact is deferred, so the line ends here. */}
-      <p className="text-small text-ink-2">Hosting on Facebook now? Breaks is invite-only for hosts.</p>
+      <p className="text-small" style={{ color: "var(--board-text-3)" }}>Hosting on Facebook now? Breaks is invite-only for hosts.</p>
     </main>
   );
 }

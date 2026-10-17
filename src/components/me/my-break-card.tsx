@@ -1,10 +1,10 @@
 "use client";
 import Link from "next/link";
-import { useContext, useEffect, useRef, useState, useTransition } from "react";
+import { useContext, useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { giveBack } from "@/app/b/[id]/actions";
 import { Button } from "@/components/button";
-import { MiniCells } from "@/components/mini-cells";
+import { Cell } from "@/components/grid/cell";
 import { StatusPill } from "@/components/status-pill";
 import { LocalTime } from "@/components/local-time";
 import { PaySheet } from "@/components/break/pay-sheet";
@@ -15,6 +15,11 @@ import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
 import { formatMoney } from "@/lib/money";
 import { howToPayLabel, type MyBreakCardProps } from "./me-copy";
 import { MeNoteContext } from "./me-notes";
+
+/** Your lines on paper are drawn as on the board, so their wire is the board's steel (Mosaic §8); the ledger keeps wire-strong. */
+const STEEL_WIRE = { "--wire-strong": "var(--board-steel)" } as CSSProperties;
+/** One of your lines: the board cell (Task 7) at 42 px inside its 1 px steel edge, so the row keeps 44 px steps. */
+const MY_CELL_PX = 42;
 
 /** One break on /me (design §5.8). The pay block is the break page's own sheet. */
 export function MyBreakCard(p: MyBreakCardProps) {
@@ -99,8 +104,14 @@ export function MyBreakCard(p: MyBreakCardProps) {
         <Link ref={titleRef} href={`/b/${p.breakId}`} className="min-w-0 font-semibold underline-offset-4 hover:underline">{p.title}</Link>
         <StatusPill status={p.status} />
       </div>
-      <MiniCells label="Your lines" cells={p.cells} />
+      {/* The board cell, not the paper MiniCells: your lines in your flight with the yours ring (Mosaic §8, recorded ruling 24). */}
+      <ul aria-label="Your lines" style={STEEL_WIRE} className="flex flex-wrap gap-1">
+        {p.cells.map((c) => (
+          <li key={c.number} className="w-11 border border-wire-strong"><Cell cell={c} px={MY_CELL_PX} /></li>
+        ))}
+      </ul>
       <p className="text-small" data-testid="my-state">{p.stateLine}</p>
+      {p.unpaidNote && <p className="text-small" data-testid="my-unpaid">{p.unpaidNote}</p>}
       {owe && (
         <p className="text-small" data-testid="my-owed">
           <span className="font-semibold">You owe {formatMoney(owe.cents)}.</span>{" "}

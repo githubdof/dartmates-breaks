@@ -4,6 +4,8 @@ import { accountOf } from "@/domain/users/queries";
 import { nameLocked } from "@/domain/users/commands";
 import { Button } from "@/components/button";
 import { AccountForm } from "./form";
+import { FlightPicker } from "./flight-picker";
+import { KitPicker } from "./kit-picker";
 import { signOutAction } from "./actions";
 
 export const metadata = { title: "Your account" };
@@ -21,6 +23,8 @@ export default async function AccountPage() {
         paymentName={account?.paymentName ?? ""}
         locked={account ? nameLocked(account.createdAt, new Date()) : false}
       />
+      {account && <FlightPicker current={account.flight} />}
+      {account && (caller.role === "host" || caller.role === "admin") && <KitPicker current={account.kit} />}
       <form action={signOutAction}>
         <Button type="submit" variant="secondary" data-testid="sign-out">Sign out</Button>
       </form>

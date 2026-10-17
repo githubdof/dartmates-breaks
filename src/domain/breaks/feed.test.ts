@@ -4,7 +4,7 @@ import { sql, eq } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser, makeBreak, openBreakWithLines, drawnBreak } from "../../../tests/helpers/fixtures";
 import { claimLines, markPaid, markSent, addBonusLine } from "@/domain/lines/commands";
-import { draws, users } from "@/db/schema";
+import { draws, hostProfiles, users } from "@/db/schema";
 import type { Caller } from "@/domain/types";
 import type { Tx } from "@/db/client";
 import { listFeed, feedThumbs, feedHosts, latestRanBreak, isFeedSort, type FeedSort } from "./feed";
@@ -166,5 +166,58 @@ describe("isFeedSort", () => {
     expect(["newest", "filling", "almost"].every(isFeedSort)).toBe(true);
     expect(isFeedSort("closing")).toBe(false);
     expect(isFeedSort(undefined)).toBe(false);
+  });
+});
+
+describe("kit and heat on feed cards (Mosaic §6, §10)", () => {
+  it("carries kit and heat and no flight (Review Focus 1)", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const alice = await makeUser(tx);
+      await tx.update(users).set({ flightColour: "pink", flightShape: "slim" }).where(eq(users.id, alice.id));
+      await tx.insert(hostProfiles).values({ userId: host.id, kitDark: "petrol", kitLight: "orange" });
+      const kitted = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      await claim(tx, alice, kitted.id, [1, 2]);
+      await markSent(tx, c(alice), { breakId: kitted.id, numbers: [1] });
+      const other = await makeUser(tx, { role: "host" });
+      const plain = await openBreakWithLines(tx, { hostId: other.id, lineCount: 4 });
+      const rows = [
+        ...(await listFeed(tx, { sort: "newest", hostHandle: host.handle, now: new Date() })),
+        ...(await listFeed(tx, { sort: "newest", hostHandle: other.handle, now: new Date() })),
+      ];
+      const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+      expect(by[kitted.id]).toMatchObject({ open: 2, kit: { dark: "petrol", light: "orange" }, heat: 2 }); // 2 of 4 claimed
+      expect(by[plain.id]).toMatchObject({ open: 4, kit: { dark: "blue", light: "yellow" }, heat: 0 }); // no profile: the default kit
+      const text = JSON.stringify(rows);
+      expect(text).not.toMatch(/flight|pink|slim/);
+      expect(text).not.toContain(alice.id);
+      expect(text).not.toContain(alice.handle);
+    });
+  });
+});
+
+const setKit = (tx: Tx, hostId: string, dark: string, light: string) =>
+  tx.execute(sql`insert into host_profiles (user_id, kit_dark, kit_light) values (${hostId}::uuid, ${dark}, ${light})
+    on conflict (user_id) do update set kit_dark = excluded.kit_dark, kit_light = excluded.kit_light`);
+const setFlight = (tx: Tx, userId: string, colour: string, shape: string) =>
+  tx.execute(sql`update users set flight_colour = ${colour}, flight_shape = ${shape} where id = ${userId}::uuid`);
+/** Nothing a flight could be read from: the key itself, and the colour and shape words these tests give the members. */
+const NO_FLIGHT = /flight|pink|slim|orange|pear/i;
+
+describe("the landing hero in the host's kit (Mosaic §6, §8, §10; Review Focus 1)", () => {
+  it("latestRanBreak carries the kit, heat 4, the prize places and the thumb cells, and no flight", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      await setKit(tx, host.id, "petrol", "sky");
+      await setFlight(tx, buyer.id, "pink", "slim");
+      await setFlight(tx, host.id, "orange", "pear");
+      const d = await drawnBreak(tx, { hostId: host.id, buyerIds: [buyer.id], lineCount: 4 });
+      const hero = (await latestRanBreak(tx))!;
+      expect(hero).toMatchObject({ breakId: d.id, topLine: d.ranking[0], kit: { dark: "petrol", light: "sky" }, heat: 4 });
+      // The fixture's break has one prize, the top spot, so it has one place.
+      expect(hero.places).toEqual([{ number: d.ranking[0], place: 1 }]);
+      expect(hero.cells).toEqual([1, 2, 3, 4].map((number) => ({ number, state: "paid", bonus: false })));
+      expect(JSON.stringify(hero)).not.toMatch(NO_FLIGHT);
+      expect(JSON.stringify(hero)).not.toContain(buyer.id);
+    });
   });
 });

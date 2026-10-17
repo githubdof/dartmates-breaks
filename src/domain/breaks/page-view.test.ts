@@ -34,6 +34,9 @@ describe("readBreakView", () => {
       expect(anon!.trust.breaksRun).toBe(0);
       const asBuyer = await readBreakView(tx, b.id, { id: buyer.id, role: "member" }, now());
       expect(asBuyer).toMatchObject({ globalUnpaid: 3, ledger: [] });
+      expect(anon!.viewerFlight).toBeNull();
+      expect(asBuyer!.viewerFlight).toMatchObject({ chosen: false });
+      expect(asBuyer!.viewerFlight!.flight.colour).toMatch(/^(petrol|blue|plum|yellow|orange|lime|sky|pink)$/);
       const asHost = await readBreakView(tx, b.id, { id: host.id, role: "host" }, now());
       expect(asHost!.ledger.map((r) => r.ownerId)).toEqual([buyer.id]);
     });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { barShown, claimBar, failureNote, lastLabel, limitText, stepLabel, type BarInput } from "./claim-bar-state";
+import { barCheckout, barShown, claimBar, failureNote, lastLabel, limitText, stepLabel, type BarInput } from "./claim-bar-state";
 
 const base: BarInput = {
   status: "open", signedIn: true, claimMode: "pick_or_random", selected: [], priceCents: 500, openCount: 19,
@@ -115,5 +115,15 @@ describe("the host on their own break", () => {
     expect(claimBar({ ...host, status: "filled" })).toEqual({ kind: "message", text: "Closed. Every line is paid. Run the draw from Host tools." });
     expect(claimBar({ ...host, status: "filled", closedDaysAgo: 4 })).toEqual({ kind: "message", text: "Closed 4 days ago, not drawn yet. Run the draw from Host tools." });
     expect(claimBar({ ...host, status: "drawing" })).toEqual({ kind: "message", text: "You started the draw. The result is in about a minute." });
+  });
+});
+
+describe("barCheckout (Mosaic §8)", () => {
+  it("is \"N to go\" while the break is open, every bar kind included, and nothing after", () => {
+    expect(barCheckout({ ...base, openCount: 12 })).toBe("12 to go");
+    expect(barCheckout({ ...base, openCount: 0 })).toBe("0 to go");
+    for (const status of ["draft", "filled", "drawing", "drawn", "cancelled"] as const) {
+      expect(barCheckout({ ...base, status })).toBeNull();
+    }
   });
 });

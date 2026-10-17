@@ -6,6 +6,7 @@ import type { ComposerInitial } from "./initial";
 import { Button } from "@/components/button";
 import { Stepper } from "@/components/stepper";
 import { GridPreview } from "@/components/grid/grid-preview";
+import type { Kit } from "@/domain/flights";
 
 const field = "h-12 w-full rounded-input border border-wire-strong bg-card px-3";
 const area = "w-full rounded-input border border-wire-strong bg-card px-3 py-2";
@@ -21,9 +22,11 @@ type Props = {
   initial: ComposerInitial;
   /** MAX_LINES, passed from the server page so this client file imports no domain values. */
   maxLines: number;
+  /** The host's kit (hostKit): the preview shows the board in the kit it opens in (recorded ruling 32). */
+  kit: Kit;
 };
 
-export function ComposerForm({ initial, maxLines }: Props) {
+export function ComposerForm({ initial, maxLines, kit }: Props) {
   const [state, submit, pending] = useActionState<ComposerState, FormData>(saveBreak, null);
   const [lineCount, setLineCount] = useState(initial.lineCount);
   const [price, setPrice] = useState(initial.price);
@@ -125,7 +128,7 @@ export function ComposerForm({ initial, maxLines }: Props) {
       </fieldset>
 
       <div className="flex items-center gap-4 rounded-card border border-wire bg-card p-3">
-        <GridPreview count={lineCount} size={64} />
+        <GridPreview count={lineCount} size={64} kit={kit} />
         <p className="font-condensed text-headline font-semibold tabular" aria-live="polite">{preview}</p>
       </div>
 

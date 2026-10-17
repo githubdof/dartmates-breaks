@@ -9,6 +9,8 @@ import type { Caller } from "@/domain/types";
 import { decryptSecret } from "@/crypto/secrets";
 import { computeRanking, ALGORITHM_VERSION } from "@/crypto/draw";
 import { roundAfter, type BeaconSource } from "@/crypto/beacon";
+import { verifyInputs } from "@/crypto/verify";
+import { publicInputsOf } from "./public-inputs";
 
 export const BEACON_DELAY_SECONDS = 60;
 
@@ -85,12 +87,15 @@ export async function finaliseDraw(tx: Tx, caller: Caller, p: { breakId: string 
   const secret = decryptSecret(sec.ciphertext, sec.keyId, b.id);
   const { seed, ranking, resultHash } = computeRanking({ version: ALGORITHM_VERSION, secret, beacon: bv.randomness, breakId: b.id, entries });
 
-  const [d] = await tx.insert(draws).values({
+  const row = {
     breakId: b.id, requestId: req.id, secret: Buffer.from(secret).toString("base64"), beaconRound: req.beaconRound,
     beaconRandomness: bytesToHex(bv.randomness), beaconSignature: bv.signature, seed: bytesToHex(seed), algorithmVersion: ALGORITHM_VERSION,
     entriesSnapshot: entryRows.map((e) => ({ number: e.number, ownerId: e.ownerId!, handleAtDraw: e.handle ?? "", isBonus: e.isBonus })),
     ranking, resultHash, runBy: caller.id,
-  }).returning({ id: draws.id });
+  };
+  // The host record's "draws verified" (Mosaic §9, recorded ruling 7): the result page's own check, run once here.
+  const verified = verifyInputs(publicInputsOf(row, b.seedCommitment)).ok;
+  const [d] = await tx.insert(draws).values({ ...row, verifiedAt: verified ? new Date() : null }).returning({ id: draws.id });
   await tx.update(drawRequests).set({ status: "done" }).where(eq(drawRequests.id, req.id));
   const prizeRows = await tx.select({ rank: prizes.rank, itemId: prizes.itemId }).from(prizes).where(eq(prizes.breakId, b.id));
   const now = new Date();

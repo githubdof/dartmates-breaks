@@ -11,7 +11,8 @@ export function shareText(i: ShareInput): string {
   switch (i.state) {
     case "open":
       if (i.openCount === 0) return `Every spot is taken. If you've claimed, please send payment. ${i.url}`;
-      if (i.openCount <= 5) return `Only ${i.openCount} ${i.openCount === 1 ? "spot" : "spots"} left. If you've claimed, please send payment. ${i.url}`;
+      // The count is "N to go" everywhere a count appears (Mosaic §9), share text included.
+      if (i.openCount <= 5) return `${i.openCount} to go. If you've claimed, please send payment. ${i.url}`;
       return `${i.title} break. ${i.lineCount} lines at ${formatMoney(i.priceCents)}. Pick yours: ${i.url}`;
     case "closed":
       return `CLOSED. ${i.title}. Draw tonight. ${i.url}`;

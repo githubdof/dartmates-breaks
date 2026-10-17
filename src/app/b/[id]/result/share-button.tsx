@@ -9,7 +9,7 @@ export function ShareButton({ value }: { value: string }) {
   return (
     <div className="mt-4 space-y-3">
       <CopyButton value={value} label="Share" copiedLabel="Copied" testId="share" onFail={() => setFailed(true)} />
-      {failed && <CopyField label="Share text" value={value} />}
+      {failed && <div className="rounded-card border border-wire bg-card p-3 text-ink"><CopyField label="Share text" value={value} /></div>}
     </div>
   );
 }

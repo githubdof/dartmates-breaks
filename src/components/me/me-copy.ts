@@ -1,7 +1,7 @@
 import type { MyBreak } from "@/domain/lines/queries";
 import type { CellData } from "@/components/grid/cell-label";
 import type { Owe } from "@/components/break/use-pay-sheet";
-import { ordinal } from "@/lib/list";
+import { joinAnd, ordinal } from "@/lib/list";
 
 /**
  * Where the viewer's lines in one break stand: cancelled first, then wins (an unanswered choice, shipped, else the best
@@ -23,9 +23,21 @@ export function stateLine(g: Pick<MyBreak, "status" | "unsent" | "sent" | "award
 
 export const howToPayLabel = (hostName: string) => `How to pay ${hostName}`;
 
+/**
+ * A card whose break no longer asks for money (running draw, ran) but still lists unsent lines (Plan B deferred
+ * finding): "Unpaid." alone leaves the buyer with no amount and nothing to do, so the card says who to ask.
+ */
+export function unpaidNote(numbers: readonly number[], hostName: string): string {
+  return numbers.length === 1
+    ? `Line ${numbers[0]} is not marked paid. Ask ${hostName} about it.`
+    : `Lines ${joinAnd(numbers)} are not marked paid. Ask ${hostName} about them.`;
+}
+
 /** Everything one /me card needs, already decided and serialisable. */
 export type MyBreakCardProps = {
   breakId: string; title: string; status: string; hostName: string; payee: string;
   handles: { venmo?: string; paypal?: string }; instructions: string; commitment: string | null;
   cells: CellData[]; stateLine: string; owe: Owe | null;
+  /** Set on a break that no longer asks for money but still lists unsent lines; null otherwise. */
+  unpaidNote: string | null;
 };

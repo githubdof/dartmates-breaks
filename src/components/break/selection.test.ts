@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import type { GridCell } from "@/domain/breaks/grid";
 import {
-  cellNote, isSelectable, isRepeat, loginHref, onboardingHref, outcomeText, parsePick, reconcileSelection, selectionAnnouncement, selectionSummary, takenAnnouncement, toggleSelection,
+  claimAnnouncement, cellNote, isSelectable, isRepeat, loginHref, onboardingHref, outcomeText, parsePick, reconcileSelection, selectionAnnouncement, selectionSummary, takenAnnouncement, toggleSelection,
 } from "./selection";
 
-const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, ...o });
+const cell = (number: number, o: Partial<GridCell> = {}): GridCell => ({ number, state: "open", mine: false, overdue: false, bonus: false, holder: null, flight: null, ...o });
 const board = (n: number, taken: Record<number, Partial<GridCell>> = {}) => Array.from({ length: n }, (_, i) => cell(i + 1, taken[i + 1]));
 
 describe("parsePick and reconcileSelection", () => {
@@ -85,6 +85,7 @@ describe("copy", () => {
     expect(cellNote(cell(7, { state: "paid", holder: "mike" }))).toBe("Line 7: @mike, paid");
     expect(cellNote(cell(7, { state: "taken" }))).toBe("Line 7: taken");
     expect(cellNote(cell(9, { state: "sent", mine: true, holder: "me" }))).toBe("Line 9: yours, sent");
+    expect(cellNote(cell(8, { state: "sent", holder: "mike" }))).toBe("Line 8: @mike, taken");
   });
   it("keeps the selection through sign-in and onboarding", () => {
     expect(loginHref("b1", [4, 7])).toBe("/login?next=%2Fb%2Fb1%3Fpick%3D4%2C7");
@@ -100,5 +101,13 @@ describe("isRepeat", () => {
     expect(isRepeat(last, "You can hold 5 lines in this break.", 13_500)).toBe(false);
     expect(isRepeat(last, "Line 7 was just taken.", 11_000)).toBe(false);
     expect(isRepeat(null, "Line 7 was just taken.", 11_000)).toBe(false);
+  });
+});
+
+describe("claimAnnouncement (§7 Claim commits)", () => {
+  it("says what the buyer has and what to pay, partial claims included", () => {
+    expect(claimAnnouncement([4, 11], [], "Jim", 1000)).toBe("You have lines 4 and 11. Pay Jim $10.");
+    expect(claimAnnouncement([4], [7], "Jim", 500)).toBe("You have line 4. Line 7 was just taken. Pay Jim $5.");
+    expect(claimAnnouncement([], [7], "Jim", 0)).toBe("Line 7 was just taken.");
   });
 });

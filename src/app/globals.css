@@ -13,19 +13,6 @@
   padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 
-@theme {
-  --animate-deal: deal 240ms ease-out both;
-  --animate-lift: lift 300ms ease-out forwards;
-  @keyframes deal {
-    from { opacity: 0; transform: translateY(-16px) scale(0.9); }
-    to { opacity: 1; transform: none; }
-  }
-  @keyframes lift {
-    from { transform: none; }
-    to { transform: translateY(-6px) scale(1.12); }
-  }
-}
-
 @layer base {
   html {
     background-color: var(--paper);
@@ -38,6 +25,19 @@
     font-family: var(--font-barlow), ui-sans-serif, system-ui, sans-serif;
     font-size: 16px;
     line-height: 24px;
+  }
+  /* Wall routes (Mosaic §8) opt in with data-wall on their <main>: html and body both take the wall, so
+     overscroll never shows paper. Every other route keeps paper from the two rules above. */
+  html:has([data-wall]),
+  html:has([data-wall]) body {
+    background-color: var(--board-wall);
+  }
+  /* Big Shoulders is one variable file with an opsz axis (10 to 72). Pin the Display cut at every size, so the 22 px
+     count and the 26 px caller match the 32 px and 40 px titles (Mosaic §4 type; recorded ruling 11). */
+  .font-shoulders,
+  .caller-banner {
+    font-variation-settings: "opsz" 72;
+    font-weight: 800;
   }
   :focus-visible {
     outline: 2px solid var(--green);
@@ -86,4 +86,242 @@
 /* Result page: while <html data-deal> is set (pre-paint script), the final state waits under the deal layer. */
 [data-deal] [data-reveal-final] {
   visibility: hidden;
+}
+
+/* Unlayered on purpose: the shared footer's text-ink-2 is a utility, and utilities outrank @layer base. On the wall
+   its ink-2 would read about 2.6:1 (Mosaic §4), so wall routes give it --board-text-2. */
+html:has([data-wall]) footer {
+  color: var(--board-text-2);
+}
+
+/* ---------- Board cells (Mosaic §5). Shape first: every state is a layer or a mark; the face only adds hue. ---------- */
+@layer components {
+  .bc {
+    container-type: inline-size;
+    contain: paint;
+    background-color: var(--board-cream);
+    color: var(--board-ink);
+  }
+  .bc-in {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    --g: 14px; --gi: 2px; --disc: 26px; --ns: 18px;
+  }
+  /* §5 sizes for fluid cells. cellMetrics (cell-metrics.ts) is the same table for fixed-size cells. */
+  .bc[data-won] .bc-in { --g: 10px; --ns: 16px; }
+  .bc[data-won="1"] .bc-in { --ns: 14px; }
+  @container (min-width: 48px) {
+    .bc:not([data-won]) .bc-in { --gi: 3px; }
+    .bc[data-mine="true"]:not([data-won]) .bc-in { --g: 16px; }
+  }
+  @container (min-width: 56px) {
+    .bc:not([data-won]) .bc-in, .bc[data-mine="true"]:not([data-won]) .bc-in { --g: 20px; --gi: 3px; }
+    .bc[data-won] .bc-in, .bc[data-won="1"] .bc-in { --g: 14px; --gi: 3px; --disc: 30px; --ns: 18px; }
+  }
+  @container (min-width: 68px) {
+    .bc[data-won] .bc-in, .bc[data-won="1"] .bc-in { --g: 20px; }
+  }
+
+  /* The pre-rendered overlay: the holder's colour (kit view: the kit's dark colour). Never transition background-color. */
+  .bc-face { position: absolute; inset: 0; background: var(--face, transparent); opacity: 0; }
+  .bc[data-state="paid"] .bc-face { opacity: 1; }
+  .bc[data-won] .bc-face { opacity: 1; background: var(--board-ring); }
+  .bc[data-state="reserved"] { background-color: var(--board-cream-2); }
+  /* Hatch: 45°, --board-ink-2 at 35 %, 1 px every 4 px. */
+  .bc-hatch {
+    position: absolute; inset: 0;
+    background-image: repeating-linear-gradient(45deg, color-mix(in srgb, var(--board-ink-2) 35%, transparent) 0 1px, transparent 1px 4px);
+  }
+  /* Kit view, claimed: a 5 px kit-light band along the bottom edge, its top 1 px an ink keyline (y 39–44 at 44 px). */
+  .bc-band { position: absolute; inset-inline: 0; bottom: 0; height: 5px; box-sizing: border-box; border-top: 1px solid var(--board-ink); background: var(--kit-light); }
+
+  /* The number and the glyph sit at z-index 1: the house-lights dim (Task 12a) sits at 2, your own glyphs at 3 (recorded ruling 19). */
+  .bc-num { position: relative; z-index: 1; font-size: var(--ns); line-height: 1; color: var(--board-ink); }
+  .bc-chip { background: var(--board-cream); padding-inline: 2px; }
+  .bc[data-state="paid"]:not([data-won]) .bc-num { color: var(--num); }
+  .bc[data-state="reserved"] .bc-num { color: var(--board-ink-2); }
+  .bc-strike { position: absolute; left: -1px; right: -1px; top: 50%; height: 2px; margin-top: -1px; background: var(--board-ink); }
+
+  .bc-glyph { position: absolute; z-index: 1; top: var(--gi); right: var(--gi); width: var(--g); height: var(--g); overflow: visible; }
+  .bc-glyph use { stroke-linejoin: round; }
+  /* The 1 px cream knockout, so the hatch never crosses a glyph (hatched cells only, recorded ruling 19). */
+  .bc-knock { display: none; }
+  .bc[data-state="taken"] .bc-knock, .bc[data-state="sent"] .bc-knock { display: inline; fill: var(--board-cream); stroke: var(--board-cream); stroke-width: 3.25px; }
+  .bc-glyph[data-glyph="outline"] .bc-knock { stroke-width: 4px; }
+  .bc-mark { fill: var(--fc, var(--board-ink)); stroke: var(--board-ink); stroke-width: 1.25px; }
+  .bc-glyph[data-glyph="outline"] .bc-mark { fill: none; stroke-width: 2px; }
+  .bc-glyph[data-glyph="on-face"] .bc-mark { fill: var(--num); stroke: none; }
+  .bc-glyph[data-glyph="kit"] .bc-mark { fill: var(--board-ink); }
+  .bc-glyph[data-glyph="kit-paid"] .bc-mark { fill: var(--board-cream); stroke: none; }
+  .bc-glyph[data-glyph="won"] .bc-mark { fill: var(--fc); stroke: var(--board-cream); }
+  .bc-glyph[data-glyph="won-kit"] .bc-mark { fill: var(--board-cream); stroke: var(--board-cream); }
+
+  /* Yours: a 4 px two-tone ring inset 2 px. Ink outside on cream and light faces; cream outside on dark faces. */
+  .bc-ring { position: absolute; inset: 2px; box-shadow: inset 0 0 0 2px var(--board-ink), inset 0 0 0 4px var(--board-cream); }
+  .bc-ring[data-ring="cream-out"] { box-shadow: inset 0 0 0 2px var(--board-cream), inset 0 0 0 4px var(--board-ink); }
+  /* The sent mark: 2 px ink, 10 px long, under the number's chip, on a 1 px cream knockout (recorded ruling 19). */
+  .bc-sent { position: absolute; z-index: 1; left: 50%; top: calc(50% + 11px); width: 10px; height: 2px; margin-left: -5px; background: var(--board-ink); box-shadow: 0 0 0 1px var(--board-cream); }
+  /* Selected: four 8 px corner ticks, 2 px ink, inset 3 px. */
+  .bc-brackets i { position: absolute; width: 8px; height: 8px; border: 0 solid var(--board-ink); }
+  .bc-brackets i:nth-child(1) { top: 3px; left: 3px; border-top-width: 2px; border-left-width: 2px; }
+  .bc-brackets i:nth-child(2) { top: 3px; right: 3px; border-top-width: 2px; border-right-width: 2px; }
+  .bc-brackets i:nth-child(3) { bottom: 3px; left: 3px; border-bottom-width: 2px; border-left-width: 2px; }
+  .bc-brackets i:nth-child(4) { bottom: 3px; right: 3px; border-bottom-width: 2px; border-right-width: 2px; }
+  /* Overdue (host and admin): a 2 px red inset edge; a 12 px / 600 red "!" in the glyph's place. */
+  .bc-overdue { position: absolute; inset: 0; box-shadow: inset 0 0 0 2px var(--red); }
+  .bc-bang { position: absolute; z-index: 1; top: var(--gi); right: calc(var(--gi) + 3px); color: var(--red); }
+  /* Reserved for a mini: a 3 px double steel rule inset 2 px and the "m" top-left. */
+  .bc-double { position: absolute; inset: 2px; border: 3px double var(--board-steel); }
+  .bc-m { position: absolute; top: 2px; left: 4px; color: var(--board-ink-2); }
+
+  /* Won: the cream bull, centred; its ring is drawn inside the disc's edge. Place is the ring's shape, never a word. */
+  .bc-bull { position: absolute; left: 50%; top: 50%; width: var(--disc); height: var(--disc); transform: translate(-50%, -50%); border-radius: 50%; background: var(--board-cream); }
+  .bc-bull-ring { position: absolute; inset: 0; border-radius: 50%; }
+  .bc-bull[data-place="1"] .bc-bull-ring { box-shadow: inset 0 0 0 2px var(--red), inset 0 0 0 3px var(--board-cream), inset 0 0 0 5px var(--red); }
+  .bc-bull[data-place="2"] .bc-bull-ring { box-shadow: inset 0 0 0 3px var(--green); }
+  /* 3rd: a 3 px green ring dashed in four segments (60° arcs, 30° gaps, recorded ruling 19). */
+  .bc-bull[data-place="3"] .bc-bull-ring {
+    background: conic-gradient(var(--green) 0 60deg, transparent 60deg 90deg, var(--green) 90deg 150deg, transparent 150deg 180deg,
+      var(--green) 180deg 240deg, transparent 240deg 270deg, var(--green) 270deg 330deg, transparent 330deg 360deg);
+    -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+    mask: radial-gradient(closest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  }
+  .bc[data-won] .bc-num { color: var(--board-ink); }
+
+  /* Legend minis and thumbnails (recorded ruling 20). */
+  .bc[data-size="xs"] .bc-ring { inset: 1px; box-shadow: inset 0 0 0 1px var(--board-ink), inset 0 0 0 2px var(--board-cream); }
+  .bc[data-size="xs"] .bc-ring[data-ring="cream-out"] { box-shadow: inset 0 0 0 1px var(--board-cream), inset 0 0 0 2px var(--board-ink); }
+  .bc[data-size="xs"] .bc-sent { top: auto; bottom: 2px; width: 6px; height: 1px; margin-left: -3px; }
+  .bc[data-size="thumb"] .bc-band { height: 30%; border-top: 0; }
+  /* Thumbnails keep the bull's ring: the ring carries the place, as on KitThumb (Task 15a). */
+
+  /* Focus on the board: a 2 px ink outline over a 4 px cream ring, so one band always contrasts (Mosaic §5). */
+  .bc:focus-visible { outline: 2px solid var(--board-ink); outline-offset: 0; box-shadow: 0 0 0 4px var(--board-cream); z-index: 10; }
+}
+
+/* ---------- The board (Mosaic §4, §5). ---------- */
+@layer components {
+  /* Wire: each cell's own 1 px steel shadow over a 1 px gap, so empty last-row slots show --board-wall-2, not wire.
+     The rows pull 3.5 px into each gutter (BOARD_BLEED): at 390 the board is 365 px, eight 44.75 px cells on 1 px wires
+     (recorded ruling 33). The group keeps the column's width, so its container queries still pick eight columns. */
+  .board-frame, .board-wire { gap: 1px; background: var(--board-wall-2); margin-inline: -3.5px; }
+  .board-frame > .bc:not(:focus-visible), .board-wire > .bc:not(:focus-visible) { box-shadow: 0 0 0 1px var(--board-steel); }
+  /* The kit is the surround: 1 px steel, the 6 px numbers ring, 4 px kit dark, a 1 px kit-light pinstripe. Spread into the
+     page gutter (15.5 px of its 16 px with the bleed), never border or padding: a 12 px border would leave 334 px and
+     columnsFor would drop to 7 columns. */
+  .board-frame {
+    box-shadow: 0 0 0 1px var(--board-steel), 0 0 0 7px var(--board-ring), 0 0 0 11px var(--kit-dark), 0 0 0 12px var(--kit-light);
+  }
+  /* The lamp: behind the board, to the screen edge at 390 and 360 (LAMP_POSITION, recorded ruling 18). Opacity only, and only on a step change. */
+  .board-lamp { position: absolute; inset: -32px -16px; pointer-events: none; transition: opacity var(--dur-lamp) var(--ease-inout, ease-in-out); }
+  /* Thumbnails (feed, hero, profile): a 6 px frame, 1 px steel, 4 px kit dark, 1 px kit light. */
+  .thumb-frame {
+    gap: 1px; background: var(--board-wall-2);
+    box-shadow: 0 0 0 1px var(--board-steel), 0 0 0 5px var(--kit-dark), 0 0 0 6px var(--kit-light);
+  }
+  .thumb-frame > .bc { box-shadow: 0 0 0 1px var(--board-steel); }
+  .board-lamp.thumb-lamp { inset: -12px; }
+}
+
+/* ---- Mosaic claim moments (spec §7). Per-cell motion is CSS on transform and opacity only, switched on by
+   data-moment, which only cellMoments sets: nothing plays on mount or on a view switch. --i is the cell's place in
+   its stagger. The layers are Task 7's (.bc-in > .bc-*); .bc-glint and .bc-ghost (the cell as it was) are root
+   children beside .bc-in. Child combinators keep a rule off the ghost's own copy of the layers. ---- */
+[data-moment] { will-change: transform, opacity; }
+
+/* Select: the cell dips under the thumb. */
+button[data-cell] { transition: transform var(--dur-unpress) var(--ease-over); }
+button[data-cell][data-state="open"]:not([aria-disabled="true"]):active { transform: scale(0.94); transition: transform var(--dur-press) var(--ease-out); }
+
+/* Claim commits: the outlined flight drops 6 px in, the cell squashes and settles, the wire glints once in cream, the ring lands. */
+[data-moment="drop"] { contain: none; z-index: 1; animation: squash calc(var(--dur-squash) + var(--dur-settle)) linear calc(var(--i, 0) * var(--stagger-own) + var(--dur-drop)) both; }
+[data-moment="drop"] > .bc-in > .bc-glyph { --drop: 6px; animation: land var(--dur-drop) var(--ease-in) calc(var(--i, 0) * var(--stagger-own)) both; }
+[data-moment="drop"] > .bc-in > .bc-ring { animation: fadein var(--dur-drop) step-end calc(var(--i, 0) * var(--stagger-own)) both; }
+.bc-glint { position: absolute; inset: -1px; border: 1px solid color-mix(in srgb, var(--board-cream) 70%, transparent); pointer-events: none; opacity: 0; animation: glint var(--dur-glint) var(--ease-out) calc(var(--i, 0) * var(--stagger-own) + var(--dur-drop)) forwards; }
+
+/* Others claim: their flight (or the kit band) fades in. No squash, no glint. */
+[data-moment="others-in"] > .bc-in > .bc-glyph,
+[data-moment="others-in"] > .bc-in > .bc-band { animation: fadein var(--dur-others) var(--ease-out) calc(var(--i, 0) * var(--stagger-others)) both; }
+
+/* I've sent it: the outline cross-fades into the filled glyph; the sent mark fades in. */
+[data-moment="sent"] > .bc-in > .bc-glyph,
+[data-moment="sent"] > .bc-in > .bc-sent { animation: fadein var(--dur-sent) var(--ease-inout) calc(var(--i, 0) * var(--stagger-own)) both; }
+[data-moment="sent"] > .bc-ghost { z-index: 2; animation: fadein var(--dur-sent) var(--ease-inout) calc(var(--i, 0) * var(--stagger-own)) reverse both; }
+
+/* Paid: the overlay fades in; the old number on its chip and the old glyph (the ghost, above them at z-index 2) hold
+   until the fade ends, then the new ink shows and the flight seats 2 px. Never a background-color transition. */
+[data-moment="paid"] > .bc-in > .bc-face { animation: set var(--dur-set) var(--ease-out) calc(var(--i, 0) * var(--stagger-others)) both; }
+[data-moment="paid"] > .bc-in > .bc-num { animation: fadein var(--dur-set) step-end calc(var(--i, 0) * var(--stagger-others)) both; }
+[data-moment="paid"] > .bc-in > .bc-glyph { animation: fadein var(--dur-set) step-end calc(var(--i, 0) * var(--stagger-others)) both, seat var(--dur-seat) var(--ease-over) calc(var(--i, 0) * var(--stagger-others) + var(--dur-set)) both; }
+[data-moment="paid"] > .bc-ghost { z-index: 2; animation: fadeout var(--dur-set) step-end calc(var(--i, 0) * var(--stagger-others)) both; }
+
+/* Paid undone: the ink is back at once; the old overlay (the ghost, under the number) fades out. */
+[data-moment="paid-undo"] > .bc-ghost { z-index: 0; animation: fadein var(--dur-set) var(--ease-inout) calc(var(--i, 0) * var(--stagger-others)) reverse both; }
+
+/* The ghost: the old cell without its own face, showing only the layers its moment names. */
+.bc-ghost { position: absolute; inset: 0; pointer-events: none; }
+.bc-ghost > .bc { background: transparent; box-shadow: none; }
+[data-moment="sent"] > .bc-ghost .bc-in > :not(.bc-glyph),
+[data-moment="paid"] > .bc-ghost .bc-in > :not(.bc-num, .bc-glyph),
+[data-moment="paid-undo"] > .bc-ghost .bc-in > :not(.bc-face) { visibility: hidden; }
+
+@keyframes land { from { transform: translateY(calc(-1 * var(--drop, 6px))); opacity: 0; } to { transform: none; opacity: 1; } }
+/* 40 % = --dur-squash / (--dur-squash + --dur-settle): linear into the squash, --ease-over out of it. */
+@keyframes squash { 0% { transform: scale(1); animation-timing-function: linear; } 40% { transform: scale(0.96); animation-timing-function: cubic-bezier(.3, 1.5, .5, 1); } 100% { transform: scale(1); } }
+@keyframes glint { from { opacity: 1; } to { opacity: 0; } }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+/* With step-end: 1 for the whole set, 0 the moment it ends (the paid ghost's old ink). */
+@keyframes fadeout { from { opacity: 1; } to { opacity: 0; } }
+@keyframes set { from { opacity: 0; } to { opacity: 1; } }
+@keyframes seat { from { transform: translateY(-2px); } to { transform: none; } }
+
+/* Reduced motion: every moment is its final state at once (the global rule shortens durations, not delays). */
+@media (prefers-reduced-motion: reduce) {
+  [data-moment], [data-moment] * { animation: none !important; }
+  .bc-glint, .bc-ghost { display: none; }
+  button[data-cell]:active { transform: none !important; }
+}
+
+/* ---- Mosaic claim moments, part two (spec §7): release, sniped, the caller. ---- */
+/* Release or give back: the old colour drains, its flight lifts 8 px and fades, the hatch fades. No stagger. */
+[data-moment="release"] > .bc-ghost { z-index: 0; animation: fadein var(--dur-release) var(--ease-inout) reverse both; }
+[data-moment="release"] > .bc-ghost .bc-glyph { animation: pull var(--dur-release) var(--ease-inout) both; }
+[data-moment="release"] > .bc-ghost .bc-num { visibility: hidden; }
+
+/* Line sniped: a 2 px ink strike draws across the number, left to right. */
+[data-moment="sniped"] > .bc-in > .bc-num > .bc-strike { transform-origin: left center; animation: strike var(--dur-strike) var(--ease-out) both; }
+
+/* The caller (§7): Big Shoulders 800 26/28 on the wall (the Display cut is pinned in the base layer), a 4 px left rule;
+   drops in with a 2 px overshoot (--ease-over over a 24 px drop peaks about 2 px past rest). */
+.caller-banner { display: flex; align-items: center; gap: 10px; border-left: 4px solid var(--call, var(--kit-dark)); padding: 4px 0 4px 12px; color: var(--board-text); font-family: var(--font-shoulders); font-size: 26px; line-height: 28px; }
+.caller-banner[data-play] { --drop: 24px; animation: land var(--dur-banner) var(--ease-over) both, fadein var(--dur-banner) var(--ease-out) both; }
+
+@keyframes pull { to { transform: translateY(-8px); opacity: 0; } }
+@keyframes strike { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .caller-banner[data-play] { animation: none !important; }
+}
+
+/* ---- The reveal's house lights (spec §7). One class on the board dims every cell at once; the dim lifts off a cell
+   the moment it is hit. Each viewer's own glyphs stay above the dim. ---- */
+/* The dim sits at z-index 2, over the number and the glyph (z-index 1, Task 7); your own glyphs rise to 3 above it. */
+.bc-dim { position: absolute; inset: 0; z-index: 2; background: var(--board-wall); opacity: 0; pointer-events: none; transition: opacity var(--dur-lights) var(--ease-out); }
+[data-lights="down"] .bc-dim { opacity: 0.55; }
+[data-lights="down"] [data-won] > .bc-dim { opacity: 0; transition: none; }
+[data-lights="down"] [data-mine] > .bc-in > .bc-glyph { z-index: 3; }
+
+/* ---- The reveal's impact (spec §7): only the targeted cell changes during a throw. ---- */
+/* Skip: the final state at once; the lights lift in one fade of at most --dur-reduced (recorded ruling 35). */
+[data-skip] .bc-dim { transition-duration: var(--dur-reduced); }
+/* Impact: the cell (not the board) squashes, settles, then shakes one cycle on x. */
+[data-impact] { contain: none; z-index: 1; animation: squash-throw calc(var(--dur-squash) + var(--dur-throw-settle)) linear both, shake var(--dur-shake) linear calc(var(--dur-squash) + var(--dur-throw-settle)) both; }
+[data-impact="1"] { --squash-to: 0.9; --shake: 4px; }
+[data-impact="2"], [data-impact="3"] { --squash-to: 0.92; --shake: 2px; }
+/* While the reveal plays, the result's text waits (it stays in the DOM and in the accessibility tree). */
+[data-playing] [data-reveal-text] { opacity: 0; }
+/* 36.36 % = --dur-squash / (--dur-squash + --dur-throw-settle). */
+@keyframes squash-throw { 0% { transform: scale(1); animation-timing-function: linear; } 36.36% { transform: scale(var(--squash-to, 0.92)); animation-timing-function: cubic-bezier(.3, 1.5, .5, 1); } 100% { transform: scale(1); } }
+@keyframes shake { 25% { translate: var(--shake, 2px) 0; } 75% { translate: calc(-1 * var(--shake, 2px)) 0; } 100% { translate: 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  [data-impact] { animation: none !important; }
 }

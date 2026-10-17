@@ -10,9 +10,12 @@ import { MiniCells } from "@/components/mini-cells";
 import { LocalTime } from "@/components/local-time";
 import { payLinks, type PayLink } from "@/lib/pay-links";
 import { giveBack } from "@/app/b/[id]/actions";
+import { runGiveBack } from "./give-back";
 import { outcomeText } from "./selection";
 import { giveBackPrompt, lateReleaseText, payHeadline, releaseText, retryRandomLabel, SENT_HINT, SENT_HINT_KEY } from "./pay-copy";
 import type { Owe } from "./use-pay-sheet";
+import type { Flight } from "@/domain/flights";
+import { FlightGlyph } from "@/components/flight-glyph";
 
 type Props = {
   open: boolean;
@@ -30,10 +33,19 @@ type Props = {
   onRetry: (count: number) => void;
   /** `done` runs only once the server accepted it. */
   onSent: (done: () => void) => void;
-  onGaveBack: () => void;
+  /** The lines just given back, once the server accepted it. */
+  onGaveBack: (numbers: number[]) => void;
+  /** Before the give-back action is called: the island records the lines, so the refresh says "You gave back …" in either render order. */
+  onGiveBackStart?: (numbers: number[]) => void;
+  /** The server refused the give-back: nothing was given back. */
+  onGiveBackRefused?: () => void;
   /** A failure from onSent or onRetry, shown here because the page behind a modal is inert. */
   error: { for: "sent" | "retry"; text: string } | null;
   pending: boolean;
+  /** "Pay within 24 hours." while the break is open, else null: it moved here from the page head (Mosaic §8, §1.1). */
+  payWithin?: string | null;
+  /** The viewer's stored flight, on their first claim in this break while they have never picked one (§8). */
+  flightLine?: Flight | null;
 };
 
 /** Try the app; if the page is still visible after a moment (scheme blocked), open the web profile instead. */
@@ -82,8 +94,11 @@ export function PaySheet(p: Props) {
     startGive(async () => {
       setError(null);
       try {
-        const r = await giveBack(p.breakId, numbers);
-        if (r.ok) { setConfirming(false); p.onGaveBack(); p.onClose(); return; }
+        const r = await runGiveBack(numbers, (n) => giveBack(p.breakId, n), {
+          onStart: (n) => p.onGiveBackStart?.(n),
+          onRefused: () => p.onGiveBackRefused?.(),
+        });
+        if (r.ok) { setConfirming(false); p.onGaveBack(numbers); p.onClose(); return; }
         setError(r.message);
       } catch {
         // The give-back may have gone through: the refresh shows what the server holds. Offline, a refresh would
@@ -102,6 +117,12 @@ export function PaySheet(p: Props) {
         {p.outcome && (p.outcome.got.length > 0 || p.outcome.taken.length > 0) && (
           <div className="space-y-1">
             <p className="font-semibold" data-testid="pay-outcome">{outcomeText(p.outcome.got, p.outcome.taken)}</p>
+            {p.flightLine && (
+              <p className="flex items-center gap-2 text-small" data-testid="flight-line">
+                <FlightGlyph flight={p.flightLine} size={20} />
+                <span>This is your flight. <Link href="/account" className="underline underline-offset-4">Change it in your account.</Link></span>
+              </p>
+            )}
             {retryCount > 0 && (
               <Button variant="text" onClick={() => p.onRetry(retryCount)} disabled={p.pending}>{retryRandomLabel(retryCount)}</Button>
             )}
@@ -143,6 +164,8 @@ export function PaySheet(p: Props) {
             <div className="space-y-2">
               <Button full onClick={markSent} disabled={p.pending} data-testid="pay-sent">I&apos;ve sent it</Button>
               {showHint && <p className="text-small text-ink-2">{SENT_HINT}</p>}
+              {/* The pay window, then the absolute deadline under it (Mosaic §8 claim sheet). */}
+              {p.payWithin && !p.owe.late && <p className="text-small" data-testid="pay-within">{p.payWithin}</p>}
               {p.owe.payByIso && p.owe.payByFallback && (
                 <p className="text-small" data-testid="pay-by">
                   {p.owe.late ? (

@@ -129,16 +129,26 @@ node --import tsx scripts/verify-draw.ts https://<host>/b/<id>/result.json
 
 It prints `OK` or `MISMATCH`.
 
+Every draw also records whether it verified when it was recorded (`draws.verified_at`, set when `verifyInputs` passes on its inputs; the host record's "draws verified" counts it). Draws recorded before migration 0004 are backfilled by running the same check over them, once per database, after migrating:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres pnpm exec tsx scripts/verify-draws.ts
+```
+
+The test and e2e databases are emptied by their suites, so they need no backfill.
+
 ## UI conventions
 
-- Tokens live in `src/app/tokens.css` (raw colours on `:root`, mapped through Tailwind v4 `@theme inline`); there is no `tailwind.config`. Use `bg-paper`, `text-ink-2`, `border-wire-strong`, `font-condensed`, `text-title` and friends, never Tailwind's default palette.
-- Shared components are in `src/components/`. In development, `/dev/components` shows them all (it 404s in production).
-- Grid shaping, holder visibility and the host-only overdue flag are decided in `src/domain/breaks/grid.ts` on the server; client components receive the result.
-- Copy rules (no middle dots or bullets, gambling-neutral words, `formatMoney` for money, no default palette, no caps labels, no "Submit", the community's state words, no exclamation marks) are enforced by `src/lib/copy-audit.test.ts`.
+- Tokens live in `src/app/tokens.css` (raw colours on `:root`, mapped through Tailwind v4 `@theme inline`); there is no `tailwind.config`. Use `bg-paper`, `text-ink-2`, `border-wire-strong`, `font-condensed`, `text-title` and friends, never Tailwind's default palette. Paper surfaces (the ledger, sheets, forms, `/host`, `/me`, `/account`) keep the first design's tokens. Wall routes (`/b/{id}`, `/b/{id}/result`, `/breaks`, `/`, `/h/{handle}`) use the Mosaic board tokens, all new names: `--board-wall`, `--board-wall-2`, `--board-cream`, `--board-cream-2`, `--board-ink`, `--board-ink-2`, `--board-steel`, `--board-ring`, `--board-text`, `--board-text-2`, `--board-text-3`, the lamp steps `--lamp-0` … `--lamp-4`, and `--kit-dark` / `--kit-light`, set per break from the host's kit. No existing token changed value; `tokens.test.ts` pins every pair. The flight palette, the kits and the heat steps live in `src/domain/flights.ts`; its keys never reorder or rename.
+- Fonts (`src/app/fonts.ts`, `next/font/google`, fetched at build time): Barlow 400, 500 and 600, Barlow Condensed 600 for cell numbers, and Big Shoulders (one variable file with the `opsz` axis, weight 800, the Display cut pinned with `font-variation-settings`, not preloaded) for titles, the caller banner, the checkout count and the result display on wall routes: five font files. The link preview reads three static TTFs from disk instead; they are not shipped to browsers. A build that cannot reach Google Fonts is BLOCKED: fonts; do not vendor the files.
+- Shared components are in `src/components/`. In development, `/dev/components` shows them all, with every Mosaic §5 cell state in the member and kit views and the 50-line board at 390 (it 404s in production unless `E2E_SECRET` is set, which the e2e build sets for its density check and Vercel refuses).
+- Grid shaping, holder and flight visibility and the host-only overdue flag are decided in `src/domain/breaks/grid.ts` (`shapeGrid`) on the server; client components receive the result. A cell carries a `flight` exactly when it carries a `holder` (the break's host, an admin, or a viewer holding a line there); everyone else, and the feed, the landing page, the host profile and the link preview, see the board in the host's kit, never a flight.
+- Copy rules (no middle dots or bullets, gambling-neutral words, `formatMoney` for money, no default palette, no caps labels or caps chips, no "Submit", the community's state words, no exclamation marks, and the Mosaic bans: the heat words, streaks and levels, winnings and "You won", "lucky colour", betting words near a kit, the retired counts and sorts, "his") are enforced by `src/lib/copy-audit.test.ts`. The count everywhere is "N to go".
 - Absolute times reach the browser as ISO plus a server fallback and render through `LocalTime` in the viewer's zone; the `tz` cookie lets the server's fallback match.
 - `e2e/layout.spec.ts` pins the break page's pixel budget, grid columns, cell names, focus return and bar hiding in a real browser.
 - The Playwright journey keys on `data-testid`; keep ids stable when restyling.
 - Migration `0001_claim_mode` adds the picking mode (`pick_or_random`, `pick_only`, `straight`); `allow_random_claims` is kept in step and will be dropped later.
+- Migration `0004_flights_kits` adds `users.flight_colour` and `users.flight_shape` (NOT NULL: a random flight drawn on the server when the row is created, existing rows backfilled the same way, each CHECKed against the palette keys; never derived from the user id), `users.flight_chosen_at` (null until the member picks on `/account`), `host_profiles.kit_dark` and `host_profiles.kit_light` (null together means the default kit, Blue with Yellow) and `draws.verified_at` (see "Verify a draw").
 
 ## Spec and plans
 

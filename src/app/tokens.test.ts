@@ -2,9 +2,16 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { contrast, readTokens } from "@/lib/contrast";
+import { PAPER_THEME_COLOR, WALL_THEME_COLOR, wallViewport } from "./wall";
+import { DEFAULT_KIT, FLIGHT_COLOURS, LAMP, TOKENS } from "@/domain/flights";
 
-const css = readFileSync(fileURLToPath(new URL("./tokens.css", import.meta.url)), "utf8");
+const read = (f: string) => readFileSync(fileURLToPath(new URL(f, import.meta.url)), "utf8");
+const css = read("./tokens.css");
+const globals = read("./globals.css");
+const fonts = read("./fonts.ts");
 const t = readTokens(css);
+/** `--name: value;` whatever the value (readTokens keeps `#RRGGBB` only). */
+const raw = (name: string) => css.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1].trim();
 
 describe("design tokens", () => {
   it("defines every design colour exactly", () => {
@@ -31,5 +38,107 @@ describe("design tokens", () => {
     expect(css).toContain("@theme inline");
     expect(css).toContain("--color-ink-2: var(--ink-2)");
     for (const f of ["tailwind.config.ts", "tailwind.config.js", "tailwind.config.mjs", "tailwind.config.cjs"]) expect(existsSync(f)).toBe(false);
+  });
+});
+
+describe("Mosaic board tokens (Mosaic spec §4)", () => {
+  it("adds every board colour under a new name, exactly, and the default kit", () => {
+    expect(t).toMatchObject({
+      "board-wall": "#17161A", "board-wall-2": "#221F26", "board-cream": "#FBF7EE", "board-cream-2": "#EEE8DA",
+      "board-ink": "#15130F", "board-ink-2": "#5A5246", "board-steel": "#7A7D84", "board-ring": "#0F0E0C",
+      "board-text-2": "#D4CEC3", "board-text-3": "#B3ADA3", "kit-dark": "#2340C4", "kit-light": "#F7C51B",
+    });
+    expect(raw("board-text")).toBe("var(--board-cream)");
+  });
+  it("has the lamp's five literal steps", () => {
+    expect([0, 1, 2, 3, 4].map((i) => raw(`lamp-${i}`))).toEqual([
+      "rgba(255,232,200,0.06)", "rgba(255,232,200,0.095)", "rgba(255,232,200,0.13)", "rgba(255,232,200,0.165)", "rgba(255,232,200,0.20)",
+    ]);
+  });
+  it("reads cream text on the wall at 8:1 or more (Review Focus 3)", () => {
+    // Spec §4: 16.8:1, 11.5:1 and 8.1:1.
+    for (const fg of ["board-cream", "board-text-2", "board-text-3"]) expect(contrast(t[fg], t["board-wall"]), `${fg} on the wall`).toBeGreaterThanOrEqual(8);
+  });
+  it("keeps the claim-bar note (red on a cream chip) and the focused skip link (cream on the wall) legible on the wall", () => {
+    expect(contrast(t.red, t["board-cream"])).toBeGreaterThanOrEqual(4.5);
+    const src = readFileSync(fileURLToPath(new URL("../components/break/break-interactive.tsx", import.meta.url)), "utf8");
+    expect(src).toMatch(/rounded bg-\[var\(--board-cream\)\][^"]*text-red" data-testid="bar-note"/);
+    expect(src).toMatch(/focus:text-\[var\(--board-text\)\][^"]*">Skip to claim bar/);
+  });
+  it("keeps the steel wire at 3:1 or more on the wall and on cream (Review Focus 3)", () => {
+    // Spec §4: 4.4:1 on the wall, 3.9:1 on cream.
+    expect(contrast(t["board-steel"], t["board-wall"])).toBeGreaterThanOrEqual(3);
+    expect(contrast(t["board-steel"], t["board-cream"])).toBeGreaterThanOrEqual(3);
+  });
+  it("keeps the numbers on cream and on the reserved face at 4.5:1 or more", () => {
+    expect(contrast(t["board-ink"], t["board-cream"])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(t["board-ink-2"], t["board-cream-2"])).toBeGreaterThanOrEqual(4.5); // spec: 6.3:1
+  });
+  it("keeps the place rings on the cream disc at the 3:1 non-text floor", () => {
+    // Measured: red 5.5:1, green 4.98:1 (the spec rounds it to 5.0:1).
+    expect(contrast(t.red, t["board-cream"])).toBeGreaterThanOrEqual(3);
+    expect(contrast(t.green, t["board-cream"])).toBeGreaterThanOrEqual(3);
+  });
+  it("has the complete motion token set", () => {
+    const MOTION: Record<string, string> = {
+      "dur-press": "70ms", "dur-unpress": "120ms", "dur-drop": "160ms", "dur-squash": "80ms", "dur-settle": "120ms",
+      "dur-glint": "220ms", "dur-others": "120ms", "dur-sent": "180ms", "dur-set": "140ms", "dur-seat": "100ms",
+      "dur-release": "200ms", "dur-strike": "200ms", "dur-banner": "180ms", "dur-lights": "300ms", "dur-beat": "300ms",
+      "dur-beat-top": "800ms", "dur-throw": "260ms", "dur-throw-settle": "140ms", "dur-shake": "120ms", "dur-gap": "550ms",
+      "dur-lamp": "600ms", "dur-reduced": "150ms", "stagger-own": "50ms", "stagger-others": "30ms",
+      "ease-in": "cubic-bezier(.55,0,1,.45)", "ease-out": "cubic-bezier(.2,.7,.3,1)", "ease-over": "cubic-bezier(.3,1.5,.5,1)", "ease-inout": "ease-in-out",
+    };
+    for (const [name, value] of Object.entries(MOTION)) expect(raw(name), name).toBe(value);
+  });
+  it("maps the board colours, the display face and its sizes through @theme inline", () => {
+    for (const name of ["board-wall", "board-wall-2", "board-cream", "board-cream-2", "board-ink", "board-ink-2", "board-steel", "board-ring", "board-text", "board-text-2", "board-text-3", "kit-dark", "kit-light"]) {
+      expect(css, name).toContain(`--color-${name}: var(--${name});`);
+    }
+    expect(css).toContain("--font-shoulders: var(--font-big-shoulders), var(--font-barlow-condensed), ui-sans-serif, sans-serif;");
+    expect(raw("text-wall-title")).toBe("32px"); expect(raw("text-wall-title--line-height")).toBe("32px");
+    expect(raw("text-caller")).toBe("26px"); expect(raw("text-caller--line-height")).toBe("28px");
+    expect(raw("text-checkout")).toBe("22px"); expect(raw("text-checkout--line-height")).toBe("24px");
+    expect(raw("text-wall-display")).toBe("40px"); expect(raw("text-wall-display--line-height")).toBe("40px");
+  });
+  it("paints the wall only where a route opts in with data-wall", () => {
+    // Later tasks use --board-wall on board layers (the house-lights dim), so count only page backgrounds.
+    expect([...globals.matchAll(/background-color: var\(--board-wall\)/g)]).toHaveLength(1);
+    expect(globals).toMatch(/html:has\(\[data-wall\]\),\s*html:has\(\[data-wall\]\) body\s*\{\s*background-color: var\(--board-wall\);\s*\}/);
+    // The shared footer keeps its contrast on the wall (its text-ink-2 would read about 2.6:1 there).
+    expect(globals).toMatch(/html:has\(\[data-wall\]\) footer\s*\{\s*color: var\(--board-text-2\);\s*\}/);
+  });
+  it("pins Big Shoulders to its Display cut wherever it is drawn (Mosaic §4 type)", () => {
+    // The opsz axis would otherwise follow the font size, and the 22 px count and the 26 px caller would draw an
+    // intermediate cut. 72 is the axis maximum (Step 1).
+    expect(globals).toMatch(/\.font-shoulders,\s*\.caller-banner\s*\{\s*font-variation-settings: "opsz" 72;\s*font-weight: 800;\s*\}/);
+    expect(globals).not.toContain("font-optical-sizing");
+  });
+  it("sets theme-color to the wall on wall routes and to paper elsewhere", () => {
+    expect(WALL_THEME_COLOR).toBe(t["board-wall"]);
+    expect(PAPER_THEME_COLOR).toBe(t.paper);
+    expect(wallViewport).toEqual({ themeColor: t["board-wall"] });
+  });
+  it("loads five font files: Barlow 400, 500, 600, Barlow Condensed 600, and Big Shoulders as one variable file", () => {
+    expect(fonts).toMatch(/Barlow\(\{[^}]*weight: \["400", "500", "600"\]/);
+    expect(fonts).toMatch(/Barlow_Condensed\(\{[^}]*weight: \["600"\]/);
+    expect(fonts).toMatch(/Big_Shoulders\(\{[^}]*weight: "variable"[^}]*axes: \["opsz"\][^}]*preload: false/);
+    expect(fonts).not.toMatch(/weight: \[[^\]]*"700"/);
+  });
+});
+describe("flights.ts repeats tokens.css exactly (the link preview reads no CSS variables)", () => {
+  const CSS_NAME: Record<keyof typeof TOKENS, string> = {
+    boardWall: "board-wall", boardWall2: "board-wall-2", boardCream: "board-cream", boardCream2: "board-cream-2", boardInk: "board-ink",
+    boardInk2: "board-ink-2", boardSteel: "board-steel", boardRing: "board-ring", boardText2: "board-text-2", boardText3: "board-text-3",
+    red: "red", green: "green",
+  };
+  it("has every board hex once in TOKENS", () => {
+    for (const k of Object.keys(TOKENS) as (keyof typeof TOKENS)[]) expect(TOKENS[k], k).toBe(t[CSS_NAME[k]]);
+    const named = new Set(Object.values(CSS_NAME));
+    expect(Object.keys(t).filter((k) => k.startsWith("board-") && !named.has(k))).toEqual([]);
+  });
+  it("has the lamp's steps in LAMP and the default kit in the kit tokens", () => {
+    for (const s of [0, 1, 2, 3, 4] as const) expect(LAMP[s], `lamp-${s}`).toBe(raw(`lamp-${s}`));
+    expect(t["kit-dark"]).toBe(FLIGHT_COLOURS[DEFAULT_KIT.dark].face);
+    expect(t["kit-light"]).toBe(FLIGHT_COLOURS[DEFAULT_KIT.light].face);
   });
 });

@@ -5,8 +5,8 @@ const url = "https://breaks.example/b/1";
 
 it("writes state-specific share text (design §6)", () => {
   expect(shareText({ state: "open", title: "Taylor Chronos", lineCount: 50, priceCents: 500, openCount: 19, url })).toBe(`Taylor Chronos break. 50 lines at $5. Pick yours: ${url}`);
-  expect(shareText({ state: "open", title: "Taylor Chronos", lineCount: 50, priceCents: 500, openCount: 3, url })).toBe(`Only 3 spots left. If you've claimed, please send payment. ${url}`);
-  expect(shareText({ state: "open", title: "Taylor Chronos", lineCount: 50, priceCents: 500, openCount: 1, url })).toBe(`Only 1 spot left. If you've claimed, please send payment. ${url}`);
+  expect(shareText({ state: "open", title: "Taylor Chronos", lineCount: 50, priceCents: 500, openCount: 3, url })).toBe(`3 to go. If you've claimed, please send payment. ${url}`);
+  expect(shareText({ state: "open", title: "Taylor Chronos", lineCount: 50, priceCents: 500, openCount: 1, url })).toBe(`1 to go. If you've claimed, please send payment. ${url}`);
   expect(shareText({ state: "open", title: "Taylor Chronos", lineCount: 50, priceCents: 500, openCount: 0, url })).toBe(`Every spot is taken. If you've claimed, please send payment. ${url}`);
   expect(shareText({ state: "closed", title: "Taylor Chronos", url })).toBe(`CLOSED. Taylor Chronos. Draw tonight. ${url}`);
   expect(shareText({ state: "running", title: "Taylor Chronos", url })).toBe(`CLOSED. Taylor Chronos. Draw running now. ${url}`);
