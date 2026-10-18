@@ -5,6 +5,7 @@ import { InvalidInput, NotFound } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
 import { appendEvent } from "@/domain/events";
 import { assertOnboarded } from "@/auth/authz";
+import { isFlightColour, isFlightShape, type FlightColour, type FlightShape } from "@/domain/flights";
 
 export const TERMS_VERSION = "2026-10-13";
 
@@ -86,4 +87,21 @@ export async function updateProfile(tx: Tx, caller: Caller, p: { displayName: st
   // Which fields changed, never the names themselves: events are append-only and outlive an account's deletion.
   await appendEvent(tx, { actorId: caller.id, type: "user.profile_updated", payload: { changed } });
   return { changed };
+}
+
+/**
+ * /account "Your flight" (Mosaic §4, §10): any of the 32, at once everywhere (a flight is identity, not per break).
+ * Choosing marks flight_chosen_at, keeping the random one included; once chosen, the same flight again is a no-op.
+ */
+export async function updateFlight(tx: Tx, caller: Caller, p: { colour: FlightColour; shape: FlightShape }): Promise<void> {
+  assertOnboarded(caller);
+  // Error copy: recorded ruling 15.
+  if (!isFlightColour(p.colour) || !isFlightShape(p.shape)) throw new InvalidInput("Choose one of the 32 flights");
+  const [cur] = await tx.select({ colour: users.flightColour, shape: users.flightShape, chosenAt: users.flightChosenAt })
+    .from(users).where(sql`${users.id} = ${caller.id}`).for("update");
+  if (!cur) throw new NotFound("Account not found");
+  if (cur.colour === p.colour && cur.shape === p.shape && cur.chosenAt) return;
+  await tx.update(users).set({ flightColour: p.colour, flightShape: p.shape, flightChosenAt: new Date() }).where(sql`${users.id} = ${caller.id}`);
+  // The changed field's name, never the values (spec §10, recorded ruling 10), as updateProfile logs its fields.
+  await appendEvent(tx, { actorId: caller.id, type: "user.profile_updated", payload: { changed: ["flight"] } });
 }

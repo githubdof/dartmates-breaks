@@ -120,3 +120,37 @@ describe("schema constraints", () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+describe("draws.verified_at (migration 0004)", () => {
+  let hostId: string;
+  beforeAll(async () => {
+    hostId = (await sql`insert into users (id, email, role) values (gen_random_uuid(), 'v@example.com', 'host') returning id`)[0].id;
+  });
+
+  const freshDraw = async (): Promise<string> => {
+    const [b] = await sql`insert into breaks (host_id, title, line_count, line_price_cents, status, seed_commitment)
+      values (${hostId}, 'v', 2, 2000, 'drawing', encode(sha256('breaks-commit-v1'::bytea || decode(${ZERO_SECRET}, 'base64')), 'hex')) returning id`;
+    const [r] = await sql`insert into draw_requests (break_id, attempt, requested_by, beacon_round) values (${b.id}, 1, ${hostId}, 1) returning id`;
+    const [d] = await sql`insert into draws (break_id, request_id, secret, beacon_round, beacon_randomness, beacon_signature, seed, algorithm_version, entries_snapshot, ranking, result_hash, run_by)
+      values (${b.id}, ${r.id}, ${ZERO_SECRET}, 1, 'aa', 'bb', 'cc', 1, '[]'::jsonb, '[1,2]'::jsonb, 'dd', ${hostId}) returning id`;
+    return d.id as string;
+  };
+
+  it("starts null and is set once, on a draw that is not voided", async () => {
+    const id = await freshDraw();
+    const [d] = await sql`select verified_at from draws where id = ${id}`;
+    expect(d.verified_at).toBeNull();
+    await expect(sql`update draws set verified_at = now() where id = ${id}`).resolves.toBeDefined();
+    await expect(sql`update draws set verified_at = now() + interval '1 minute' where id = ${id}`).rejects.toThrow(/set once/);
+    await expect(sql`update draws set verified_at = null where id = ${id}`).rejects.toThrow(/set once/);
+  });
+
+  it("still lets a draw be voided and changes nothing else, and a voided draw takes no check", async () => {
+    const id = await freshDraw();
+    await expect(sql`update draws set verified_at = now(), ranking = '[2,1]'::jsonb where id = ${id}`).rejects.toThrow(/may only be voided/);
+    // Recording the check never carries a half-void with it (voided_by or void_reason without voided_at).
+    await expect(sql`update draws set verified_at = now(), void_reason = 'test' where id = ${id}`).rejects.toThrow(/may only be voided/);
+    await expect(sql`update draws set voided_at = now(), void_reason = 'test' where id = ${id}`).resolves.toBeDefined();
+    await expect(sql`update draws set verified_at = now() where id = ${id}`).rejects.toThrow(/immutable/);
+  });
+});

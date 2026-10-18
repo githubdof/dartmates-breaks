@@ -44,3 +44,23 @@ export function nextFocusIndex(index: number, key: string, cols: number, count: 
 export function thumbColumns(count: number): number {
   return Math.min(8, Math.max(2, Math.ceil(Math.sqrt(count))));
 }
+
+/** How far the board's rows pull into each gutter (globals.css .board-frame, .board-wire: margin-inline: -3.5px). */
+export const BOARD_BLEED = 3.5;
+
+/**
+ * The board at a viewport width (Mosaic §5, recorded ruling 33). `column` is the page column: the viewport minus 16 px
+ * gutters below 640, and 552 above. The rows pull BOARD_BLEED into each gutter, so `box` is the column plus 7 px (365 at
+ * 390). Cells sit 1 px apart (the wire): `cell` is a cell's side (44.75 at 390, 47 at 360) and `pitch` a cell plus its
+ * wire. Columns are read from the column, as the group's container queries read it. The 12 px frame is a box-shadow
+ * drawn 15.5 px into the 16 px gutter, so it takes none of the box.
+ */
+export function boardGeometry(viewport: number, count: number): { column: number; box: number; cols: number; cell: number; pitch: number; rows: number; height: number } {
+  const column = viewport >= 640 ? 552 : viewport - 32;
+  const box = column + 2 * BOARD_BLEED;
+  const cols = columnsFor(count, column);
+  const cell = (box - (cols - 1)) / cols;
+  const pitch = cell + 1;
+  const rows = Math.ceil(count / cols);
+  return { column, box, cols, cell, pitch, rows, height: rows * pitch - 1 };
+}

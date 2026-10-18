@@ -19,8 +19,10 @@ export function FeedFilters({ sorts, sort, hosts, host }: { sorts: Option[]; sor
       {hosts && (
         <label className="flex items-center gap-3 text-small">
           <span className="font-semibold">Host</span>
+          {/* The feed is on the wall (Mosaic §8): the select takes the wall inks. It inherits the page's cream text, which
+              on the paper `bg-card` it had read at about 1:1. */}
           <select value={host} onChange={(e) => go(hosts, e.target.value)} data-testid="host-filter"
-            className="h-11 min-w-0 flex-1 rounded-input border border-wire-strong bg-card px-3 text-body">
+            className="h-11 min-w-0 flex-1 rounded-input border border-[var(--board-steel)] bg-[var(--board-wall-2)] px-3 text-body text-[var(--board-text)]">
             {hosts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </label>

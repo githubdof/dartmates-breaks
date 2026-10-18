@@ -412,8 +412,8 @@ one badge "Locked before opening · Checked ✓", entry list in ledger style
 collapsed, void chain if any. Reveal animation client-side from server-
 rendered data. Share text in the community's idiom.
 
-**Stalls.** Filled-not-drawn shows "Filled N days ago — not drawn" on
-the break and host profile; host nudged at 24h, 72h, then weekly. No
+**Stalls.** A Closed break not drawn shows "Closed 3 days ago, not drawn yet." (the
+day count from 3 on) on the break and host profile; host nudged at 24h, 72h, then weekly. No
 auto-draw.
 
 ## 10. Threads, DMs, notifications

@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
 import { makeUser } from "../../../tests/helpers/fixtures";
-import { cleanPaymentName, completeOnboarding, nameLocked, normalizeHandle, TERMS_VERSION, updateProfile } from "./commands";
+import { cleanPaymentName, completeOnboarding, nameLocked, normalizeHandle, TERMS_VERSION, updateFlight, updateProfile } from "./commands";
 import { users, legalAcceptances, events } from "@/db/schema";
-import { InvalidInput } from "@/domain/errors";
+import { InvalidInput, NotAuthorized, NotOnboarded } from "@/domain/errors";
 
 const caller = (id: string) => ({ id, role: "member" as const, onboarded: false, banned: false });
 
@@ -128,5 +128,55 @@ describe("updateProfile", () => {
     const now = new Date("2026-10-14T12:00:00Z");
     expect(nameLocked(new Date("2026-09-14T11:00:00Z"), now)).toBe(true);
     expect(nameLocked(new Date("2026-09-15T12:00:00Z"), now)).toBe(false);
+  });
+});
+
+describe("updateFlight", () => {
+  const flightEvents = (tx: Parameters<Parameters<typeof withTx>[0]>[0], id: string) =>
+    tx.select().from(events).where(sql`${events.actorId} = ${id} and ${events.type} = 'user.profile_updated'`);
+
+  it("stores the flight, marks it chosen and logs the change", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      await tx.update(users).set({ flightColour: "pink", flightShape: "slim" }).where(sql`${users.id} = ${u.id}`);
+      await updateFlight(tx, onboarded(u.id), { colour: "blue", shape: "kite" });
+      const [row] = await tx.select().from(users).where(sql`${users.id} = ${u.id}`);
+      expect(row).toMatchObject({ flightColour: "blue", flightShape: "kite" });
+      expect(row.flightChosenAt).not.toBeNull();
+      // The changed field's name, never the values (recorded ruling 10).
+      expect((await flightEvents(tx, u.id)).map((e) => e.payload)).toEqual([{ changed: ["flight"] }]);
+    });
+  });
+  it("keeping the random flight counts as choosing it, once", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      await tx.update(users).set({ flightColour: "sky", flightShape: "pear" }).where(sql`${users.id} = ${u.id}`);
+      await updateFlight(tx, onboarded(u.id), { colour: "sky", shape: "pear" });
+      const [first] = await tx.select().from(users).where(sql`${users.id} = ${u.id}`);
+      expect(first.flightChosenAt).not.toBeNull();
+      await updateFlight(tx, onboarded(u.id), { colour: "sky", shape: "pear" });
+      const [second] = await tx.select().from(users).where(sql`${users.id} = ${u.id}`);
+      expect(second.flightChosenAt).toEqual(first.flightChosenAt);
+      expect(await flightEvents(tx, u.id)).toHaveLength(1);
+    });
+  });
+  it("refuses a colour or shape outside the set and changes nothing", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      const [before] = await tx.select().from(users).where(sql`${users.id} = ${u.id}`);
+      await expect(updateFlight(tx, onboarded(u.id), { colour: "red" as never, shape: "kite" })).rejects.toBeInstanceOf(InvalidInput);
+      await expect(updateFlight(tx, onboarded(u.id), { colour: "blue", shape: "dart" as never })).rejects.toThrow("Choose one of the 32 flights");
+      const [after] = await tx.select().from(users).where(sql`${users.id} = ${u.id}`);
+      expect(after).toMatchObject({ flightColour: before.flightColour, flightShape: before.flightShape, flightChosenAt: null });
+      expect(await flightEvents(tx, u.id)).toHaveLength(0);
+    });
+  });
+  it("refuses a banned caller and one who has not finished onboarding", async () => {
+    await withTx(async (tx) => {
+      const u = await makeUser(tx);
+      await expect(updateFlight(tx, { ...onboarded(u.id), banned: true }, { colour: "blue", shape: "kite" })).rejects.toBeInstanceOf(NotAuthorized);
+      await expect(updateFlight(tx, { ...onboarded(u.id), banned: true }, { colour: "blue", shape: "kite" })).rejects.toThrow(/suspended/);
+      await expect(updateFlight(tx, { ...onboarded(u.id), onboarded: false }, { colour: "blue", shape: "kite" })).rejects.toBeInstanceOf(NotOnboarded);
+    });
   });
 });

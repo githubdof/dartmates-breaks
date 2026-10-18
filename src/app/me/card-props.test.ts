@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { MyBreak } from "@/domain/lines/queries";
+import type { Flight } from "@/domain/flights";
 import { toCardProps } from "./card-props";
 
 const now = new Date("2026-10-14T16:00:00Z");
@@ -12,35 +13,48 @@ const g: MyBreak = {
   awards: [], ranAt: null, earlier: false,
 };
 const zone = { tz: "America/New_York", labelled: false };
+const flight: Flight = { colour: "yellow", shape: "kite" };
 
 describe("toCardProps", () => {
-  it("turns a group into what the card shows, with the deadline in the viewer's zone", () => {
-    expect(toCardProps(g, now, zone)).toEqual({
+  it("turns a group into what the card shows: your lines in your flight, the deadline in your zone", () => {
+    expect(toCardProps(g, now, zone, flight)).toEqual({
       breakId: "b1", title: "Chronos", status: "open", hostName: "Jim", payee: "@Jim-R", handles: { venmo: "@Jim-R" },
       instructions: "Leave the note blank.", commitment: "abababababab",
       cells: [
-        { number: 3, state: "sent", mine: true, overdue: false, bonus: false },
-        { number: 5, state: "taken", mine: true, overdue: false, bonus: false },
-        { number: 11, state: "paid", mine: true, overdue: false, bonus: true },
+        { number: 3, state: "sent", mine: true, overdue: false, bonus: false, flight, place: null },
+        { number: 5, state: "taken", mine: true, overdue: false, bonus: false, flight, place: null },
+        { number: 11, state: "paid", mine: true, overdue: false, bonus: true, flight, place: null },
       ],
       stateLine: "Unpaid.",
+      unpaidNote: null,
       owe: { numbers: [5], cents: 500, payByIso: "2026-10-15T01:40:00.000Z", payByFallback: "9:40 pm today", late: false, bonusLost: [] },
     });
   });
+  it("draws only your own lines, in your flight, and carries nobody else's data (Mosaic §8)", () => {
+    const { cells } = toCardProps(g, now, zone, flight);
+    expect(cells.every((c) => c.mine && c.flight === flight && c.place === null)).toBe(true);
+    expect(Object.keys(cells[0]).sort()).toEqual(["bonus", "flight", "mine", "number", "overdue", "place", "state"]);
+  });
   it("owes nothing once every unsent line is gone", () => {
-    expect(toCardProps({ ...g, unsent: [], owedCents: 0, payBy: null }, now, zone).owe).toBeNull();
+    expect(toCardProps({ ...g, unsent: [], owedCents: 0, payBy: null }, now, zone, flight).owe).toBeNull();
   });
   it("still owes on a closed break, and passes lateness through", () => {
-    expect(toCardProps({ ...g, status: "filled", late: true }, now, zone).owe?.late).toBe(true);
+    expect(toCardProps({ ...g, status: "filled", late: true }, now, zone, flight).owe?.late).toBe(true);
   });
-  it("owes nothing on a break that is cancelled or drawn", () => {
-    const cancelled = toCardProps({ ...g, status: "cancelled" }, now, zone);
+  it("owes nothing on a cancelled or drawn break; a drawn break with unsent lines says who to ask", () => {
+    const cancelled = toCardProps({ ...g, status: "cancelled" }, now, zone, flight);
     expect(cancelled.owe).toBeNull();
     expect(cancelled.stateLine).toBe("Cancelled.");
-    expect(toCardProps({ ...g, status: "drawn" }, now, zone).owe).toBeNull();
+    expect(cancelled.unpaidNote).toBeNull();
+    const ran = toCardProps({ ...g, status: "drawn" }, now, zone, flight);
+    expect(ran.owe).toBeNull();
+    expect(ran.stateLine).toBe("Unpaid.");
+    expect(ran.unpaidNote).toBe("Line 5 is not marked paid. Ask Jim about it.");
+    expect(toCardProps({ ...g, status: "drawing" }, now, zone, flight).unpaidNote).toBe("Line 5 is not marked paid. Ask Jim about it.");
+    expect(toCardProps({ ...g, status: "drawn", unsent: [] }, now, zone, flight).unpaidNote).toBeNull();
   });
   it("says which bonus lines a give-back would take", () => {
     const onlyUnsent = { ...g, lines: [{ number: 5, state: "taken" as const, bonus: false }, { number: 11, state: "paid" as const, bonus: true }], sent: [], paid: [11] };
-    expect(toCardProps(onlyUnsent, now, { tz: "America/New_York", labelled: false }).owe?.bonusLost).toEqual([11]);
+    expect(toCardProps(onlyUnsent, now, zone, flight).owe?.bonusLost).toEqual([11]);
   });
 });

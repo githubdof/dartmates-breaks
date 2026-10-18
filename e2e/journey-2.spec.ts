@@ -53,7 +53,9 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   // 3. Buyer A finds it in the feed, takes the next two lines, and pays later from My lines.
   const a = await as(browser, `j2a${run}@e2e.test`);
   await a.goto(`/breaks?host=${hostHandle}`);
-  await a.getByTestId("break-card").filter({ hasText: `J2 ${run}` }).click();
+  const feedCard = a.getByTestId("break-card").filter({ hasText: `J2 ${run}` });
+  await expect(feedCard).toContainText("4 to go"); // the checkout count, never "4 of 4 left"
+  await feedCard.click();
   await a.waitForURL(url);
   await expect(a.getByTestId("cell-1")).toHaveAttribute("aria-disabled", "true"); // straight fill: no picking
   await a.getByRole("button", { name: "Increase Number of lines" }).click();
@@ -103,6 +105,27 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await expect(final).toContainText("Picks one of the prize choices.");
   await expect(final).toContainText("2nd place: @");
   await expect(final).toContainText("Flight pack");
+  // The board in the host's view with its two black bulls (two prizes), the caller's final call, the full order,
+  // and an entry list of handles as text: no flight glyph beside any handle.
+  await expect(host.getByTestId("board-frame")).toBeVisible();
+  await expect(host.locator("[data-won]")).toHaveCount(2, { timeout: 15_000 });
+  await expect(host.getByTestId("caller")).toContainText("takes the top spot.");
+  await expect(host.getByTestId("full-order").locator("li")).toHaveCount(4);
+  await expect(host.getByTestId("entries").locator("svg, [data-flight]")).toHaveCount(0);
+  await expect(host.getByTestId("entries")).toContainText("Line 1: @");
+  // A stranger sees the same bulls in the host's kit: no flight on any cell, a text-only call. A first-time viewer, so
+  // the reveal plays: a paused clock keeps Skip on screen (a live clock would race it, as section 8 explains).
+  const stranger = await (await browser.newContext()).newPage();
+  await stranger.clock.install();
+  await stranger.clock.pauseAt(new Date(Date.now() + 1000));
+  await stranger.goto(`${url}/result`);
+  await expect(stranger.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#17161A"); // a wall route (Mosaic §8)
+  await stranger.getByTestId("reveal-skip").click();
+  await expect(stranger.locator("[data-won]")).toHaveCount(2);
+  await expect(stranger.locator("[data-flight]")).toHaveCount(0);
+  await expect(stranger.getByTestId("caller").locator("svg")).toHaveCount(0);
+  await expect(stranger.getByTestId("caller")).toContainText(/^Line \d+\. @\S+ takes the top spot\.$/);
+  await stranger.context().close();
   await expect(host.getByTestId("verify-status")).toContainText("Checked");
   const inputs = (await (await host.request.get(`${url}/result.json`)).json()) as PublicInputs;
   expect(verifyInputs(inputs).ok).toBe(true);
@@ -119,9 +142,10 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await winner.goto("/me");
   await expect(winner.getByTestId("my-break").filter({ hasText: `J2 ${run}` }).getByTestId("my-state")).toHaveText(`Won. Tell ${hostHandle} your choice.`);
 
-  // 8. The result page for a first-time viewer: Skip hands focus to Replay, Replay deals again, Share falls back
-  //    to a selectable field when the clipboard is blocked. A paused clock keeps the deal on screen: install() alone
-  //    lets time run, and a 4-line deal ends in about 1.3 s, so Skip would race it (the layout spec's pattern).
+  // 8. The result page for a first-time viewer: Skip ends the reveal on its last call with the bulls on the board and
+  //    hands focus to Replay; Replay plays it again; Share falls back to a selectable field when the clipboard is
+  //    blocked. A paused clock keeps the reveal on screen: install() alone lets time run, and a 4-line, two-prize reveal
+  //    ends in about 3.3 s, so Skip would race it (the layout spec's pattern).
   const viewer = a;
   await viewer.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("blocked")) } });
@@ -129,8 +153,67 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await viewer.clock.install();
   await viewer.clock.pauseAt(new Date(Date.now() + 1000));
   await viewer.goto(`${url}/result`);
+  // The clock is paused: the reveal sits at house lights down, one board class, the read-out layer hidden from AT.
+  await expect(viewer.locator("[data-lights=down]")).toHaveCount(1);
+  await expect(viewer.getByTestId("deal")).toHaveAttribute("aria-hidden", "true");
+  await expect(viewer.locator("[data-won]")).toHaveCount(0);
+  // Run to the first impact. During the throw nothing on the board animates outside the targeted cell, the call is
+  // announced politely, and the chips read out so far never change (Review Focus 4; §7 never list, recorded ruling 37).
+  for (let i = 0; i < 200 && (await viewer.locator("[data-impact]").count()) === 0; i++) await viewer.clock.runFor(20);
+  await expect(viewer.locator("[data-impact]")).toHaveCount(1);
+  const strays = await viewer.evaluate(() => document.getAnimations().filter((a) => {
+    const el = (a.effect as KeyframeEffect | null)?.target;
+    // The uniform dim is one class on the board and may still be fading in: it is allowed (§3). Anything else must be the hit cell.
+    return !!el && !!el.closest('[data-testid="board-frame"]') && !el.closest("[data-impact]") && !el.classList.contains("bc-dim");
+  }).length);
+  expect(strays).toBe(0);
+  await expect(viewer.locator('[role="status"][aria-live="polite"]').filter({ hasText: "takes" })).toContainText(/^Line \d+\. @\S+ takes 2nd place\.$/);
+  const chipsAtThrow = await viewer.getByTestId("deal").locator("li").allTextContents();
+  // Skip ends it in one step: every bull in the DOM (two prizes, two places), the lights up, the top-spot call.
   await viewer.getByTestId("reveal-skip").click();
+  await expect(viewer.locator("[data-won]")).toHaveCount(2);
+  await expect(viewer.locator("[data-lights=down]")).toHaveCount(0);
+  // The caller copy (Mosaic §7): always the handle, never "You", never the prize.
+  await expect(viewer.getByTestId("caller")).toHaveText(/^Line \d+\. @\S+ takes the top spot\.$/);
   await expect(viewer.getByTestId("reveal-replay")).toBeFocused();
+  // Two prizes, two black bulls on the visible board (the deal layer's chips, aria-hidden, hold no won cell).
+  await expect(viewer.locator("[data-won]:visible")).toHaveCount(2);
+  const chipsAfter = await viewer.getByTestId("deal").locator("li").allTextContents();
+  expect(chipsAfter.slice(0, chipsAtThrow.length)).toEqual(chipsAtThrow);
+  // The board and its frame as the reveal left them: compared with a returning viewer's below. Every cell, the hit
+  // cells included (they are the likeliest to keep residue: data-impact, contain, z-index, a fill-mode animation), with
+  // its won place, so a hit cell must equal the returning viewer's still bull.
+  const boardStyles = () => viewer.evaluate(() => {
+    const pick = (el: Element | null) => {
+      if (!el) return "";
+      const s = getComputedStyle(el);
+      return [s.backgroundColor, s.boxShadow, s.transform, s.translate, s.scale, s.opacity, s.contain, s.zIndex, s.animationName].join("|");
+    };
+    const frame = document.querySelector('[data-testid="board-frame"]');
+    return [pick(frame), ...[...document.querySelectorAll("[data-cell]")].map((el) =>
+      `${el.getAttribute("data-cell")}:won=${el.getAttribute("data-won") ?? "-"}:impact=${el.getAttribute("data-impact") ?? "-"}:${pick(el)}:${pick(el.querySelector(".bc-dim"))}`)];
+  });
+  // Skip's fade runs on the compositor's clock, not the paused one: wait for every dim to reach 0 first.
+  await expect.poll(() => viewer.evaluate(() => [...document.querySelectorAll(".bc-dim")].every((d) => getComputedStyle(d).opacity === "0"))).toBe(true);
+  const afterReveal = await boardStyles();
+  // The two hit cells are in the check, at their final state: won (top spot and 2nd), no impact left on them.
+  expect(afterReveal.filter((r) => /:won=[12]:impact=-:/.test(r))).toHaveLength(2);
+  // Replay plays it again from house lights down.
+  await viewer.getByTestId("reveal-replay").click();
+  await expect(viewer.getByTestId("reveal-skip")).toBeVisible();
+  await expect(viewer.locator("[data-won]")).toHaveCount(0);
+  await viewer.getByTestId("reveal-skip").click();
+  // A returning viewer sees no reveal: the same board, the same frame, cell for cell (§7: the reveal leaves nothing behind).
+  await viewer.reload();
+  await expect(viewer.getByTestId("reveal-replay")).toBeVisible();
+  // Mosaic §8's order: the headline, the full order, Replay, then Share (each follows the one before in the document).
+  const follows = await viewer.evaluate(() => {
+    const at = (id: string) => document.querySelector(`[data-testid="${id}"]`)!;
+    const after = (a: string, b: string) => (at(a).compareDocumentPosition(at(b)) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    return [after("winner", "full-order"), after("full-order", "reveal-replay"), after("reveal-replay", "share")];
+  });
+  expect(follows).toEqual([true, true, true]);
+  await expect.poll(boardStyles).toEqual(afterReveal);
   await viewer.getByTestId("reveal-replay").click();
   await expect(viewer.getByTestId("reveal-skip")).toBeVisible();
   await viewer.getByTestId("share").click();

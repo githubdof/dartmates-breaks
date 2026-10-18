@@ -3,8 +3,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { action } from "@/lib/action";
 import { createServerSupabase } from "@/auth/supabase";
-import { updateProfile } from "@/domain/users/commands";
-import { parseAccount, type AccountInput } from "./parse";
+import { updateFlight, updateProfile } from "@/domain/users/commands";
+import { updateHostKit } from "@/domain/breaks/commands";
+import { parseAccount, parseFlight, parseKit, type AccountInput } from "./parse";
 
 export type AccountState = { error?: string; saved?: boolean; values?: AccountInput } | null;
 
@@ -26,4 +27,27 @@ export async function signOutAction() {
   const supabase = await createServerSupabase();
   await supabase.auth.signOut();
   redirect("/");
+}
+
+export type PickerState = { error?: string; saved?: boolean } | null;
+
+/** "Your flight": a change applies everywhere at once (a flight is identity, not per break). */
+export async function saveFlight(_: PickerState, form: FormData): Promise<PickerState> {
+  const p = parseFlight(form);
+  if (!p.ok) return { error: p.error };
+  const r = await action((tx, caller) => updateFlight(tx, caller, p.input));
+  if (!r.ok) return { error: r.message };
+  revalidatePath("/account");
+  return { saved: true };
+}
+
+/** "Your kit" (hosts): the surround every one of the host's boards wears. updateHostKit enforces host or admin. */
+export async function saveKit(_: PickerState, form: FormData): Promise<PickerState> {
+  const p = parseKit(form);
+  if (!p.ok) return { error: p.error };
+  const r = await action((tx, caller) => updateHostKit(tx, caller, p.input));
+  if (!r.ok) return { error: r.message };
+  revalidatePath("/account");
+  revalidatePath("/host/new");
+  return { saved: true };
 }

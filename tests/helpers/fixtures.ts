@@ -1,7 +1,8 @@
 import { randomUUID, randomBytes } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { users, breaks, breakItems, breakSecrets, prizes, lines } from "@/db/schema";
+import { users, breaks, breakItems, breakSecrets, prizes, lines, hostProfiles } from "@/db/schema";
+import type { Flight, Kit } from "@/domain/flights";
 import { commitment } from "@/crypto/commit";
 import { encryptSecret } from "@/crypto/secrets";
 import { FakeBeacon } from "@/crypto/beacon";
@@ -13,13 +14,24 @@ import { SYSTEM, type Caller } from "@/domain/types";
 // Random, not Date.now(): parallel vitest workers would collide on the same millisecond.
 const uniq = () => randomBytes(6).toString("hex");
 
-export async function makeUser(tx: Tx, opts: { role?: "member" | "host" | "admin"; handle?: string } = {}) {
+/** Flights from both ink tiers and a kit other than the default, for privacy and render tests (Mosaic §4, §6). */
+export const YELLOW_KITE: Flight = { colour: "yellow", shape: "kite" };
+export const BLUE_STANDARD: Flight = { colour: "blue", shape: "standard" };
+export const PLUM_LIME: Kit = { dark: "plum", light: "lime" };
+
+export async function makeUser(tx: Tx, opts: { role?: "member" | "host" | "admin"; handle?: string; flight?: Flight; kit?: Kit } = {}) {
   const id = randomUUID();
   const handle = opts.handle ?? `u${uniq()}`;
   await tx.insert(users).values({
     id, email: `${handle}@example.com`, handle, displayName: handle,
     role: opts.role ?? "member", ageConfirmedAt: new Date(),
+    // Without a flight the column default draws a random one, as at a real first sign-in.
+    ...(opts.flight ? { flightColour: opts.flight.colour, flightShape: opts.flight.shape } : {}),
   });
+  if (opts.kit) {
+    await tx.insert(hostProfiles).values({ userId: id, kitDark: opts.kit.dark, kitLight: opts.kit.light })
+      .onConflictDoUpdate({ target: hostProfiles.userId, set: { kitDark: opts.kit.dark, kitLight: opts.kit.light } });
+  }
   return { id, handle };
 }
 

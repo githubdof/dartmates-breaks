@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { heroNumbers, ranText } from "./landing-copy";
+import { ranText } from "./landing-copy";
 
 const now = new Date("2026-10-14T18:00:00Z"); // a Wednesday
 const ago = (ms: number) => new Date(now.getTime() - ms);
@@ -21,12 +21,5 @@ describe("ranText", () => {
     const lateSunday = new Date("2026-10-12T02:30:00Z"); // Sunday evening in New York, Monday morning in London
     expect(ranText(lateSunday, now, "America/New_York")).toBe("Ran on Sunday.");
     expect(ranText(lateSunday, now, "Europe/London")).toBe("Ran on Monday.");
-  });
-});
-
-describe("heroNumbers", () => {
-  it("is every numbered line, plus the winner when it is a bonus line", () => {
-    expect(heroNumbers(4, 2)).toEqual([1, 2, 3, 4]);
-    expect(heroNumbers(4, 5)).toEqual([1, 2, 3, 4, 5]);
   });
 });

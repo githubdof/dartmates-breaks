@@ -80,8 +80,8 @@ export function outcomeText(got: readonly number[], taken: readonly number[]): s
 
 /** The popover text shown when a taken cell is tapped (also announced in the live region). The handle appears only if the server sent it. */
 export function cellNote(c: GridCell): string {
-  if (!c.mine && c.holder) return `Line ${c.number}: @${c.holder}, ${cellStateWord(c)}`;
-  return `Line ${c.number}: ${cellStateWord(c)}`;
+  if (!c.mine && c.holder) return `Line ${c.number}: @${c.holder}, ${cellStateWord(c, { foldSent: true })}`;
+  return `Line ${c.number}: ${cellStateWord(c, { foldSent: true })}`;
 }
 
 const breakPath = (breakId: string, pick: readonly number[]) => (pick.length ? `/b/${breakId}?pick=${pick.join(",")}` : `/b/${breakId}`);
@@ -91,4 +91,10 @@ export const onboardingHref = (breakId: string, pick: readonly number[]) => `/on
 /** The same words said again within 3 s (a refused claim's cap note, then the refresh that trims the selection): skip the second. */
 export function isRepeat(last: { text: string; at: number } | null, text: string, now: number): boolean {
   return last !== null && last.text === text && now - last.at < 3000;
+}
+
+/** Claim commits (Mosaic §7): "You have lines 4 and 11. Pay Jim $10." The amount is what the pay sheet shows. */
+export function claimAnnouncement(got: readonly number[], taken: readonly number[], hostName: string, owedCents: number): string {
+  const said = outcomeText(got, taken);
+  return got.length > 0 ? `${said} Pay ${hostName} ${formatMoney(owedCents)}.` : said;
 }

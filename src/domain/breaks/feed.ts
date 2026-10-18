@@ -1,6 +1,8 @@
-import { sql, eq, and, asc, desc, inArray, isNull, isNotNull, type SQL } from "drizzle-orm";
+import { sql, eq, and, asc, desc, inArray, isNull, isNotNull, lte, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { breaks, draws, lines, users } from "@/db/schema";
+import { breaks, draws, hostProfiles, lines, prizes, users } from "@/db/schema";
+import { placesOf, type Place } from "@/domain/draws/places";
+import { heatStep, kitFor, type HeatStep, type Kit } from "@/domain/flights";
 import type { CellState } from "./grid";
 
 export const FEED_SORTS = ["newest", "filling", "almost"] as const;
@@ -17,6 +19,8 @@ export type FeedBreak = {
   /** Numbered lines only (bonus lines never count). open: unowned and not reserved; taken: owned and unpaid, sent included. */
   open: number; taken: number; paid: number; paidLastDay: number;
   host: FeedHost;
+  /** Public (Mosaic §6): the host's kit and the lamp's step, never a flight. The feed lists open breaks, so the lamp is never closed here. */
+  kit: Kit; heat: HeatStep;
 };
 
 const DAY_MS = 86_400_000;
@@ -40,12 +44,16 @@ export async function listFeed(tx: Tx, p: { sort: FeedSort; hostHandle?: string 
     id: breaks.id, title: breaks.title, lineCount: breaks.lineCount, linePriceCents: breaks.linePriceCents, openedAt: breaks.openedAt,
     open, taken, paid, paidLastDay,
     hostId: users.id, hostHandle: users.handle, hostDisplayName: users.displayName, hostSince: users.createdAt, breaksRun,
-  }).from(breaks).innerJoin(users, eq(users.id, breaks.hostId)).where(and(...where)).orderBy(...order).limit(p.limit ?? 50);
+    kitDark: hostProfiles.kitDark, kitLight: hostProfiles.kitLight,
+  }).from(breaks).innerJoin(users, eq(users.id, breaks.hostId)).leftJoin(hostProfiles, eq(hostProfiles.userId, breaks.hostId))
+    .where(and(...where)).orderBy(...order).limit(p.limit ?? 50);
   return rows.map((r) => ({
     id: r.id, title: r.title, lineCount: r.lineCount, linePriceCents: r.linePriceCents,
     openedAt: r.openedAt ?? new Date(0), // an open break always has opened_at
     open: r.open, taken: r.taken, paid: r.paid, paidLastDay: r.paidLastDay,
     host: { id: r.hostId, handle: r.hostHandle, displayName: r.hostDisplayName, breaksRun: r.breaksRun, since: r.hostSince },
+    kit: kitFor(r),
+    heat: heatStep(r.open, r.lineCount, false),
   }));
 }
 
@@ -79,14 +87,34 @@ export async function feedHosts(tx: Tx): Promise<{ handle: string }[]> {
   return rows.flatMap((r) => (r.handle ? [{ handle: r.handle }] : []));
 }
 
-export type LatestRan = { breakId: string; title: string; lineCount: number; topLine: number; ranAt: Date };
+export type LatestRan = {
+  breakId: string; title: string; lineCount: number; topLine: number; ranAt: Date;
+  kit: Kit; heat: HeatStep;
+  /** The black bull cells: each prize place (1 to 3) and the line that took it (placesOf). */
+  places: { number: number; place: Place }[];
+  /** Line state only, as on feed cards (feedThumbs): no owner is selected. */
+  cells: ThumbCell[];
+};
 
-/** The landing hero (design §5.2): the most recent main break that ran, read from its active (not voided) draw; never a banned host's. */
+/** The landing hero (Mosaic §8): the most recent main break that ran, read from its active (not voided) draw; never a banned host's. */
 export async function latestRanBreak(tx: Tx): Promise<LatestRan | null> {
-  const [r] = await tx.select({ breakId: breaks.id, title: breaks.title, lineCount: breaks.lineCount, ranking: draws.ranking, ranAt: draws.createdAt })
+  const [r] = await tx.select({
+    breakId: breaks.id, title: breaks.title, lineCount: breaks.lineCount, ranking: draws.ranking, ranAt: draws.createdAt,
+    kitDark: hostProfiles.kitDark, kitLight: hostProfiles.kitLight,
+  })
     .from(draws).innerJoin(breaks, eq(breaks.id, draws.breakId)).innerJoin(users, eq(users.id, breaks.hostId))
+    .leftJoin(hostProfiles, eq(hostProfiles.userId, breaks.hostId))
     .where(and(isNull(draws.voidedAt), eq(breaks.status, "drawn"), eq(breaks.kind, "main"), isNull(users.bannedAt)))
     .orderBy(desc(draws.createdAt), desc(draws.id)).limit(1);
   if (!r || r.ranking.length === 0) return null;
-  return { breakId: r.breakId, title: r.title, lineCount: r.lineCount, topLine: r.ranking[0], ranAt: r.ranAt };
+  const ranks = await tx.selectDistinct({ rank: prizes.rank }).from(prizes)
+    .where(and(eq(prizes.breakId, r.breakId), lte(prizes.rank, 3))).orderBy(asc(prizes.rank));
+  const cells = (await feedThumbs(tx, [r.breakId])).get(r.breakId) ?? [];
+  return {
+    breakId: r.breakId, title: r.title, lineCount: r.lineCount, topLine: r.ranking[0], ranAt: r.ranAt,
+    kit: kitFor({ kitDark: r.kitDark, kitLight: r.kitLight }),
+    heat: heatStep(0, r.lineCount, true), // a ran break is past Closed: the lamp is frozen at its top step
+    places: placesOf(r.ranking, ranks.map((x) => x.rank)),
+    cells,
+  };
 }

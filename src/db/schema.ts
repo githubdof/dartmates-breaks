@@ -21,11 +21,21 @@ export const users = pgTable("users", {
   foundingHost: boolean("founding_host").notNull().default(false),
   nameChangedAt: timestamp("name_changed_at", { withTimezone: true }),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  /**
+   * The member's flight (Mosaic §4): drawn at random from the 32 by the database when the row is created, never derived
+   * from the id (ids and handles are public on result pages). Holder data: shapeGrid decides who sees it.
+   */
+  flightColour: text("flight_colour").notNull().default(sql`(array['petrol','blue','plum','yellow','orange','lime','sky','pink'])[1 + floor(random() * 8)::int]`),
+  flightShape: text("flight_shape").notNull().default(sql`(array['standard','kite','slim','pear'])[1 + floor(random() * 4)::int]`),
+  /** Null until the member picks a flight on /account; "This is your flight" shows while it is null. */
+  flightChosenAt: timestamp("flight_chosen_at", { withTimezone: true }),
   createdAt: createdAt(),
 }, (t) => [
   uniqueIndex("users_handle_lower_idx").on(sql`lower(${t.handle})`),
   check("users_role_chk", sql`${t.role} in ('member','host','admin')`),
   check("users_payment_name_chk", sql`char_length(${t.paymentName}) <= 60`),
+  check("users_flight_colour_chk", sql`${t.flightColour} in ('petrol','blue','plum','yellow','orange','lime','sky','pink')`),
+  check("users_flight_shape_chk", sql`${t.flightShape} in ('standard','kite','slim','pear')`),
 ]);
 
 export const hostProfiles = pgTable("host_profiles", {
@@ -34,8 +44,15 @@ export const hostProfiles = pgTable("host_profiles", {
   paymentHandlesChangedAt: timestamp("payment_handles_changed_at", { withTimezone: true }),
   bio: text("bio"),
   verifiedFbSince: integer("verified_fb_since"), // nullable now; avoids a later migration
+  /** The host's kit (Mosaic §4): one dark and one light flight colour. Both null is the default, Blue with Yellow. */
+  kitDark: text("kit_dark"),
+  kitLight: text("kit_light"),
   createdAt: createdAt(),
-});
+}, (t) => [
+  check("host_profiles_kit_dark_chk", sql`${t.kitDark} in ('petrol','blue','plum')`),
+  check("host_profiles_kit_light_chk", sql`${t.kitLight} in ('yellow','orange','lime','sky','pink')`),
+  check("host_profiles_kit_pair_chk", sql`(${t.kitDark} is null) = (${t.kitLight} is null)`),
+]);
 
 export const breaks = pgTable("breaks", {
   id: id(),
@@ -163,6 +180,8 @@ export const draws = pgTable("draws", {
   voidedAt: timestamp("voided_at", { withTimezone: true }),
   voidedBy: uuid("voided_by").references(() => users.id),
   voidReason: text("void_reason"),
+  /** When verifyInputs passed on the recorded inputs (Mosaic §9 "draws verified"); set once, never on a voided draw. */
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
   createdAt: createdAt(),
 }, (t) => [
   uniqueIndex("draws_active_uq").on(t.breakId).where(sql`${t.voidedAt} is null`),

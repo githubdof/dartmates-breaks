@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { MyAward } from "@/domain/lines/queries";
-import { howToPayLabel, stateLine } from "./me-copy";
+import { howToPayLabel, stateLine, unpaidNote } from "./me-copy";
 
 const base = { status: "open", unsent: [] as number[], sent: [] as number[], awards: [] as MyAward[] };
 const award = (a: Partial<MyAward> & { rank: number }): MyAward => ({ itemName: null, choice: false, pickedAt: null, shippedAt: null, ...a });
@@ -35,5 +35,13 @@ describe("stateLine", () => {
   });
   it("names the host on the pay button", () => {
     expect(howToPayLabel("Jim")).toBe("How to pay Jim");
+  });
+});
+
+describe("unpaidNote", () => {
+  it("says which lines are not marked paid and who to ask", () => {
+    expect(unpaidNote([5], "Jim")).toBe("Line 5 is not marked paid. Ask Jim about it.");
+    expect(unpaidNote([5, 6], "Jim")).toBe("Lines 5 and 6 are not marked paid. Ask Jim about them.");
+    expect(unpaidNote([4, 5, 6], "@jim")).toBe("Lines 4, 5 and 6 are not marked paid. Ask @jim about them.");
   });
 });

@@ -9,6 +9,7 @@ import { commitment } from "@/crypto/commit";
 import { newSecret, encryptSecret } from "@/crypto/secrets";
 import { validateDraftInput, validateDraftForOpen, isClaimMode, type ClaimMode } from "./rules";
 import { hostPaymentHandles } from "./queries";
+import { DARK_COLOURS, LIGHT_COLOURS, type FlightColour } from "@/domain/flights";
 
 export type CreateDraftInput = {
   title: string; description?: string; lineCount: number; linePriceCents: number;
@@ -46,6 +47,25 @@ async function savePaymentHandles(tx: Tx, userId: string, h: Handles): Promise<v
   await tx.insert(hostProfiles).values({ userId, paymentHandles: h, paymentHandlesChangedAt: new Date() })
     .onConflictDoUpdate({ target: hostProfiles.userId, set: { paymentHandles: h, paymentHandlesChangedAt: new Date() } });
   await appendEvent(tx, { actorId: userId, type: "host.payment_handles_changed", payload: { from: prev, to: h } });
+}
+
+/**
+ * /account "Your kit" (Mosaic §4, §10): one dark and one light colour, the board's surround. Hosts (and admins, who
+ * may host) set their own only. host_profiles rows are created lazily, so this upserts exactly as savePaymentHandles
+ * does and logs `host.profile_updated` with `changed: ["kit"]`, never the colours (recorded ruling 10). Kits may be
+ * shared between hosts (recorded ruling 2).
+ */
+export async function updateHostKit(tx: Tx, caller: Caller, p: { dark: FlightColour; light: FlightColour }): Promise<void> {
+  assertOnboarded(caller);
+  // Error copy: recorded ruling 15.
+  if (caller.role !== "host" && caller.role !== "admin") throw new NotAuthorized("Only hosts have a kit");
+  if (!DARK_COLOURS.includes(p.dark) || !LIGHT_COLOURS.includes(p.light)) throw new InvalidInput("Choose a dark colour and a light colour for your kit");
+  const [cur] = await tx.select({ kitDark: hostProfiles.kitDark, kitLight: hostProfiles.kitLight }).from(hostProfiles)
+    .where(eq(hostProfiles.userId, caller.id)).for("update");
+  if (cur && cur.kitDark === p.dark && cur.kitLight === p.light) return;
+  await tx.insert(hostProfiles).values({ userId: caller.id, kitDark: p.dark, kitLight: p.light })
+    .onConflictDoUpdate({ target: hostProfiles.userId, set: { kitDark: p.dark, kitLight: p.light } });
+  await appendEvent(tx, { actorId: caller.id, type: "host.profile_updated", payload: { changed: ["kit"] } });
 }
 
 /** Rank-1 items (several make a choice) and rank-2 items (blank names skipped), each with its prize row. */
