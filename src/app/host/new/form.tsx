@@ -30,7 +30,14 @@ type Props = {
 };
 
 export function ComposerForm({ initial, maxLines, kit }: Props) {
-  const [state, submit, pending] = useActionState<ComposerState, FormData>(saveBreak, null);
+  // React resets a <form action> after every action, failed ones too, and a controlled select keeps its mount-time
+  // option as the reset target. Counting the answers lets the selects remount, so they come back showing their state.
+  const [answers, setAnswers] = useState(0);
+  const [state, submit, pending] = useActionState<ComposerState, FormData>(async (prev, form) => {
+    const next = await saveBreak(prev, form);
+    setAnswers((n) => n + 1);
+    return next;
+  }, null);
   const [lineCount, setLineCount] = useState(initial.lineCount);
   const [price, setPrice] = useState(initial.price);
   // The prize rows are controlled, so their slots and conditions survive re-renders and a failed save.
@@ -63,7 +70,7 @@ export function ComposerForm({ initial, maxLines, kit }: Props) {
               {i > 0 && <Button variant="text" onClick={() => setChoices((cur) => removeChoice(cur, i))}>Remove</Button>}
             </div>
             <input type="hidden" name="prize1Slot" value={row.slotKey} />
-            <ConditionSelect id={`prize1-condition-${i}`} name="prize1Condition" row={row} required={i === 0 || row.name.trim() !== ""}
+            <ConditionSelect epoch={answers} id={`prize1-condition-${i}`} name="prize1Condition" row={row} required={i === 0 || row.name.trim() !== ""}
               labelFor={i === 0 ? "the top spot" : `choice ${i + 1}`} onChange={(c) => setChoices((cur) => setCondition(cur, i, c))} />
           </div>
         ))}
@@ -77,7 +84,7 @@ export function ComposerForm({ initial, maxLines, kit }: Props) {
             <input id="prize2" name="prize2" value={second.name} maxLength={120} placeholder="Flight pack"
               onChange={(e) => setSecond({ ...second, name: e.target.value })} className={field} />
             <input type="hidden" name="prize2Slot" value={second.slotKey} />
-            <ConditionSelect id="prize2-condition" name="prize2Condition" row={second} required={second.name.trim() !== ""} labelFor="2nd place"
+            <ConditionSelect epoch={answers} id="prize2-condition" name="prize2Condition" row={second} required={second.name.trim() !== ""} labelFor="2nd place"
               onChange={(c) => setSecond({ ...second, condition: c })} />
           </div>
         )}
@@ -158,14 +165,15 @@ export function ComposerForm({ initial, maxLines, kit }: Props) {
 }
 
 /** A required Condition select for one prize row; the label is for screen readers, the first option shows on screen. */
-function ConditionSelect({ id, name, row, required, labelFor, onChange }: {
-  id: string; name: string; row: PrizeRow; required: boolean; labelFor: string; onChange: (c: ItemCondition | "") => void;
+function ConditionSelect({ epoch, id, name, row, required, labelFor, onChange }: {
+  epoch: number; id: string; name: string; row: PrizeRow; required: boolean; labelFor: string; onChange: (c: ItemCondition | "") => void;
 }) {
   return (
     <>
       <label htmlFor={id} className="sr-only">Condition of {labelFor}</label>
-      {/* defaultValue tracks the state, so a failed save's form reset puts the chosen condition back. */}
-      <select id={id} name={name} required={required} defaultValue={row.condition || undefined} className={field}
+      {/* Not controlled: React's controlled select marks no option as its reset target, so the form reset after a
+          failed save would blank it. The key remounts it after each answer with defaultValue = the row's state. */}
+      <select key={epoch} id={id} name={name} required={required} defaultValue={row.condition || undefined} className={field}
         onChange={(e) => onChange(isItemCondition(e.target.value) ? e.target.value : "")}>
         <option value="">Condition</option>
         {ITEM_CONDITIONS.map((c) => <option key={c} value={c}>{CONDITION_LABEL[c]}</option>)}

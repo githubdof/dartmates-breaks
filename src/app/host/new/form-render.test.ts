@@ -33,7 +33,7 @@ describe("the composer's prize rows", () => {
     expect(h).toContain('name="newBreakId" value="00000000-0000-4000-8000-000000000001"');
     expect(h).toContain('name="prize1Slot" value="00000000-0000-4000-8000-000000000002"');
     expect(h).toMatch(/<select[^>]*name="prize1Condition"[^>]*required/);
-    expect(h).toMatch(/<option value="">Condition<\/option><option value="new_in_box">New in box<\/option><option value="new_opened">New, opened<\/option><option value="used">Used<\/option>/);
+    expect(h).toMatch(/<option value=""( selected="")?>Condition<\/option><option value="new_in_box">New in box<\/option><option value="new_opened">New, opened<\/option><option value="used">Used<\/option>/);
     expect(h).not.toContain('name="breakId"');
     expect(h).not.toContain('data-testid="delete-draft"'); // a new break has nothing to delete
   });

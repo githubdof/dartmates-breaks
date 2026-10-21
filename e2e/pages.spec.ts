@@ -41,6 +41,25 @@ test("a host saves a draft and edits it; nobody else can see either page", async
   expect((await stranger.goto(`/host/${id}/edit`))?.status()).toBe(404);
 });
 
+test("a failed save keeps the chosen conditions, and the next save stores them", async ({ browser }) => {
+  const host = await as(browser, `fc${run}@e2e.test`, "host");
+  await gotoReady(host, "/host/new");
+  await host.fill("input[name=title]", `Keep condition ${run}`);
+  await host.fill("input[name=prize1]", "Chronos 22g");
+  await host.selectOption("select[name=prize1Condition]", "used");
+  await host.fill("input[name=venmo]", "@e2e-host");
+  await host.fill("input[name=linePrice]", "0");
+  await host.getByTestId("composer-draft").click();
+  await expect(host.getByText("Price per line: more than $0")).toBeVisible();
+  await expect(host.locator("select[name=prize1Condition]")).toHaveValue("used");
+  await host.fill("input[name=linePrice]", "5");
+  await host.getByTestId("composer-draft").click();
+  await host.waitForURL(/\/b\/[0-9a-f-]{36}$/);
+  const id = host.url().split("/b/")[1];
+  await gotoReady(host, `/host/${id}/edit`);
+  await expect(host.locator("select[name=prize1Condition]")).toHaveValue("used");
+});
+
 test("a host deletes a draft from its editor and another from /host", async ({ browser }) => {
   const host = await as(browser, `dd${run}@e2e.test`, "host");
   const title1 = `Delete me 1 ${run}`;
