@@ -1,5 +1,9 @@
 # Plan 1 — Tracer Bullet (schema → auth → break → claim → paid → draw → result) Implementation Plan
 
+> **Historical note (2026-10-21):** this plan was written for `@noble/hashes` 1. Since PR #6 the app uses v2, whose
+> module paths end in `.js` and whose `sha256` lives in `sha2.js` (`@noble/hashes/sha2.js`, `/utils.js`, `/hmac.js`).
+> Copy imports from `src/crypto/*`, not from the snippets below.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A host can open a break, buyers can claim and mark lines sent, the host marks them paid, the break fills, the host requests and finalises a beacon-mixed verifiable draw, and anyone can open the result page and re-verify it.

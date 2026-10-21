@@ -1,5 +1,5 @@
-import { hmac } from "@noble/hashes/hmac";
-import { sha256 } from "@noble/hashes/sha256";
+import { hmac } from "@noble/hashes/hmac.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 
 /** HMAC-SHA256(seed, uint32be(counter)) blocks, consumed as big-endian uint32 words. */
 class WordStream {

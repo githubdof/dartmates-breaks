@@ -18,7 +18,7 @@ Checked 2026-10-17 against the npm registry (engines and peer ranges) and the Ne
 | ESLint 9 → 10 | 10.13.0 | **No** | eslint-config-next 16 pulls in eslint-plugin-react 7.37, eslint-plugin-import 2.32 and eslint-plugin-jsx-a11y 6.10, whose peers stop at ESLint 9 (rechecked 2026-10-21: still `^9`, `^9`, `^9`; react-hooks 7.1 and typescript-eslint 8.72 already list ^10). Next's upgrade guide says eslint-config-next 16.4 "supports ESLint 10", but that is Next's own plugin, not those three. Move when they list ^10. |
 | TypeScript 5.9 → 6.0 | 6.0.3 | Yes | typescript-eslint 8.71 supports `<6.1.0`. |
 | TypeScript → 7 | 7.0.2 | **No** | TS 7 ships no JS compiler API. Next runs it only behind `experimental.useTypeScriptCli`, and typescript-eslint still needs that API. Move when typescript-eslint supports TS 7 and Next makes the CLI path stable. |
-| @noble/hashes 1 → 2 | 2.4.0 | Yes | Needs Node >=20.19. It is the draw's hashing (`src/crypto/*`): the draw and verify tests must pass unchanged, and an old draw must still verify. |
+| @noble/hashes 1 → 2 | 2.4.0 | Yes, done in PR #6 | Needs Node >=20.19. It is the draw's hashing (`src/crypto/*`): the draw and verify tests must pass unchanged, and an old draw must still verify. v2 is ESM-only, every module path ends in `.js`, `sha256` lives in `sha2.js`, and hash inputs must be `Uint8Array` (every call here already was). |
 | @types/node | 26.6.5 | Follows Node | Tracks the runtime major: ^22 now, ^24 with step 2. Never ahead of the runtime. |
 
 ## Order
@@ -28,8 +28,19 @@ PR #2 (Plan C) touches `next.config.ts` and `src/domain/draws/*`. Steps that tou
 2. **Node 24 LTS, pnpm 12, TypeScript 6.0, @types/node ^24, CI actions to their latest majors.** PR #4,
    stacked on PR #3. TypeScript 6 checks side-effect imports, so `src/css.d.ts` declares `*.css`.
 3. **Next 16** (with eslint-config-next 16 and the lint script on the ESLint CLI). PR #5, after PR #2 landed.
-4. **@noble/hashes 2.** After PR #2 lands. Opus review: it is the draw's crypto.
+4. **@noble/hashes 2.** PR #6, after PR #2 landed. Opus review: it is the draw's crypto.
 5. **Blocked until support lands:** ESLint 10, TypeScript 7. Recheck at the start of each new plan.
+
+## What step 4 (@noble/hashes 2, PR #6) changed
+
+- `@noble/hashes` 2.4.0. Import paths only: `@noble/hashes/sha256` → `@noble/hashes/sha2.js`, `/utils` → `/utils.js`,
+  `/hmac` → `/hmac.js`, in `src/crypto/*`, `src/domain/draws/commands.ts` and `scripts/fill-vectors.ts`. No call
+  changes: `sha256(bytes)`, `hmac(sha256, key, msg)`, `bytesToHex`, `hexToBytes`, `concatBytes` and `utf8ToBytes` keep
+  their signatures, and every input was already a `Uint8Array`.
+- Evidence that an old draw still verifies: `scripts/fill-vectors.ts` recomputed `src/crypto/vectors.json` under v2 and
+  the output is byte-for-byte the committed file (seed, ranking, resultHash for each vector); `draw.test.ts`,
+  `beacon.test.ts` and `verify-stored.test.ts` pass unchanged; the e2e's draw journey (fake beacon, in-browser verify on
+  the result page, which bundles the ESM-only package through Turbopack) passes.
 
 Each step is its own PR with the full gates: lint, tsc, unit, concurrency, CI, e2e (incl. axe), `next build`.
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { sha256 } from "@noble/hashes/sha256";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { FakeBeacon, DrandBeacon, roundAfter, beaconFromEnv, beaconValueFrom, QUICKNET } from "./beacon";
 
 describe("beacon rounds", () => {
