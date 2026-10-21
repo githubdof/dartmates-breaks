@@ -12,6 +12,7 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      ".superpowers/**", // gitignored scratch (probe scripts), not the app
     ],
   },
 ];
