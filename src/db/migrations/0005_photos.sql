@@ -74,6 +74,7 @@ declare
   b_status text;
   live int;
   moderating boolean := coalesce(current_setting('breaks.photo_moderation', true), '') = 'on';
+  bucket_ok boolean := true;
 begin
   select status into b_status from breaks where id = b_id for share;
   if tg_op = 'UPDATE' then
@@ -89,13 +90,25 @@ begin
     if new.path is distinct from old.path and new.path is not null then
       raise exception 'a photo''s path only ever changes to null (every copy gone)' using errcode = 'check_violation';
     end if;
+    -- The only bucket moves: photos-draft -> photos when the break opens (it is draft or open at that moment); a live
+    -- bucket -> photo-archive by the update that removes or hides the photo, or by retention of a cancelled break under
+    -- allowPhotoModeration. Nothing ever leaves photo-archive. Checked below wherever the update would otherwise pass.
+    if new.bucket is distinct from old.bucket then
+      bucket_ok := case
+        when old.bucket = 'photo-archive' then false
+        when old.bucket = 'photos-draft' and new.bucket = 'photos' then b_status in ('draft','open')
+        when new.bucket = 'photo-archive' then (old.removed_at is null and new.removed_at is not null)
+          or (old.hidden_at is null and new.hidden_at is not null) or (moderating and b_status = 'cancelled')
+        else false
+      end;
+    end if;
   end if;
   if b_status in ('draft','open','filled') then
     if tg_op = 'INSERT' then
       if new.removed_at is not null or new.hidden_at is not null then
         raise exception 'a photo is added live' using errcode = 'check_violation';
       end if;
-      if (b_status = 'draft') <> (new.bucket = 'photos-draft') then
+      if new.bucket is distinct from (case when b_status = 'draft' then 'photos-draft' else 'photos' end) then
         raise exception 'a draft''s photos go to photos-draft, an open break''s to photos' using errcode = 'check_violation';
       end if;
       select count(*) into live from break_photos where break_id = new.break_id and removed_at is null and hidden_at is null;
@@ -103,12 +116,18 @@ begin
         raise exception 'a break has at most 8 photos' using errcode = 'check_violation';
       end if;
     end if;
+    if not bucket_ok then
+      raise exception 'a photo moves only from photos-draft to photos on opening, or into photo-archive when removed, hidden or expired; never out of photo-archive' using errcode = 'check_violation';
+    end if;
     return coalesce(new, old);
   end if;
   if tg_op = 'UPDATE' and moderating
      and new.prize_slot is not distinct from old.prize_slot
      and new.alt is not distinct from old.alt
      and new.removed_at is not distinct from old.removed_at then
+    if not bucket_ok then
+      raise exception 'a photo moves only from photos-draft to photos on opening, or into photo-archive when removed, hidden or expired; never out of photo-archive' using errcode = 'check_violation';
+    end if;
     return new;
   end if;
   raise exception 'photos are frozen once the draw is requested' using errcode = 'check_violation';

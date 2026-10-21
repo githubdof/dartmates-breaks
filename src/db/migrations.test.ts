@@ -122,7 +122,11 @@ describe("migration 0005 photos", () => {
       expect(await refusal(tx, insertPhoto(b, { position: 0, alt: "x".repeat(121) }))).toMatch(/break_photos_alt_chk/);
       expect(await refusal(tx, insertPhoto(b, { position: 0, path: `${randomUUID()}/${slug()}` }))).toMatch(/break_photos_path_chk/);
       expect(await refusal(tx, insertPhoto(b, { position: 0, path: `${b.id}/../${slug()}` }))).toMatch(/break_photos_path_chk/);
-      expect(await refusal(tx, insertPhoto(open, { position: 0, bucket: "public" }))).toMatch(/break_photos_bucket_chk/);
+      // The guard (a BEFORE trigger) names the one bucket an insert may use, so it speaks before the CHECK; the CHECK
+      // stays as the backstop behind it.
+      expect(await refusal(tx, insertPhoto(open, { position: 0, bucket: "public" }))).toMatch(/photos-draft/);
+      const [chk] = await tx.execute<{ def: string }>(sql`select pg_get_constraintdef(oid) as def from pg_constraint where conname = 'break_photos_bucket_chk'`);
+      expect(chk.def).toMatch(/'photos-draft'.*'photos'.*'photo-archive'/);
       expect(await refusal(tx, insertPhoto(b, { position: 0, path: null }))).toMatch(/break_photos_gone_chk/);
       const id = await addPhoto(tx, b, { position: 0, alt: "x".repeat(120) });
       expect(await refusal(tx, sql`update break_photos set path = null where id = ${id}`)).toMatch(/break_photos_gone_chk/);
@@ -138,11 +142,11 @@ describe("migration 0005 photos", () => {
       const open = await openBreakWithLines(tx, { hostId: host.id });
       const removed = await addPhoto(tx, open, { position: 0, bucket: "photos" });
       const kept = await addPhoto(tx, open, { position: 1, bucket: "photos" });
-      // A removed row still in photos cannot drop its path; once in the archive it can.
-      await tx.execute(sql`update break_photos set removed_at = now() where id = ${removed}`);
-      await tx.execute(sql`update break_photos set position = 0 where id = ${kept}`);
+      // A row in photos cannot drop its path; once removed into the archive it can.
       expect(await refusal(tx, sql`update break_photos set path = null where id = ${removed}`)).toMatch(/break_photos_gone_chk/);
-      await tx.execute(sql`update break_photos set bucket = 'photo-archive', path = null where id = ${removed}`);
+      await tx.execute(sql`update break_photos set removed_at = now(), bucket = 'photo-archive' where id = ${removed}`);
+      await tx.execute(sql`update break_photos set position = 0 where id = ${kept}`);
+      await tx.execute(sql`update break_photos set path = null where id = ${removed}`);
       // Retention on a cancelled break (Task 11 rule 4): the live row moves to the archive with no path, under moderation.
       await setStatus(tx, open.id, "cancelled");
       expect(await refusal(tx, sql`update break_photos set bucket = 'photo-archive', path = null where id = ${kept}`)).toMatch(/frozen/);
@@ -156,6 +160,62 @@ describe("migration 0005 photos", () => {
       // An insert never lands in the archive, even with a path.
       const draft = await makeBreak(tx, { hostId: host.id });
       expect(await refusal(tx, insertPhoto(draft, { position: 0, bucket: "photo-archive" }))).toMatch(/photos-draft/);
+    });
+  });
+
+  it("moves a photo between buckets only as ruled: draft to photos on opening, into the archive when removed, hidden or expired, never out", async () => {
+    const moved = /moves only from photos-draft to photos/;
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      // Opening: photos-draft -> photos while the break is a draft (the copy runs before openBreak) or already open.
+      const draft = await makeBreak(tx, { hostId: host.id });
+      const d0 = await addPhoto(tx, draft, { position: 0, bucket: "photos-draft" });
+      const d1 = await addPhoto(tx, draft, { position: 1, bucket: "photos-draft" });
+      await tx.execute(sql`update break_photos set bucket = 'photos' where id = ${d0}`);
+      await setStatus(tx, draft.id, "open");
+      await tx.execute(sql`update break_photos set bucket = 'photos' where id = ${d1}`);
+      expect(await refusal(tx, sql`update break_photos set bucket = 'photos-draft' where id = ${d1}`)).toMatch(moved);
+      // A filled break is past opening: photos-draft -> photos is refused there.
+      const late = await makeBreak(tx, { hostId: host.id });
+      const l0 = await addPhoto(tx, late, { position: 0, bucket: "photos-draft" });
+      await setStatus(tx, late.id, "open");
+      await setStatus(tx, late.id, "filled");
+      expect(await refusal(tx, sql`update break_photos set bucket = 'photos' where id = ${l0}`)).toMatch(moved);
+
+      // Into the archive only with the removal or the hide, in the same update.
+      const open = await openBreakWithLines(tx, { hostId: host.id });
+      const [a, b, c] = [await addPhoto(tx, open, { position: 0, bucket: "photos" }), await addPhoto(tx, open, { position: 1, bucket: "photos" }), await addPhoto(tx, open, { position: 2, bucket: "photos" })];
+      expect(await refusal(tx, sql`update break_photos set bucket = 'photo-archive' where id = ${a}`)).toMatch(moved);
+      await tx.execute(sql`update break_photos set removed_at = now() where id = ${c}`);
+      expect(await refusal(tx, sql`update break_photos set bucket = 'photo-archive' where id = ${c}`)).toMatch(moved); // not with a later update
+      await tx.execute(sql`update break_photos set removed_at = now(), bucket = 'photo-archive' where id = ${b}`);
+      await tx.execute(sql`update break_photos set hidden_at = now(), bucket = 'photo-archive' where id = ${a}`);
+      // Nothing leaves the archive, under moderation or not.
+      expect(await refusal(tx, sql`update break_photos set bucket = 'photos' where id = ${b}`)).toMatch(moved);
+      expect(await refusal(tx, sql`update break_photos set bucket = 'photos-draft' where id = ${a}`)).toMatch(moved);
+      await allowPhotoModeration(tx);
+      expect(await refusal(tx, sql`update break_photos set bucket = 'photos' where id = ${b}`)).toMatch(moved);
+      // An insert into an open break never lands in the archive.
+      expect(await refusal(tx, insertPhoto(open, { position: 0, bucket: "photo-archive" }))).toMatch(/photos-draft/);
+    });
+  });
+
+  it("archives a live photo under moderation only by retention of a cancelled break, not on a drawn one without a hide", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const drawn = await openBreakWithLines(tx, { hostId: host.id });
+      const shown = await addPhoto(tx, drawn, { position: 0, bucket: "photos" });
+      await setStatus(tx, drawn.id, "drawn");
+      const cancelled = await openBreakWithLines(tx, { hostId: host.id });
+      const kept = await addPhoto(tx, cancelled, { position: 0, bucket: "photos" });
+      await setStatus(tx, cancelled.id, "cancelled");
+      await allowPhotoModeration(tx);
+      expect(await refusal(tx, sql`update break_photos set bucket = 'photo-archive' where id = ${shown}`)).toMatch(/moves only from photos-draft to photos/);
+      await tx.execute(sql`update break_photos set bucket = 'photo-archive', path = null where id = ${kept}`);
+      await tx.execute(sql`update break_photos set hidden_at = now(), bucket = 'photo-archive' where id = ${shown}`); // a hide may archive it
+      await tx.execute(sql`set constraints break_photos_shape immediate`);
+      const rows = await tx.execute<{ id: string; bucket: string }>(sql`select id, bucket from break_photos where id in (${shown}, ${kept})`);
+      expect(rows.map((r) => r.bucket)).toEqual(["photo-archive", "photo-archive"]);
     });
   });
 
