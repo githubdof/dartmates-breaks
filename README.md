@@ -184,6 +184,7 @@ The test and e2e databases are emptied by their suites, so they need no backfill
 - The Playwright journey keys on `data-testid`; keep ids stable when restyling.
 - Migration `0001_claim_mode` adds the picking mode (`pick_or_random`, `pick_only`, `straight`); `allow_random_claims` is kept in step and will be dropped later.
 - Migration `0004_flights_kits` adds `users.flight_colour` and `users.flight_shape` (NOT NULL: a random flight drawn on the server when the row is created, existing rows backfilled the same way, each CHECKed against the palette keys; never derived from the user id), `users.flight_chosen_at` (null until the member picks on `/account`), `host_profiles.kit_dark` and `host_profiles.kit_light` (null together means the default kit, Blue with Yellow) and `draws.verified_at` (see "Verify a draw").
+- Migration `0005_photos` adds `break_photos` (up to 8 live photos per break at positions 0..n−1, frozen from the draw request on except for an admin hide), `photo_uploads` (single-use upload tickets), `photo_notices_seen`, `prizes.slot_key` (the stable key a photo tag points at), `break_items.condition`, `breaks.first_claimed_at` (set by the first claim, never cleared; backfilled), `breaks.photos_updated_at` and `photos_updated_note`, and `breaks.deleted_at`; it drops `break_items.photo_paths`.
 
 ## Spec and plans
 

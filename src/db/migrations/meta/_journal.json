@@ -36,6 +36,13 @@
       "when": 1792042187357,
       "tag": "0004_flights_kits",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792622403910,
+      "tag": "0005_photos",
+      "breakpoints": true
     }
   ]
 }

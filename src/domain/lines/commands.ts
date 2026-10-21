@@ -81,6 +81,8 @@ async function finishClaim(tx: Tx, b: BreakRow, caller: Caller, got: number[], b
   if (got.length === 0) return;
   // A same-batch retry that obtains more lines must not trip events_batch_uq. Free draws (auto-paid): Plan 2.
   await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "line.claimed", payload: { numbers: got }, batchId, ipHash }, { ignoreDuplicateBatch: true });
+  // "Claimed" means a line of this break was ever claimed (photos spec decision 12): set once, kept after releases.
+  await tx.update(breaks).set({ firstClaimedAt: sql`coalesce(${breaks.firstClaimedAt}, now())` }).where(sql`${breaks.id} = ${b.id}`);
 }
 
 export async function claimLines(tx: Tx, caller: Caller, p: { breakId: string; numbers: number[]; batchId: string; ipHash?: string }): Promise<{ got: number[]; taken: number[] }> {

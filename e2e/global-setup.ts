@@ -8,7 +8,7 @@ export default async function globalSetup() {
   }
   const sql = postgres(E2E_DATABASE_URL, { max: 1, prepare: false });
   try {
-    await sql`truncate awards, draws, draw_requests, events, lines, prizes, break_items, break_secrets, breaks, host_profiles, legal_acceptances, idempotency_keys, rate_limits, users restart identity cascade`;
+    await sql`truncate photo_notices_seen, photo_uploads, break_photos, awards, draws, draw_requests, events, lines, prizes, break_items, break_secrets, breaks, host_profiles, legal_acceptances, idempotency_keys, rate_limits, users restart identity cascade`;
     // The truncate removes the SYSTEM row the first migration inserted; cron finalisation runs as SYSTEM.
     await sql`insert into users (id, email, role, handle, display_name, age_confirmed_at)
       values ('00000000-0000-4000-8000-000000000000', 'system@breaks.local', 'admin', 'system', 'System', now())
