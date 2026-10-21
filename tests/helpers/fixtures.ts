@@ -1,12 +1,12 @@
 import { randomUUID, randomBytes } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { users, breaks, breakItems, breakSecrets, prizes, lines, hostProfiles } from "@/db/schema";
+import { users, breaks, breakItems, breakSecrets, breakPhotos, prizes, lines, hostProfiles } from "@/db/schema";
 import type { Flight, Kit } from "@/domain/flights";
 import { commitment } from "@/crypto/commit";
 import { encryptSecret } from "@/crypto/secrets";
 import { FakeBeacon } from "@/crypto/beacon";
-import type { ClaimMode } from "@/domain/breaks/rules";
+import type { ClaimMode, ItemCondition } from "@/domain/breaks/rules";
 import { claimLines, markPaid } from "@/domain/lines/commands";
 import { requestDraw, finaliseDraw } from "@/domain/draws/commands";
 import { SYSTEM, type Caller } from "@/domain/types";
@@ -33,6 +33,24 @@ export async function makeUser(tx: Tx, opts: { role?: "member" | "host" | "admin
       .onConflictDoUpdate({ target: hostProfiles.userId, set: { kitDark: opts.kit.dark, kitLight: opts.kit.light } });
   }
   return { id, handle };
+}
+
+/** A composer prize: a fresh slot key unless given. */
+export const prize = (name: string, condition: ItemCondition = "new_in_box", slotKey: string = randomUUID()) => ({ name, slotKey, condition });
+
+/**
+ * A break_photos row straight into the table (Task 5's commands are not needed to test slots and deletes).
+ * bucket defaults to the one the break's status allows: "photos-draft" for a draft break, "photos" otherwise
+ * (Task 2 refuses any other insert). path `${breakId}/${22 url-safe chars}`, width 1600, height 1200, alt "Darts".
+ * Returns the row id.
+ */
+export async function photoRow(tx: Tx, o: { breakId: string; hostId: string; position: number; slot: string | null; bucket?: "photos-draft" | "photos" }): Promise<string> {
+  const bucket = o.bucket ?? ((await tx.select({ status: breaks.status }).from(breaks).where(sql`${breaks.id} = ${o.breakId}`))[0].status === "draft" ? "photos-draft" : "photos");
+  const [r] = await tx.insert(breakPhotos).values({
+    breakId: o.breakId, position: o.position, prizeSlot: o.slot, path: `${o.breakId}/${randomBytes(16).toString("base64url")}`,
+    bucket, width: 1600, height: 1200, alt: "Darts", createdBy: o.hostId,
+  }).returning({ id: breakPhotos.id });
+  return r.id;
 }
 
 export async function makeBreak(tx: Tx, opts: { hostId: string; lineCount?: number; linePriceCents?: number; status?: string; kind?: string; claimMode?: ClaimMode }) {

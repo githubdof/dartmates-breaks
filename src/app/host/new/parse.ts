@@ -42,7 +42,9 @@ export function parseComposer(form: FormData): ComposerParsed {
   const p = schema.safeParse(raw);
   if (!p.success) return { ok: false, error: p.error.issues[0]?.message ?? "Check the form and try again" };
   const d = p.data;
-  const items = d.prize1.map((s) => s.trim()).filter(Boolean).map((name) => ({ name }));
+  // Task 3b replaces this: the composer posts no slot or condition yet, so a re-save replaces the slots.
+  const bridgePrize = (name: string) => ({ name, slotKey: crypto.randomUUID(), condition: "new_in_box" as const });
+  const items = d.prize1.map((s) => s.trim()).filter(Boolean).map(bridgePrize);
   if (items.length === 0) return { ok: false, error: "Top spot: name the prize" };
   const venmo = d.venmo.trim();
   const paypal = d.paypal.trim();
@@ -63,7 +65,7 @@ export function parseComposer(form: FormData): ComposerParsed {
       paymentInstructions: d.paymentInstructions,
       paymentHandles: { venmo, paypal }, // always sent, so clearing a handle sticks
       items,
-      secondPlace: d.prize2.trim() ? [{ name: d.prize2.trim() }] : [],
+      secondPlace: d.prize2.trim() ? [bridgePrize(d.prize2.trim())] : [],
     },
   };
 }

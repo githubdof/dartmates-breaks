@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
-import { makeUser, makeBreak, openBreakWithLines, drawnBreak, YELLOW_KITE, BLUE_STANDARD, PLUM_LIME } from "../../../tests/helpers/fixtures";
+import { makeUser, makeBreak, openBreakWithLines, drawnBreak, prize, YELLOW_KITE, BLUE_STANDARD, PLUM_LIME } from "../../../tests/helpers/fixtures";
 import { breaks, draws, drawRequests, hostProfiles } from "@/db/schema";
 import { draftForEdit, getBreakPage, hostKit, hostProfile, hostTrust, isGeneratedInstructions, lastBreakDefaults, listHostBreaks } from "./queries";
 import { shapeGrid } from "./grid";
@@ -11,6 +11,7 @@ import type { Tx } from "@/db/client";
 import { createDraft, updateHostKit } from "./commands";
 import { randomUUID } from "node:crypto";
 import { claimLines, markPaid, addBonusLine } from "@/domain/lines/commands";
+import { myLines, waitingOnHost } from "@/domain/lines/queries";
 import type { Caller } from "@/domain/types";
 
 describe("hostTrust", () => {
@@ -151,13 +152,14 @@ describe("draftForEdit", () => {
   it("reads a draft's settings and its prize names by rank", async () => {
     await withTx(async (tx) => {
       const host = await makeUser(tx, { role: "host" });
+      const [g22, g24, flights] = [prize("22g"), prize("24g", "used"), prize("Flights", "new_opened")];
       const { breakId } = await createDraft(tx, asCaller(host, "host"), {
         title: "Edit me", lineCount: 10, linePriceCents: 500, claimMode: "straight",
-        items: [{ name: "22g" }, { name: "24g" }], secondPlace: [{ name: "Flights" }],
+        items: [g22, g24], secondPlace: [flights],
       });
       const d = await draftForEdit(tx, breakId);
-      expect(d).toMatchObject({ id: breakId, hostId: host.id, status: "draft", title: "Edit me", lineCount: 10, linePriceCents: 500, claimMode: "straight", maxLinesPerUser: null, secondPlace: ["Flights"] });
-      expect([...d!.topSpot].sort()).toEqual(["22g", "24g"]);
+      expect(d).toMatchObject({ id: breakId, hostId: host.id, status: "draft", title: "Edit me", lineCount: 10, linePriceCents: 500, claimMode: "straight", maxLinesPerUser: null, secondPlace: [flights] });
+      expect([...d!.topSpot].sort((x, y) => x.name.localeCompare(y.name))).toEqual([g22, g24]);
       expect(await draftForEdit(tx, randomUUID())).toBeNull();
     });
   });
@@ -304,6 +306,61 @@ describe("hostKit", () => {
       expect(await hostKit(tx, host.id)).toEqual({ kit: DEFAULT_KIT, chosen: false });
       await updateHostKit(tx, { id: host.id, role: "host", onboarded: true, banned: false }, { dark: "plum", light: "sky" });
       expect(await hostKit(tx, host.id)).toEqual({ kit: { dark: "plum", light: "sky" }, chosen: true });
+    });
+  });
+});
+
+const draftInput = { title: "Target Chronos", lineCount: 12, linePriceCents: 2000, items: [prize("Chronos 22g")] };
+const markDeleted = (tx: Tx, id: string) => tx.execute(sql`update breaks set deleted_at = now() where id = ${id}`);
+
+describe("deleted drafts leave every host list, profile and editor query (ruling 12)", () => {
+  it("draftForEdit and getBreakPage answer null", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asCaller(host, "host"), draftInput);
+      await markDeleted(tx, breakId);
+      expect(await draftForEdit(tx, breakId)).toBeNull();
+      expect(await getBreakPage(tx, breakId)).toBeNull();
+    });
+  });
+  it("listHostBreaks leaves it out and keeps the host's other drafts", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const kept = await createDraft(tx, asCaller(host, "host"), draftInput);
+      const gone = await createDraft(tx, asCaller(host, "host"), { ...draftInput, title: "Gone" });
+      await markDeleted(tx, gone.breakId);
+      expect((await listHostBreaks(tx, host.id)).map((b) => b.id)).toEqual([kept.breakId]);
+    });
+  });
+  it("lastBreakDefaults skips a newer deleted draft", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      await createDraft(tx, asCaller(host, "host"), { ...draftInput, lineCount: 20 });
+      const gone = await createDraft(tx, asCaller(host, "host"), { ...draftInput, lineCount: 30 });
+      await tx.execute(sql`update breaks set created_at = now() + interval '1 minute' where id = ${gone.breakId}`);
+      await markDeleted(tx, gone.breakId);
+      expect((await lastBreakDefaults(tx, host.id))?.lineCount).toBe(20);
+    });
+  });
+  // Regression pins (ruling 41): these queries already leave drafts out by status, and Task 2 keeps a deleted break a
+  // draft with no lines. They pass before Step 3 and must stay green.
+  it("regression pin: hostProfile and hostTrust count nothing from a deleted draft", async () => {
+    await withTx(async (tx) => {
+      const member = await makeUser(tx, { handle: "deletedonly" }); const host = await makeUser(tx, { role: "host", handle: "hostdel" });
+      const a = await makeBreak(tx, { hostId: member.id, status: "draft" }); await markDeleted(tx, a.id);
+      expect(await hostProfile(tx, "deletedonly")).toBeNull(); // a non-host with only a deleted draft has no profile
+      const before = await hostTrust(tx, host.id);
+      const b = await makeBreak(tx, { hostId: host.id, status: "draft" }); await markDeleted(tx, b.id);
+      expect(await hostTrust(tx, host.id)).toEqual(before);
+      expect((await hostProfile(tx, "hostdel"))?.pastCount).toBe(0);
+    });
+  });
+  it("regression pin: waitingOnHost and myLines see no deleted draft", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const b = await makeBreak(tx, { hostId: host.id, status: "draft" }); await markDeleted(tx, b.id);
+      expect(await waitingOnHost(tx, host.id)).toEqual([]);
+      expect((await myLines(tx, host.id, new Date())).map((r) => r.breakId)).not.toContain(b.id);
     });
   });
 });

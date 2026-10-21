@@ -40,6 +40,7 @@ export function draftComposerInitial(d: DraftForEdit, handles: Handles): Compose
     venmo: handles.venmo ?? "", paypal: handles.paypal ?? "",
     // The composer has one 2nd-place field: a draft with several 2nd-place items (only possible through the API)
     // keeps every name in it rather than silently losing all but the first when it is saved again.
-    prize1: d.topSpot.length > 0 ? d.topSpot : [""], prize2: d.secondPlace.join(", "),
+    // Task 3b replaces this: the composer keeps names only until it carries slots and conditions.
+    prize1: d.topSpot.length > 0 ? d.topSpot.map((p) => p.name) : [""], prize2: d.secondPlace.map((p) => p.name).join(", "),
   };
 }

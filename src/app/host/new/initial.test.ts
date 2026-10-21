@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { draftComposerInitial, newComposerInitial } from "./initial";
 
+// Task 3b replaces this: draft prizes carry slots and conditions; the bridged composer reads their names only.
+const p = (name: string) => ({ slotKey: crypto.randomUUID(), name, condition: null });
+
 describe("composer initial values", () => {
   it("starts a new break from the host's last one, or from the defaults", () => {
     expect(newComposerInitial(null, {})).toEqual({
@@ -16,7 +19,7 @@ describe("composer initial values", () => {
     const d = {
       id: "b1", hostId: "h1", status: "draft", title: "Chronos", description: "Mint", lineCount: 30, linePriceCents: 125000,
       paymentWindowHours: 24, maxLinesPerUser: null, claimMode: "pick_only" as const,
-      paymentInstructions: "Venmo @Jim. Leave the note blank.", topSpot: ["22g", "24g"], secondPlace: ["Flights"],
+      paymentInstructions: "Venmo @Jim. Leave the note blank.", topSpot: [p("22g"), p("24g")], secondPlace: [p("Flights")],
     };
     expect(draftComposerInitial(d, { venmo: "@Jim" })).toEqual({
       breakId: "b1", title: "Chronos", description: "Mint", lineCount: 30, price: "1250", paymentWindowHours: "24", maxLinesPerUser: "",
@@ -29,7 +32,7 @@ describe("composer initial values", () => {
     const d = {
       id: "b1", hostId: "h1", status: "draft", title: "Chronos", description: "", lineCount: 30, linePriceCents: 500,
       paymentWindowHours: 24, maxLinesPerUser: null, claimMode: "pick_only" as const,
-      paymentInstructions: "", topSpot: ["22g"], secondPlace: ["Flights", "Darts case"],
+      paymentInstructions: "", topSpot: [p("22g")], secondPlace: [p("Flights"), p("Darts case")],
     };
     expect(draftComposerInitial(d, {}).prize2).toBe("Flights, Darts case");
   });
