@@ -301,3 +301,21 @@ test("a host on the default kit is nudged from /host/new and picks a kit in /acc
   await expect(host.getByTestId("kit-nudge")).toHaveCount(0);
   await host.context().close();
 });
+
+test("Use a different email starts the sign-in over without a reload, and the expired-link banner goes with it", async ({ page }) => {
+  await gotoReady(page, "/login?next=%2Fme&error=link");
+  await expect(page.getByRole("alert").filter({ hasText: "That link expired" })).toBeVisible();
+  // A marker on window survives only a client-side change: a full reload would drop it.
+  await page.evaluate(() => { (window as unknown as { kept: boolean }).kept = true; });
+  await page.getByLabel("Email").fill(`restart${run}@e2e.test`);
+  await page.getByTestId("login-send").click();
+  await expect(page.getByLabel("Code")).toBeVisible();
+
+  await page.getByTestId("login-restart").click();
+  await expect(page.getByLabel("Code")).toHaveCount(0);
+  await expect(page.getByLabel("Email")).toHaveValue("");
+  await expect(page.getByLabel("Email")).toBeFocused();
+  await expect(page.getByText("That link expired")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/login\?next=%2Fme$/);
+  expect(await page.evaluate(() => (window as unknown as { kept?: boolean }).kept)).toBe(true);
+});

@@ -88,6 +88,8 @@ Each step is its own PR with the full gates: lint, tsc, unit, concurrency, CI, e
   - *Kept, with a reason on the line*: the board-fills call (`break-interactive.tsx`, `say(call)` in the layout
     effect that reads and marks the once-per-viewer flag): the read is the external system and nothing else sees it.
     The draw-starts effect beside it, of the same shape, the rules do not flag.
-- **`window.location.assign` in the login form** ("Use a different email" reloads `/login` to reset the form):
-  `@next/next/no-window-location` warns; left as the one lint warning until a ruling (a `useRouter().push` to the
-  same route would not reset the state).
+- **`window.location.assign` in the login form: done in PR #8.** "Use a different email" reloaded `/login` to reset
+  the two `useActionState` results, which have no reset of their own. The steps now sit under a key the button bumps,
+  so they remount with both states empty, without leaving the page; the email field takes focus, and when the page
+  came from an expired link the URL drops `?error=link` with the banner. `e2e/pages.spec.ts` pins it (no reload, the
+  code step gone, the field empty and focused, the banner and the param gone). Lint is clean, with no warning.
