@@ -24,10 +24,13 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await host.goto("/host/new");
   await host.fill("input[name=title]", `J2 ${run}`);
   await host.locator("input[name=prize1]").first().fill("Chronos 22g");
+  await host.locator("select[name=prize1Condition]").first().selectOption("new_in_box");
   await host.getByRole("button", { name: "Add a choice" }).click();
   await host.locator("input[name=prize1]").nth(1).fill("Chronos 24g");
+  await host.locator("select[name=prize1Condition]").nth(1).selectOption("used");
   await host.getByRole("button", { name: "Add 2nd place" }).click();
   await host.fill("input[name=prize2]", "Flight pack");
+  await host.selectOption("select[name=prize2Condition]", "new_opened");
   await host.fill("input[name=lineCount]", "4");
   await host.fill("input[name=linePrice]", "5");
   await host.fill("input[name=venmo]", "@e2e-host");
@@ -40,6 +43,9 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await host.getByTestId("edit-draft").click();
   await expect(host.locator("input[name=prize1]")).toHaveCount(2);
   await expect(host.locator("input[name=prize2]")).toHaveValue("Flight pack");
+  await expect(host.locator("select[name=prize1Condition]").first()).toHaveValue("new_in_box");
+  await expect(host.locator("select[name=prize1Condition]").nth(1)).toHaveValue("used");
+  await expect(host.locator("select[name=prize2Condition]")).toHaveValue("new_opened");
   await expect(host.getByRole("radio", { name: /^Pick only, no randoms/ })).toBeChecked();
   await host.getByRole("radio", { name: /^Straight fill/ }).check();
   await host.getByTestId("composer-open").click();

@@ -7,6 +7,7 @@ import { ButtonLink } from "@/components/button";
 import { StatusPill } from "@/components/status-pill";
 import { FillBar } from "@/components/fill-bar";
 import { WaitingStrip } from "@/components/ledger/waiting-strip";
+import { DeleteDraftButton } from "./delete-draft-button";
 import { groupHostBreaks, toWaitingView, waitingStripText } from "./groups";
 
 export const metadata = { title: "Your breaks" };
@@ -47,6 +48,7 @@ export default async function HostHome() {
                   <FillBar total={b.lineCount} paid={b.paid} taken={b.taken} />
                   <span className="block text-small text-ink-2 tabular">{b.paid} of {b.lineCount} paid</span>
                 </Link>
+                {b.status === "draft" && <div className="px-4 pb-3"><DeleteDraftButton breakId={b.id} title={b.title} /></div>}
               </li>
             ))}
           </ul>

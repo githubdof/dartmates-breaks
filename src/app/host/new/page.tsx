@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { requireCaller } from "@/auth/session";
 import { db } from "@/db/client";
 import Link from "next/link";
@@ -27,7 +28,7 @@ export default async function NewBreakPage() {
           Your boards wear the default kit, Blue with Yellow. <Link href="/account#kit" className="underline underline-offset-4">Choose a kit in your account.</Link>
         </p>
       )}
-      <ComposerForm initial={newComposerInitial(defaults, handles)} maxLines={MAX_LINES} kit={kit.kit} />
+      <ComposerForm initial={newComposerInitial(defaults, handles, randomUUID)} maxLines={MAX_LINES} kit={kit.kit} />
     </main>
   );
 }

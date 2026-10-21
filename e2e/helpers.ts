@@ -18,6 +18,7 @@ export async function composeBreak(page: Page, o: { title: string; lineCount?: n
   await page.goto("/host/new");
   await page.fill("input[name=title]", o.title);
   await page.fill("input[name=prize1]", "Chronos 22g");
+  await page.selectOption("select[name=prize1Condition]", "new_in_box");
   await page.fill("input[name=venmo]", "@e2e-host");
   await page.fill("input[name=lineCount]", String(o.lineCount ?? 4));
   await page.fill("input[name=linePrice]", o.price ?? "5");

@@ -22,8 +22,12 @@ export async function saveBreak(_: ComposerState, form: FormData): Promise<Compo
   const rawId = form.get("breakId");
   const editing = typeof rawId === "string" && rawId !== "" ? rawId : null;
   if (editing !== null && !isUuid(editing)) return { error: "This draft could not be found.", values: submitted(form) };
+  // A new break arrives with the id the server gave the page, so photos added before the first save belong to it.
+  const rawNew = form.get("newBreakId");
+  const newBreakId = typeof rawNew === "string" ? rawNew : "";
+  if (editing === null && !isUuid(newBreakId)) return { error: "This form is out of date. Reload the page and try again.", values: submitted(form) };
   const r = await action(async (tx, caller) => {
-    const { breakId } = editing ? await updateDraft(tx, caller, editing, parsed.input) : await createDraft(tx, caller, parsed.input);
+    const { breakId } = editing ? await updateDraft(tx, caller, editing, parsed.input) : await createDraft(tx, caller, parsed.input, { breakId: newBreakId });
     if (parsed.open) await openBreak(tx, caller, breakId);
     return breakId;
   });

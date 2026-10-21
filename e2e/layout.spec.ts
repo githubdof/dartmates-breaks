@@ -29,6 +29,7 @@ test.beforeAll(async ({ browser }) => {
   await host.goto("/host/new");
   await host.fill("input[name=title]", "Layout fifty");
   await host.fill("input[name=prize1]", "Chronos 22g");
+  await host.selectOption("select[name=prize1Condition]", "new_in_box");
   await host.fill("input[name=venmo]", "@e2e-host");
   await host.fill("input[name=lineCount]", "50");
   await host.fill("input[name=linePrice]", "5");
@@ -244,6 +245,7 @@ test("Enter in the composer never opens a break", async ({ browser }) => {
   await host.goto("/host/new");
   await host.fill("input[name=title]", "Enter safety");
   await host.fill("input[name=prize1]", "Chronos 22g");
+  await host.selectOption("select[name=prize1Condition]", "new_in_box");
   await host.fill("input[name=venmo]", "@e2e-host");
   await host.locator("input[name=title]").press("Enter");
   await host.waitForURL(/\/b\//);

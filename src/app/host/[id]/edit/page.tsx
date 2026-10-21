@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { notFound, redirect } from "next/navigation";
 import { requireCaller } from "@/auth/session";
 import { db } from "@/db/client";
@@ -27,7 +28,7 @@ export default async function EditDraftPage({ params }: { params: Promise<{ id: 
   return (
     <main className="mx-auto max-w-[600px] px-4 py-6 sm:px-6">
       <h1 className="font-condensed text-title font-semibold">Edit draft</h1>
-      <ComposerForm initial={draftComposerInitial(data.draft, data.handles)} maxLines={MAX_LINES} kit={data.kit} />
+      <ComposerForm initial={draftComposerInitial(data.draft, data.handles, randomUUID)} maxLines={MAX_LINES} kit={data.kit} />
     </main>
   );
 }

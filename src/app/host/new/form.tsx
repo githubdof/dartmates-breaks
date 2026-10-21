@@ -7,6 +7,9 @@ import { Button } from "@/components/button";
 import { Stepper } from "@/components/stepper";
 import { GridPreview } from "@/components/grid/grid-preview";
 import type { Kit } from "@/domain/flights";
+import { CONDITION_LABEL, ITEM_CONDITIONS, isItemCondition, type ItemCondition } from "@/domain/breaks/condition";
+import { DeleteDraftButton } from "../delete-draft-button";
+import { addChoice, blankRow, removeChoice, setCondition, setName, type PrizeRow } from "./prize-rows";
 
 const field = "h-12 w-full rounded-input border border-wire-strong bg-card px-3";
 const area = "w-full rounded-input border border-wire-strong bg-card px-3 py-2";
@@ -30,15 +33,18 @@ export function ComposerForm({ initial, maxLines, kit }: Props) {
   const [state, submit, pending] = useActionState<ComposerState, FormData>(saveBreak, null);
   const [lineCount, setLineCount] = useState(initial.lineCount);
   const [price, setPrice] = useState(initial.price);
-  const [choices, setChoices] = useState<string[]>(initial.prize1);
-  const [second, setSecond] = useState(initial.prize2 !== "");
+  // The prize rows are controlled, so their slots and conditions survive re-renders and a failed save.
+  const [choices, setChoices] = useState<PrizeRow[]>(initial.prize1);
+  const [second, setSecond] = useState<PrizeRow | null>(initial.prize2);
   const preview = previewText(lineCount, price);
   const val = (name: string, fallback: string) => state?.values?.[name] ?? fallback;
 
   return (
+    <>
     <form action={submit} className="mt-4 space-y-8">
       {/* Enter in a text field presses the first submit button in the DOM: make that a harmless draft save. */}
       <button type="submit" name="intent" value="draft" hidden aria-hidden tabIndex={-1} />
+      {initial.newBreakId && <input type="hidden" name="newBreakId" value={initial.newBreakId} />}
       {initial.breakId && <input type="hidden" name="breakId" value={initial.breakId} />}
       <div className="space-y-1">
         <label htmlFor="title" className={label}>Title</label>
@@ -47,25 +53,32 @@ export function ComposerForm({ initial, maxLines, kit }: Props) {
 
       <fieldset className="space-y-3">
         <legend className="text-headline font-semibold">Prize</legend>
-        {choices.map((value, i) => (
-          <div key={i} className="space-y-1">
+        {choices.map((row, i) => (
+          <div key={row.slotKey} className="space-y-1">
             <label htmlFor={`prize1-${i}`} className={label}>{i === 0 ? "Top spot gets" : "or"}</label>
             <div className="flex gap-2">
-              <input id={`prize1-${i}`} name="prize1" required={i === 0} value={value} maxLength={120}
-                onChange={(e) => setChoices((cur) => cur.map((c, j) => (j === i ? e.target.value : c)))}
+              <input id={`prize1-${i}`} name="prize1" required={i === 0} value={row.name} maxLength={120}
+                onChange={(e) => setChoices((cur) => setName(cur, i, e.target.value))}
                 placeholder={i === 0 ? "Chronos 22g steel" : "Chronos 18g soft"} className={field} />
-              {i > 0 && <Button variant="text" onClick={() => setChoices((cur) => cur.filter((_, j) => j !== i))}>Remove</Button>}
+              {i > 0 && <Button variant="text" onClick={() => setChoices((cur) => removeChoice(cur, i))}>Remove</Button>}
             </div>
+            <input type="hidden" name="prize1Slot" value={row.slotKey} />
+            <ConditionSelect id={`prize1-condition-${i}`} name="prize1Condition" row={row} required={i === 0 || row.name.trim() !== ""}
+              labelFor={i === 0 ? "the top spot" : `choice ${i + 1}`} onChange={(c) => setChoices((cur) => setCondition(cur, i, c))} />
           </div>
         ))}
         <div className="flex flex-wrap gap-4">
-          <Button variant="text" onClick={() => setChoices((cur) => [...cur, ""])}>Add a choice</Button>
-          {!second && <Button variant="text" onClick={() => setSecond(true)}>Add 2nd place</Button>}
+          <Button variant="text" onClick={() => setChoices((cur) => addChoice(cur, () => crypto.randomUUID()))}>Add a choice</Button>
+          {!second && <Button variant="text" onClick={() => setSecond(blankRow(() => crypto.randomUUID()))}>Add 2nd place</Button>}
         </div>
         {second && (
           <div className="space-y-1">
             <label htmlFor="prize2" className={label}>2nd place gets</label>
-            <input id="prize2" name="prize2" defaultValue={val("prize2", initial.prize2)} maxLength={120} placeholder="Flight pack" className={field} />
+            <input id="prize2" name="prize2" value={second.name} maxLength={120} placeholder="Flight pack"
+              onChange={(e) => setSecond({ ...second, name: e.target.value })} className={field} />
+            <input type="hidden" name="prize2Slot" value={second.slotKey} />
+            <ConditionSelect id="prize2-condition" name="prize2Condition" row={second} required={second.name.trim() !== ""} labelFor="2nd place"
+              onChange={(c) => setSecond({ ...second, condition: c })} />
           </div>
         )}
       </fieldset>
@@ -138,5 +151,25 @@ export function ComposerForm({ initial, maxLines, kit }: Props) {
         <Button type="submit" name="intent" value="draft" variant="secondary" disabled={pending} data-testid="composer-draft">Save draft</Button>
       </div>
     </form>
+    {/* Outside the form: its button never submits the composer. */}
+    {initial.breakId && <div className="mt-6"><DeleteDraftButton breakId={initial.breakId} title={initial.title} /></div>}
+    </>
+  );
+}
+
+/** A required Condition select for one prize row; the label is for screen readers, the first option shows on screen. */
+function ConditionSelect({ id, name, row, required, labelFor, onChange }: {
+  id: string; name: string; row: PrizeRow; required: boolean; labelFor: string; onChange: (c: ItemCondition | "") => void;
+}) {
+  return (
+    <>
+      <label htmlFor={id} className="sr-only">Condition of {labelFor}</label>
+      {/* defaultValue tracks the state, so a failed save's form reset puts the chosen condition back. */}
+      <select id={id} name={name} required={required} defaultValue={row.condition || undefined} className={field}
+        onChange={(e) => onChange(isItemCondition(e.target.value) ? e.target.value : "")}>
+        <option value="">Condition</option>
+        {ITEM_CONDITIONS.map((c) => <option key={c} value={c}>{CONDITION_LABEL[c]}</option>)}
+      </select>
+    </>
   );
 }

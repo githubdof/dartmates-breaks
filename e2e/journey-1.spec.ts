@@ -14,6 +14,7 @@ test("host opens, buyers claim and pay, host draws, result verifies", async ({ b
   await host.goto("/host/new");
   await host.fill("input[name=title]", "E2E Chronos");
   await host.fill("input[name=prize1]", "Chronos 22g");
+  await host.selectOption("select[name=prize1Condition]", "new_in_box");
   await host.fill("input[name=venmo]", "@e2e-host");
   await host.fill("input[name=lineCount]", "3");
   await host.fill("input[name=linePrice]", "5");
