@@ -8,7 +8,7 @@ Requirements: Node 22.12+ (see `.nvmrc`), pnpm 9+, and Docker (needed by `pnpm s
 
 ```bash
 pnpm install
-pnpm supabase start            # local Postgres, Auth and Mailpit
+pnpm supabase start            # local Postgres, Auth, Storage and Mailpit
 cp .env.example .env.local     # and again as .env.test
 ```
 
@@ -18,6 +18,8 @@ Fill both env files with the keys printed by `supabase start`, then generate the
 DRAW_KEY_V1=$(openssl rand -base64 32)   # paste the output into the env files
 IP_HASH_KEY=$(openssl rand -base64 32)   # likewise, a separate value
 ```
+
+Create the photo buckets once: `ENV_FILE=.env.local pnpm exec tsx scripts/create-buckets.ts` (it prints each bucket with `ok` or `created`, then `no client policies on storage`).
 
 Environment variables:
 
@@ -82,6 +84,37 @@ pnpm dev
 
 Sign-in emails are caught by Mailpit at http://127.0.0.1:54324.
 
+### Storage
+
+Photos live in four Supabase Storage buckets (photos spec §5.5):
+
+- `incoming`: private; camera uploads land here through a signed upload URL, 5 MB per file, JPEG, PNG or WebP only.
+- `photos-draft`: private; a draft break's re-encoded variants, shown to the host through signed URLs.
+- `photos`: public by URL (not listable), `image/webp` only; an open break's variants.
+- `photo-archive`: private, service role only; removed and hidden photos kept for retention.
+
+`supabase/config.toml` declares them for the local stack, and `scripts/create-buckets.ts` creates or aligns them in any other environment (`src/storage/buckets.ts` `BUCKET_SETTINGS` is the source for both). No `storage.objects` policy may exist for `anon` or `authenticated`: every write is the service role or a signed upload URL, and both the script and `pnpm test:ci` fail if such a policy exists.
+
+After a change to `supabase/config.toml`, run `pnpm supabase stop` then `pnpm supabase start` (stop keeps the database). Run them from the main checkout: the containers mount files from the checkout that started them, and a stack started from a worktree breaks when that worktree is removed.
+
+### Preflight
+
+Before testing or handing over a URL, check the stack:
+
+1. Docker is running (`docker ps` answers). Docker and the Supabase CLI run outside the agent sandbox.
+2. `docker ps -a --filter name=supabase_ --format '{{.Names}} {{.Status}}'`: every container `Up`, including kong and storage, none `Exited`.
+3. Auth: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:54321/auth/v1/health` prints `200`.
+4. Mailpit: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:54324/` prints `200`.
+5. Storage: the bucket listing prints the four bucket names (`incoming`, `photo-archive`, `photos`, `photos-draft`):
+
+   ```bash
+   set -a; . ./.env.local; set +a
+   curl -s -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+     http://127.0.0.1:54321/storage/v1/bucket | grep -o '"name":"[a-z-]*"' | sort
+   ```
+
+6. The app: `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/` prints `200` once `pnpm dev` runs.
+
 ## Scripts
 
 | Script | What it does |
@@ -97,13 +130,14 @@ Sign-in emails are caught by Mailpit at http://127.0.0.1:54324.
 | `pnpm db:generate` | Generate a migration from schema changes |
 | `pnpm db:migrate` | Apply migrations (reads `ENV_FILE`, default `.env.local`) |
 | `pnpm supabase:start` / `pnpm supabase:stop` | Start / stop the local Supabase stack |
+| `pnpm exec tsx scripts/create-buckets.ts` | Create or align the four photo buckets and check Storage has no client policies |
 
 ## Tests
 
 - Unit and domain: `pnpm test`. Needs the local database and `.env.test`.
 - Concurrency: `pnpm test:concurrency`.
 - End to end: `pnpm test:e2e`. Runs with `BEACON=fake` and an `E2E_SECRET` so tests can sign in through `/test/login`; neither may be set on any Vercel deploy (production or preview).
-- Security posture: `pnpm test:ci`. Asserts every public table has forced RLS with no policies, and that the `anon` role reads nothing. In CI it runs on a plain `postgres:16` service with a stub `auth` schema (`supabase/ci-auth-stub.sql`).
+- Security posture: `pnpm test:ci`. Asserts every public table has forced RLS with no policies, and that the `anon` role reads nothing. It also checks the Storage buckets and policies, and what `anon` and a signed-in member can do, against the local stack (skipped on GitHub CI, which has no Storage). In CI it runs on a plain `postgres:16` service with a stub `auth` schema (`supabase/ci-auth-stub.sql`).
 
 ## Deploy
 
@@ -112,6 +146,7 @@ Sign-in emails are caught by Mailpit at http://127.0.0.1:54324.
 - Configure custom SMTP in Supabase Auth, for example Resend, so sign-in emails are deliverable.
 - Email templates: in the hosted Supabase dashboard (Authentication > Email Templates), paste `supabase/templates/magic_link.html` into "Magic Link" and `supabase/templates/confirmation.html` into "Confirm signup", with the subjects from `supabase/config.toml`. Both show the 6-digit code and a link to `/auth/callback`. The local stack picks them up from `config.toml` after `pnpm supabase stop && pnpm supabase start`.
 - Keep "Confirm email" ON in hosted Supabase Auth: admin promotion through `ADMIN_EMAILS` relies on a confirmed email.
+- Create the photo buckets once per environment, before the photos release: `ENV_FILE=.env.production pnpm exec tsx scripts/create-buckets.ts`. It must end with `no client policies on storage`.
 
 ## Roles
 
