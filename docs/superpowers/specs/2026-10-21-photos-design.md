@@ -137,7 +137,8 @@ line prizes are add-only, so slots are stable.
 ### 5.2 The ticket and the upload
 1. A host-only server action locks the break, checks owner, status and the cap (counting live photos and
    unconsumed tickets), applies the rate limits, writes a `photo_uploads` ticket and returns the ticket id and a
-   signed upload URL into the private **`incoming`** bucket, valid for 5 minutes, no overwrite.
+   signed upload URL into the private **`incoming`** bucket, no overwrite. The ticket is valid 5 minutes, checked at
+   finalise (Supabase fixes a signed upload URL's own lifetime at 2 hours, so the ticket is the real limit).
 2. Rate limits (the existing `rate_limits` table), on both issuing and finalising: 30 an hour and 100 a day per
    host, and at most 8 unconsumed tickets per host.
 3. The browser uploads straight to Storage.
@@ -258,8 +259,9 @@ A native `<dialog>` shown modally, one photo at a time, with a scroll-snap strip
 Next buttons, arrow keys and Escape, through all photos in order. The caption reads the tag and the position:
 "Top spot: Taylor Chronos 24g. Photo 2 of 5." Focus moves into the dialog and returns to the button that opened
 it; each change is announced politely. Reduced motion: no smooth scrolling, no zoom. Its code is not in the first
-load of /b/[id]: the plate is a server-rendered button using the platform's invoker commands where supported,
-falling back to a dynamic import on the first tap; the photos load only when it opens.
+load of /b/[id]: the plate is a server-rendered button whose small client island loads the viewer by dynamic import on
+the first tap, preloading on hover, focus or touch (Plan D ruling: an invoker-command path would still need the same
+import for the viewer's code, so it adds a second path without saving bytes); the photos load only when it opens.
 
 ### 8.4 Other surfaces
 - **Landing hero**: unchanged. The feed cards under it follow §8.1.
@@ -322,7 +324,8 @@ falling back to a dynamic import on the first tap; the photos load only when it 
 - **E2E** (local Storage enabled): a host adds photos and opens the break; the photo shows on the feed card, the
   plate and the Prizes block, served from `photos`; a draft photo is not readable without the host's signed URL;
   the viewer works by keyboard and returns focus; after a buyer claims, the host replaces the lead and the buyer
-  sees "Lead photo replaced" above the fold and on /me, which clears once seen, and the removed lead marked
+  sees "Updated" on the plate above the fold and "Lead photo replaced" in the Prizes block and on /me, where it clears
+  once seen, and the removed lead marked
   "Removed" in the Prizes block, which a stranger does not see; a prize's condition shows in the Prizes block; a
   draft's photos and tags survive
   a re-save that removes an "or" alternative; Delete draft removes its photos; axe on every touched page.
