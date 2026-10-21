@@ -1,6 +1,6 @@
 // Shared by the result page (browser), the unit test and scripts/verify-draw.ts.
 // Keep it plain TS over Uint8Array + @noble/hashes: no JSX, no Node Buffer, no server-only.
-import { hexToBytes } from "@noble/hashes/utils";
+import { hexToBytes } from "@noble/hashes/utils.js";
 import { computeRanking } from "./draw";
 import { commitment } from "./commit";
 

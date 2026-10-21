@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
+import { hexToBytes, bytesToHex } from "@noble/hashes/utils.js";
 import { commitment } from "./commit";
 import { serializeEntries, uuidBytes, type Entry } from "./serialize";
 import { shuffle } from "./shuffle";

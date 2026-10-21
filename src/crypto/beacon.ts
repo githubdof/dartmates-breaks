@@ -1,5 +1,5 @@
-import { sha256 } from "@noble/hashes/sha256";
-import { bytesToHex, hexToBytes, concatBytes, utf8ToBytes } from "@noble/hashes/utils";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, hexToBytes, concatBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 
 export const QUICKNET = {
   chainHash: "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",

@@ -1,5 +1,5 @@
 import { sql, eq, asc } from "drizzle-orm";
-import { bytesToHex } from "@noble/hashes/utils";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import type { Tx } from "@/db/client";
 import { breaks, breakSecrets, lines, users, prizes, drawRequests, draws, awards } from "@/db/schema";
 import { assertHostOf, lockBreak, assertOnboarded } from "@/auth/authz";

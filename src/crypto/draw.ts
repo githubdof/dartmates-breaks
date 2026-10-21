@@ -1,5 +1,5 @@
-import { sha256 } from "@noble/hashes/sha256";
-import { bytesToHex, utf8ToBytes, concatBytes } from "@noble/hashes/utils";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, utf8ToBytes, concatBytes } from "@noble/hashes/utils.js";
 import { serializeEntries, serializeRanking, uuidBytes, type Entry } from "./serialize";
 import { shuffle } from "./shuffle";
 

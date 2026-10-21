@@ -22,7 +22,7 @@
     "supabase:stop": "supabase stop"
   },
   "dependencies": {
-    "@noble/hashes": "1",
+    "@noble/hashes": "^2.4.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
     "drizzle-orm": "^0.45.4",

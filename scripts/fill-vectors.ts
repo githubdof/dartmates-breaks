@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
+import { hexToBytes, bytesToHex } from "@noble/hashes/utils.js";
 import { computeRanking, ALGORITHM_VERSION } from "../src/crypto/draw";
 
 async function main(): Promise<void> {
