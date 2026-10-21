@@ -56,7 +56,11 @@ export function createMemoryStorage(clock: () => Date = () => new Date()): Photo
       return [...files.keys()]
         .filter((k) => k.startsWith(start))
         .sort()
-        .map((k) => ({ name: k.slice(bucket.length + 1), createdAt: dates.get(k)! }));
+        .map((k) => {
+          // A test "upload" sets `files` directly: date it the first time it is seen.
+          if (!dates.has(k)) dates.set(k, clock());
+          return { name: k.slice(bucket.length + 1), createdAt: dates.get(k)! };
+        });
     },
   };
 }

@@ -17,4 +17,10 @@ it("keys files by bucket and path, and dates them by the clock it was given", as
   await s.copy({ bucket: BUCKETS.public, path: "b/x-160.webp" }, { bucket: BUCKETS.archive, path: "b/x-160.webp" });
   expect(await s.list(BUCKETS.archive, "b")).toEqual([{ name: "b/x-160.webp", createdAt: new Date("2026-10-02T00:00:00Z") }]);
   expect(s.files.get("photo-archive/b/x-160.webp")?.toString()).toBe("x");
+  // A test "upload" set straight into `files` is dated by the clock the first time it is listed, then keeps that date.
+  t = new Date("2026-10-03T00:00:00Z");
+  s.files.set("incoming/u/in.jpg", Buffer.from("jpg"));
+  expect(await s.list(BUCKETS.incoming, "")).toEqual([{ name: "u/in.jpg", createdAt: new Date("2026-10-03T00:00:00Z") }]);
+  t = new Date("2026-10-04T00:00:00Z");
+  expect(await s.list(BUCKETS.incoming, "u")).toEqual([{ name: "u/in.jpg", createdAt: new Date("2026-10-03T00:00:00Z") }]);
 });
