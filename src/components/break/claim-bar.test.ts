@@ -6,7 +6,7 @@ import { ClaimBar } from "./claim-bar";
 import type { Bar } from "./claim-bar-state";
 
 const noop = () => {};
-const router = { refresh: noop, push: noop, replace: noop, back: noop, forward: noop, prefetch: noop };
+const router = { refresh: noop, push: noop, replace: noop, back: noop, forward: noop, prefetch: noop, bfcacheId: "" };
 const render = (bar: Bar, status: string, toGo: string | null) => renderToStaticMarkup(createElement(AppRouterContext.Provider, { value: router },
   createElement(ClaimBar, { bar, status, toGo, pending: false, count: 1, onCount: noop, onClaim: noop, signInHref: "/login", onStep: noop, onLast: noop, onSent: noop, resultHref: "/b/x/result" })));
 

@@ -320,7 +320,7 @@ describe("LedgerRow: state as a word, the late time in red, one Paid button with
     expect([...toggled.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].some((m) => m[1].includes(">Alice<"))).toBe(true);
   });
   it("the ledger's column header sits outside the Buyers list and is hidden from screen readers", () => {
-    const router = { refresh: noop, push: noop, replace: noop, back: noop, forward: noop, prefetch: noop };
+    const router = { refresh: noop, push: noop, replace: noop, back: noop, forward: noop, prefetch: noop, bfcacheId: "" };
     const h = html(createElement(AppRouterContext.Provider, { value: router },
       createElement(LedgerSheet, { open: true, onClose: noop, breakId: "b", status: "open", rows: [alice], counts: { paid: 0, taken: 1, total: 4 }, bonus: { used: 0, max: 1 }, hostName: "@jim" })));
     const header = h.match(/<div([^>]*)><span>Buyer<\/span><span>Lines<\/span>/);

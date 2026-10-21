@@ -8,7 +8,7 @@ import { MyBreakCard } from "./my-break-card";
 import { MyHistoryRow } from "./my-history-row";
 
 const noop = () => {};
-const router = { refresh: noop, push: noop, replace: noop, back: noop, forward: noop, prefetch: noop };
+const router = { refresh: noop, push: noop, replace: noop, back: noop, forward: noop, prefetch: noop, bfcacheId: "" };
 const flight: Flight = { colour: "yellow", shape: "kite" };
 const owing: MyBreakCardProps = {
   breakId: "b1", title: "Chronos", status: "open", hostName: "Jim", payee: "@Jim-R", handles: { venmo: "@Jim-R" },

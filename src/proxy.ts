@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 
 const PUBLIC = [/^\/$/, /^\/login(\/|$)/, /^\/auth\//, /^\/b\//, /^\/breaks(\/|$)/, /^\/h\//, /^\/legal(\/|$)/, /^\/api\//, /^\/test\//, /^\/dev\//, /^\/_next\//, /^\/favicon/];
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   let res = NextResponse.next({ request: req });
   const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
     cookies: {
