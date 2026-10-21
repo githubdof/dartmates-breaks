@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
 import { Sheet } from "@/components/sheet";
@@ -61,19 +61,30 @@ function openPayLink(link: PayLink) {
   }, 1200);
 }
 
+const never = () => () => {};
+/** The viewer's memory: whether they have marked a line sent before. Storage blocked: the hint shows. */
+const sentBefore = () => { try { return window.localStorage.getItem(SENT_HINT_KEY) === "1"; } catch { return false; } };
+const sentBeforeOnServer = () => true;
+
 export function PaySheet(p: Props) {
   const [confirming, setConfirming] = useState(false);
-  const [showHint, setShowHint] = useState(false);
+  // The hint, until the viewer marks a line sent once: the viewer's memory as an external snapshot (never on the server,
+  // so hydration matches), and this sheet's own "I've sent it" from then on.
+  const seenBefore = useSyncExternalStore(never, sentBefore, sentBeforeOnServer);
+  const [sentHere, setSentHere] = useState(false);
+  const showHint = !seenBefore && !sentHere;
   const [error, setError] = useState<string | null>(null);
   const [copyFails, setCopyFails] = useState(0);
   const [giving, startGive] = useTransition();
   const fieldRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  useEffect(() => {
-    try { setShowHint(window.localStorage.getItem(SENT_HINT_KEY) !== "1"); } catch { setShowHint(true); }
-  }, []);
-  useEffect(() => { if (!p.open) { setConfirming(false); setError(null); setCopyFails(0); } }, [p.open]);
+  // Closing resets the sheet's own state, while rendering, so a reopen never shows a frame of the last visit.
+  const [wasOpen, setWasOpen] = useState(p.open);
+  if (wasOpen !== p.open) {
+    setWasOpen(p.open);
+    if (!p.open) { setConfirming(false); setError(null); setCopyFails(0); }
+  }
   // The clipboard is blocked (some in-app browsers): show the value selected so a long press can copy it.
   useEffect(() => {
     if (copyFails > 0) { fieldRef.current?.focus(); fieldRef.current?.select(); }
@@ -86,7 +97,7 @@ export function PaySheet(p: Props) {
 
   const markSent = () => p.onSent(() => {
     try { window.localStorage.setItem(SENT_HINT_KEY, "1"); } catch { /* storage blocked: the hint shows again next time */ }
-    setShowHint(false);
+    setSentHere(true);
   });
   const doGiveBack = () => {
     if (!p.owe) return;

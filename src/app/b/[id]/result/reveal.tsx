@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FLIGHT_COLOURS, type HeatStep, type Kit } from "@/domain/flights";
 import type { Place } from "@/domain/draws/places";
 import { Grid } from "@/components/grid/grid";
@@ -116,8 +116,8 @@ export function Reveal(p: Props) {
   /** Skip: the final state in the same frame, every bull in the DOM, the lights up in one short fade; focus goes to Replay. */
   const skip = () => { focusReplay.current = true; setSkipped(true); clock.skip(); };
 
-  const playRef = useRef(play);
-  playRef.current = play;
+  // The gate's play, as an effect event: the latest `play` without the gate effect re-running.
+  const playFromGate = useEffectEvent(() => play());
 
   // Before paint, so neither a hard load (the gate script) nor a client navigation shows the result before the lights go
   // down. Read once per break (readGate): Strict Mode's re-run of this effect keeps the first run's decision, and the
@@ -128,7 +128,7 @@ export function Reveal(p: Props) {
     const gateSays = readGate(gate, p.breakId, store, prefersReducedMotion());
     if (gateSays === null) return;
     setCanReplay(true);
-    if (gateSays === "play") playRef.current();
+    if (gateSays === "play") playFromGate();
     setReady(true);
   }, [p.breakId]);
   useLayoutEffect(() => { if (ready) delete document.documentElement.dataset.deal; }, [ready]);
@@ -139,12 +139,10 @@ export function Reveal(p: Props) {
     replayRef.current?.querySelector("button")?.focus({ preventScroll: true });
   }, [playing]);
 
-  // The board as the throws have left it: a won cell keeps its pre-draw look until its dart lands.
-  const landedKey = s.landed.join(",");
-  const shown = useMemo(() => {
-    const landed = new Set(landedKey ? landedKey.split(",").map(Number) : []);
-    return p.cells.map((c) => (c.place !== null && !landed.has(c.number) ? { ...c, place: null } : c));
-  }, [p.cells, landedKey]);
+  // The board as the throws have left it: a won cell keeps its pre-draw look until its dart lands. Computed each render
+  // (at most 50 cells; Grid reads the array, never its identity).
+  const landed = new Set(s.landed);
+  const shown = p.cells.map((c) => (c.place !== null && !landed.has(c.number) ? { ...c, place: null } : c));
 
   const b = s.banner;
   const called = b?.kind === "call" ? shown.find((c) => c.number === b.number) ?? null : null;

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useLayoutEffect, useMemo, useOptimistic, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useOptimistic, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Allowance, GridCell, GridCounts } from "@/domain/breaks/grid";
 import type { ClaimMode } from "@/domain/breaks/rules";
@@ -103,8 +103,10 @@ export function BreakInteractive(p: BreakInteractiveProps) {
   // Drops not yet landed: the checkout count drops by one per landing (a text swap, never rolled).
   const [landing, setLanding] = useState(0);
   const sheetTimer = useRef<number | null>(null);
-  // Board fills: null until the once-per-viewer flag is read (the banner renders after hydration only).
-  const [fullPlay, setFullPlay] = useState<boolean | null>(null);
+  // Board fills: the once-per-viewer flag as read for this break (the banner renders after hydration only); `fullPlay`
+  // is null until it is read, and while the break is not filled.
+  const [fullSeen, setFullSeen] = useState<{ breakId: string; play: boolean } | null>(null);
+  const fullPlay = p.status === "filled" && fullSeen?.breakId === p.breakId ? fullSeen.play : null;
   const fullRead = useRef<string | null>(null);
   // The caller's call said in this commit (board fills or draw starts): the reconcile effect for the same props joins it
   // to what it says.
@@ -199,17 +201,11 @@ export function BreakInteractive(p: BreakInteractiveProps) {
 
   // When fresh props show a selected line taken by someone else: strike it, drop it, say so.
   // Lines dropped because the allowance shrank are not "taken": they get the limit text instead.
-  const selectedRef = useRef(selected);
-  selectedRef.current = selected;
+  // An effect event: it reads the selection as it stands now without the effect re-running for every tap.
   const lastCells = useRef(p.cells);
   const { cells: freshCells, allowance, hostName } = p;
-  useEffect(() => {
-    const call = fullCall.current;
-    fullCall.current = null;
-    if (lastCells.current === freshCells) return;
-    const before = lastCells.current;
-    lastCells.current = freshCells;
-    const cur = selectedRef.current;
+  const reconcile = useEffectEvent((before: readonly GridCell[], call: string | null) => {
+    const cur = selected;
     const r = reconcileSelection(cur, freshCells, allowance.remaining);
     if (r.selected.length !== cur.length || r.selected.some((n, i) => n !== cur[i])) setSelected(r.selected);
     const said: string[] = [];
@@ -238,25 +234,45 @@ export function BreakInteractive(p: BreakInteractiveProps) {
       lastSaid.current = { text, at: Date.now() };
       setAnnounce((a) => ({ text, n: a.n + 1 }));
     }
+  });
+  useEffect(() => {
+    const call = fullCall.current;
+    fullCall.current = null;
+    if (lastCells.current === freshCells) return;
+    const before = lastCells.current;
+    lastCells.current = freshCells;
+    reconcile(before, call);
   }, [freshCells, allowance, hostName]);
 
-  // The claim's lines have landed: later diffs are other people's again.
-  useEffect(() => { if (board.landed.length > 0) setPendingClaim(null); }, [board.landed]);
+  // The claim's lines have landed: later diffs are other people's again. Keyed on the landed array itself (the hook
+  // keeps it until the next changed snapshot, so a later claim before any change must not read it as its own landing).
+  // Adjusted while rendering: the moments already sit in the hook's state (the same snapshot steps to the same state),
+  // so the drop still commits.
+  const [landedSeen, setLandedSeen] = useState(board.landed);
+  if (landedSeen !== board.landed) {
+    setLandedSeen(board.landed);
+    if (board.landed.length > 0) setPendingClaim(null);
+  }
 
-  // The checkout count drops by one per landing. Before paint, so the count never shows the lower number first.
-  // Keyed on the run (`played`), not on the map shown: a kept map (a non-moving change mid-landing) never restarts it.
+  // The checkout count drops by one per landing: set as the run starts, while rendering, so the count never shows the
+  // lower number first. Keyed on the run (`played`), not on the map shown: a kept map (a non-moving change mid-landing)
+  // never restarts it. The timers that count it down are the run's effect.
+  const [landingRun, setLandingRun] = useState(board.played);
+  if (landingRun !== board.played) {
+    setLandingRun(board.played);
+    const drops = countMoment(board.played, "drop");
+    setLanding(drops === 0 || prefersReducedMotion() ? 0 : landingTimes(drops).length);
+  }
   useLayoutEffect(() => {
     const drops = countMoment(board.played, "drop");
-    if (drops === 0 || prefersReducedMotion()) { setLanding(0); return; }
-    const times = landingTimes(drops);
-    setLanding(times.length);
-    const ids = times.map((t) => window.setTimeout(() => setLanding((n) => Math.max(0, n - 1)), t));
+    if (drops === 0 || prefersReducedMotion()) return;
+    const ids = landingTimes(drops).map((t) => window.setTimeout(() => setLanding((n) => Math.max(0, n - 1)), t));
     return () => ids.forEach((id) => window.clearTimeout(id));
   }, [board.played]);
 
   // Board fills (Mosaic §7): "Board's full. Game on." drops in once per viewer per break, then shows still.
   useLayoutEffect(() => {
-    if (p.status !== "filled") { fullRead.current = null; setFullPlay(null); return; }
+    if (p.status !== "filled") { fullRead.current = null; return; }
     if (fullRead.current === p.breakId) return; // read once: a second run (Strict Mode, a new host name) would see its own write
     fullRead.current = p.breakId;
     let seen = true;
@@ -266,10 +282,13 @@ export function BreakInteractive(p: BreakInteractiveProps) {
     } catch {
       seen = true; // storage blocked: never force the moment
     }
-    setFullPlay(!seen && !prefersReducedMotion());
+    // The viewer's memory, read and marked above, decides the moment and its call: the decision is state, the call is
+    // the live region's. Both are set here, once per break, because nothing else sees the read.
+    setFullSeen({ breakId: p.breakId, play: !seen && !prefersReducedMotion() });
     if (!seen) {
       const call = boardFullAnnouncement(p.hostName);
       fullCall.current = call;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the live region announces what the once-per-viewer read decided; nothing else sees the read
       say(call);
     }
   }, [p.status, p.breakId, p.hostName]);

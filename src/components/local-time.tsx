@@ -1,23 +1,28 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { formatDateTime, formatDeadline } from "@/lib/time";
+
+const never = () => () => {};
+const onServer = () => null;
+
+/** The browser's own text, or null when it cannot format: no zone, or Chrome's "Etc/Unknown", with which formatting throws. */
+function browserText(iso: string, kind: "deadline" | "datetime"): string | null {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!tz) return null;
+    return kind === "deadline" ? formatDeadline(new Date(iso), new Date(), tz) : formatDateTime(new Date(iso), tz);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Renders the server's fallback on the first pass (hydration matches byte for byte), then reformats in
  * the browser's own zone, with the browser's own "now" deciding today and tomorrow. No JS: the fallback stays.
+ * The browser's text is an external snapshot (useSyncExternalStore): the server snapshot is the fallback, and the
+ * browser's replaces it right after hydration, in the same pass, with no effect in between.
  */
 export function LocalTime({ iso, fallback, kind }: { iso: string; fallback: string; kind: "deadline" | "datetime" }) {
-  const [text, setText] = useState(fallback);
-  useEffect(() => {
-    // Chrome reports "Etc/Unknown" when it cannot detect the system zone, and formatting with it throws.
-    // Keep the server's fallback text in that case.
-    try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (!tz) return;
-      setText(kind === "deadline" ? formatDeadline(new Date(iso), new Date(), tz) : formatDateTime(new Date(iso), tz));
-    } catch {
-      /* fallback stays */
-    }
-  }, [iso, kind]);
-  return <time dateTime={iso}>{text}</time>;
+  const local = useSyncExternalStore(never, () => browserText(iso, kind), onServer);
+  return <time dateTime={iso}>{local ?? fallback}</time>;
 }

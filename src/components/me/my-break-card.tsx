@@ -49,15 +49,19 @@ export function MyBreakCard(p: MyBreakCardProps) {
   const prompt = owe ? giveBackPrompt(owe.numbers, owe.bonusLost) : null;
 
   // A refused "I've sent it" refreshes, which can clear the owe and so unmount the sheet mid-failure: carry its
-  // failure to the note line, and close the sheet so it does not reopen when an owe comes back.
+  // failure to the note line, and close the sheet so it does not reopen when an owe comes back. Adjusted while
+  // rendering (this card's own state, the sheet's included; the sheet passes no onClosed), so the lost sheet never
+  // commits, and the close ends the condition. Shown on the surviving card, the page need not repeat the failure:
+  // the effect on `lost` drops it from the hand-off whether or not an error had committed.
   const sheetLost = pay.open && !owe;
-  const { error: payError, close: closePay } = pay;
-  useEffect(() => {
-    if (!sheetLost) return;
-    if (payError) setNote(payError.text);
-    sentFail.current = null; // shown on the surviving card: the page need not repeat it
-    closePay();
-  }, [sheetLost, payError, closePay]);
+  const [lost, setLost] = useState(0);
+  if (sheetLost) {
+    if (pay.error) setNote(pay.error.text);
+    pay.close();
+    setLost((n) => n + 1);
+  }
+  useEffect(() => { if (lost > 0) sentFail.current = null; }, [lost]);
+  const payError = pay.error;
   // Once the error is cleared (sheet closed, or a new attempt), it no longer belongs on the page either.
   useEffect(() => { if (!payError) sentFail.current = null; }, [payError]);
 

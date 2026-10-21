@@ -63,14 +63,31 @@ Each step is its own PR with the full gates: lint, tsc, unit, concurrency, CI, e
 
 ## Follow-ups
 
-- **React Compiler lint rules.** eslint-plugin-react-hooks 7 (with eslint-config-next 16) turns on
+- **React Compiler lint rules: done in PR #7.** eslint-plugin-react-hooks 7 (with eslint-config-next 16) turns on
   `react-hooks/set-state-in-effect`, `react-hooks/refs` and `react-hooks/preserve-manual-memoization`. They flagged
-  17 places in 10 files (`reveal.tsx`, `use-reveal-clock.ts`, `verify.tsx`, `break-interactive.tsx`, `pay-sheet.tsx`,
-  `use-pay-sheet.ts`, `handle-field.tsx`, `local-time.tsx`, `my-break-card.tsx`, `stepper.tsx`), every one a
-  deliberate pattern with a comment (a Strict Mode gate read from a ref, the landing countdown timers, drafts that
-  follow a prop). The React Compiler is off here, so PR #5 turns those three rules off in `eslint.config.mjs` and
-  changes no component. Turning them on is its own pass with the e2e as the guard: each rewrite changes when a
-  component re-renders.
+  17 places in 10 files, every one a deliberate pattern with a comment; PR #5 had turned the three rules off. PR #7
+  turns them on and rewrites the sites without changing what a component shows, with the e2e as the guard:
+  - *State adjusted while rendering* (the prev-value pattern, as `use-board-moments.ts` already did): the stepper's
+    draft following its value; the pay sheet's reset on close; the provisional owe dropped when fresh props arrive
+    (`use-pay-sheet.ts`); the /me card closing a sheet whose owe vanished; the island clearing a landed claim and
+    setting the landing count. Each now shows in the same commit, where the effect showed it one paint later.
+  - *Browser-only reads as `useSyncExternalStore` snapshots* (the server snapshot matches the server HTML, the
+    browser's replaces it right after hydration): `LocalTime`'s zone-local text; the pay sheet's "sent" hint from
+    viewer memory; the result page's automatic in-browser check (`verify.tsx`, memoized per inputs object).
+  - *`useEffectEvent`* for the latest props inside an effect: the island's reconcile of the selection against fresh
+    props; the reveal's play from the gate.
+  - *A ref written in an effect, not while rendering*: the reveal clock's handlers; the pay sheet's `openRef`.
+  - *The "checking" state set with the value* in the change handler (`handle-field.tsx`); the effect only brings the
+    server's answer. Idle at first, on the server too: a prefilled handle goes from idle to the answer.
+  - *Opus review (one round):* the landed-claim clear is keyed on the identity of the landed array, as the effect was
+    (a second claim within the auto-refresh window would otherwise have read the first claim's landing as its own and
+    lost its drop); the /me card drops the failure from the page hand-off on every lost sheet, not only after an error
+    had committed; `openRef` is written in a layout effect.
+  - *The reveal's `shown` board* is computed each render (at most 50 cells; `Grid` never reads the array's identity):
+    the compiler could not preserve the manual `useMemo`.
+  - *Kept, with a reason on the line*: the board-fills call (`break-interactive.tsx`, `say(call)` in the layout
+    effect that reads and marks the once-per-viewer flag): the read is the external system and nothing else sees it.
+    The draw-starts effect beside it, of the same shape, the rules do not flag.
 - **`window.location.assign` in the login form** ("Use a different email" reloads `/login` to reset the form):
   `@next/next/no-window-location` warns; left as the one lint warning until a ruling (a `useRouter().push` to the
   same route would not reset the state).

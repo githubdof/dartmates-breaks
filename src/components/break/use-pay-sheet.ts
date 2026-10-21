@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { sent } from "@/app/b/[id]/actions";
 import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
@@ -33,10 +33,13 @@ export function usePaySheet(o: Options) {
   const [error, setError] = useState<SheetError | null>(null);
   const [pendingOwe, setPendingOwe] = useState<Owe | null>(null);
   const [pending, start] = useTransition();
+  // Whether the sheet is open as of the last commit, for `fail` when it runs after an await: written at each commit,
+  // before paint, so the window where a failure could land on the page instead of the open sheet is as short as it gets.
   const openRef = useRef(false);
-  openRef.current = open;
-  // Fresh server props carry the real amount and deadline; drop the provisional one.
-  useEffect(() => { setPendingOwe(null); }, [o.owe]);
+  useLayoutEffect(() => { openRef.current = open; }, [open]);
+  // Fresh server props carry the real amount and deadline; drop the provisional one, while rendering, so the same commit shows them.
+  const [oweSeen, setOweSeen] = useState(o.owe);
+  if (oweSeen !== o.owe) { setOweSeen(o.owe); setPendingOwe(null); }
   const owe = o.owe ?? pendingOwe;
 
   const show = () => { setError(null); setOpen(true); };
