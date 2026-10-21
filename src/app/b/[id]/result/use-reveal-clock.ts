@@ -11,8 +11,9 @@ export function useRevealClock(plan: RevealPlan, handlers: Omit<RevealHandlers, 
   const [t, setT] = useState<number>(ENDED.t);
   // 0: no run. Each play takes the next number, so Replay restarts the effect even from a finished run.
   const [run, setRun] = useState(0);
+  // The latest handlers, for the run's timers: written after each commit, never while rendering.
   const h = useRef(handlers);
-  h.current = handlers;
+  useEffect(() => { h.current = handlers; });
   const cancel = useRef<(() => void) | null>(null);
 
   useEffect(() => {

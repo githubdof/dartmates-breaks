@@ -1,12 +1,14 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { clampStep, commitDraft, draftValue, stepState } from "./stepper-math";
 
 export function Stepper({ value, min, max, onChange, label, name, testId }: { value: number; min: number; max: number; onChange: (v: number) => void; label: string; name?: string; testId?: string }) {
   const { canDec, canInc } = stepState(value, min, max);
   // The input keeps what was typed; a complete number commits at once, anything else waits for blur or Enter.
   const [draft, setDraft] = useState(String(value));
-  useEffect(() => { setDraft(String(value)); }, [value]);
+  // A value from outside (the buttons, the parent) replaces the draft: adjusted while rendering, so the same commit shows it.
+  const [seen, setSeen] = useState(value);
+  if (seen !== value) { setSeen(value); setDraft(String(value)); }
   const commit = () => {
     const v = commitDraft(draft, min, max, value);
     setDraft(String(v));
