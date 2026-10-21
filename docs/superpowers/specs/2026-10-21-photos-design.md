@@ -280,9 +280,9 @@ import for the viewer's code, so it adds a second path without saving bytes); th
 ## 9. The composer
 
 - A **Photos** strip after the price fields in /host/new and the draft editor, with the hint "Photos of the items.
-  Rules and specs go in the description." (decision 15). Until the title, line count and price are valid, "Add
-  photos" is disabled with the reason beside it: "Add a title and a price first." The first photo then creates the
-  draft from the form as it stands.
+  Rules and specs go in the description." (decision 15). Until the draft can be saved (a title, a line count, a price,
+  and a named top spot with its condition), "Add photos" is disabled with the reason beside it: "Add a title, a price
+  and the top spot first." The first photo then creates the draft from the form as it stands.
 - The composer gives the new break its id when it opens; `createDraft` accepts that id and is idempotent, so the
   first photo, a Save pressed while it uploads, and a reload all land on one draft. After the draft exists the page
   moves to the draft's edit address.
@@ -314,7 +314,7 @@ import for the viewer's code, so it adds a second path without saving bytes); th
   This plan first restores a working measurement of /b/[id] first-load JS under Turbopack (the Plan C script read
   `app-build-manifest.json`, which Turbopack no longer writes), then holds the existing allowance. The 390 × 664
   layout test gains the plate case at 390 and 360.
-- **Unit and domain**: the finalise steps (magic bytes, a polyglot and an SVG refused, the pixel limit, all three
+- **Unit and domain**: the finalise steps (magic bytes, an SVG refused, a polyglot re-encoded to pixels only, the pixel limit, all three
   variants free of EXIF, XMP, IPTC, ICC and comments, from fixtures that bypass the browser); the ticket (another
   host's ticket, a consumed one, an expired one, a forged path); the commands (the cap, positions without gaps,
   the status freeze, tags kept by slot across a draft save, one event per action, exactly which changes set the
