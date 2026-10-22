@@ -1,38 +1,42 @@
 "use client";
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { Sheet } from "@/components/sheet";
 import { PhotoStrip, type PhotoStripProps } from "./photo-strip";
 
 /**
- * The host's photo strip on an open or filled break. The strip mounts only while the sheet is open, so closing
- * unmounts it and flushes a pending Undo removal; that commit reports a change after the close, which refreshes too.
+ * The host's photo strip on an open or filled break. The strip mounts on the first open and stays mounted: it hides
+ * with the dialog, so an upload started before a close keeps running and the strip stays the source of truth.
+ * Closing tells it to commit a removal still waiting on Undo. The page refreshes (so the break page's own photo
+ * data follows the host's edits) once something changed: on close, or later if the change lands behind a closed sheet.
  */
-export function EditPhotosSheet(p: Omit<PhotoStripProps, "canAdd" | "ensureDraft" | "onCount" | "onChange">) {
+export function EditPhotosSheet(p: Omit<PhotoStripProps, "canAdd" | "ensureDraft" | "onCount" | "onChange" | "flushToken">) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  // The button waits out a refresh, so a reopened strip never starts from the photos as they were before the close.
-  const [refreshing, startRefresh] = useTransition();
+  const [mounted, setMounted] = useState(false);
+  const [closes, setCloses] = useState(0);
   const isOpen = useRef(false);
   const changed = useRef(false);
 
+  function refresh() { changed.current = false; router.refresh(); }
+  function show() { isOpen.current = true; setMounted(true); setOpen(true); }
   function close() {
     isOpen.current = false;
     setOpen(false);
-    if (changed.current) { changed.current = false; startRefresh(() => router.refresh()); }
+    setCloses((n) => n + 1);
+    if (changed.current) refresh();
   }
   function onChange() {
     changed.current = true;
-    // A removal flushed by the close commits after it: nothing else would refresh for it.
-    if (!isOpen.current) { changed.current = false; startRefresh(() => router.refresh()); }
+    if (!isOpen.current) refresh();
   }
 
   return (
     <>
-      <Button variant="secondary" data-testid="edit-photos" disabled={refreshing} onClick={() => { isOpen.current = true; setOpen(true); }}>Edit photos</Button>
+      <Button variant="secondary" data-testid="edit-photos" onClick={show}>Edit photos</Button>
       <Sheet open={open} onClose={close} title="Edit photos">
-        {open && <PhotoStrip {...p} canAdd onChange={onChange} />}
+        {mounted && <PhotoStrip {...p} canAdd onChange={onChange} flushToken={closes} />}
       </Sheet>
     </>
   );

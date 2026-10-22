@@ -331,9 +331,22 @@ test("Edit photos: closing the sheet commits a removal still waiting on Undo", a
   await page.getByTestId("photo-options-1").click(); await page.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(page.getByTestId("photo-undo")).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
-  // Before a claim the row goes outright: closing commits the removal at once, it is not left to lapse.
-  await expect.poll(() => withDb((sql) => sql`select count(*)::int as n from break_photos where id = ${first}`).then((r) => r[0].n)).toBe(0);
-  await expect(page.getByTestId("edit-photos")).toBeEnabled(); // the refresh the commit asked for has landed
+  // Before a claim the row goes outright: closing commits the removal at once, it is not left to lapse (8 s).
+  await expect.poll(() => withDb((sql) => sql`select count(*)::int as n from break_photos where id = ${first}`).then((r) => r[0].n), { timeout: 6_000 }).toBe(0);
   await page.getByTestId("edit-photos").click();
   await expect.poll(() => order(page)).toEqual([second]);
+});
+
+test("Edit photos: an upload started and then closed over still finishes", async ({ page }) => {
+  test.setTimeout(150_000);
+  await loginAs(page, `psu${run}@e2e.test`, "host");
+  const url = await composeBreakWithPhotos(page, { title: `Over ${run}`, photos: 1 });
+  const id = url.split("/").pop()!;
+  await gotoReady(page, url);
+  await page.getByTestId("edit-photos").click();
+  await page.getByTestId("photo-input").setInputFiles([{ name: "late.jpg", mimeType: "image/jpeg", buffer: await jpeg(3) }]);
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect.poll(() => withDb((sql) => sql`select count(*)::int as n from break_photos where break_id = ${id} and removed_at is null`).then((r) => r[0].n), { timeout: 60_000 }).toBe(2);
+  await page.getByTestId("edit-photos").click();
+  await expect(readyTiles(page)).toHaveCount(2);
 });

@@ -23,6 +23,7 @@ export type PhotoStripProps = {
   saveDraft?: EnsureDraft;         // composer: saves the form's current prizes, so a tag can name one the server has not seen
   onCount?: (live: number) => void;
   onChange?: () => void;           // any committed action (Task 7c refreshes on close)
+  flushToken?: number;             // the sheet bumps it on close: a removal waiting on Undo commits now
 };
 
 const ALT_NOTICE = "Describe the photo in 1 to 120 characters.";
@@ -77,6 +78,9 @@ export function PhotoStrip(p: PhotoStripProps) {
     queue.current = q;
     return () => { q.flush(); queue.current = null; };
   }, [commitRemoval]);
+
+  const flushToken = p.flushToken;
+  useEffect(() => { if (flushToken) queue.current?.flush(); }, [flushToken]);
 
   // One upload: the draft (first photo of a new break), the shrink, the upload grant, the bytes, the finalise.
   const run = useCallback(async (key: string) => {
