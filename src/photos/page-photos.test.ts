@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import type { BreakPhotos } from "@/domain/photos/queries";
 import { placeRows } from "@/components/photos/prizes-model";
 import { createMemoryStorage } from "../../tests/helpers/memory-storage";
+import type { Caller } from "@/domain/types";
 import { pagePhotos, type PhotoAudience } from "./page-photos";
+import { holderSet, photoAudience, photoViewer } from "./viewer";
 
 const id = randomUUID();
 const prefix = (c: string) => `${id}/${c.repeat(22)}`;
@@ -78,5 +80,40 @@ describe("pagePhotos (the page's audience gate)", () => {
   it("the viewer's caption is the tagged place word and item name; untagged photos have none", async () => {
     const p = await pagePhotos(storage, withRemoved, rows, { audience: "other", tz: "UTC" });
     expect(p.viewer.map((v) => v.caption)).toEqual(["Top spot: Taylor Chronos 24g", null]);
+  });
+});
+
+describe("the result page's audience (Task 9; spec §8.4)", () => {
+  const HOST: Caller = { id: "00000000-0000-4000-8000-0000000000a1", role: "host", onboarded: true, banned: false };
+  const HOLDER: Caller = { id: "00000000-0000-4000-8000-0000000000a2", role: "member", onboarded: true, banned: false };
+  const STRANGER: Caller = { id: "00000000-0000-4000-8000-0000000000a3", role: "member", onboarded: true, banned: false };
+  // The distinct owners of the drawn break's entries (a holder with two lines appears twice).
+  const ctx = { hostId: HOST.id, holderIds: holderSet([HOLDER.id, HOLDER.id, null]) };
+  const tz = "America/New_York";
+
+  it("holderSet keeps distinct owners and drops unowned lines", () => {
+    expect([...ctx.holderIds]).toEqual([HOLDER.id]);
+  });
+  it("maps viewers to audiences: host, holder, everyone else", () => {
+    expect(photoAudience(photoViewer(HOST, ctx))).toBe("host");
+    expect(photoAudience(photoViewer(HOLDER, ctx))).toBe("holder");
+    expect(photoAudience(photoViewer(STRANGER, ctx))).toBe("other");
+    expect(photoAudience(photoViewer(null, ctx))).toBe("other");
+  });
+  it("a holder of the drawn break sees the removed photo, dated, through a signed URL", async () => {
+    const p = await pagePhotos(storage, withRemoved, rows, { audience: photoAudience(photoViewer(HOLDER, ctx)), tz });
+    expect(p.removed).toHaveLength(1);
+    expect(p.removed[0].removedFallback).toBe("Oct 21");
+    expect(p.removed[0].photo!.src).toContain("seconds=600");
+    expect(p.count).toBe(2);
+  });
+  it("a stranger, signed in or not, sees the live photos and nothing removed", async () => {
+    for (const caller of [STRANGER, null]) {
+      const p = await pagePhotos(storage, withRemoved, rows, { audience: photoAudience(photoViewer(caller, ctx)), tz });
+      expect(p.removed).toEqual([]);
+      expect(p.count).toBe(2);
+      expect(p.viewer).toHaveLength(2);
+      expect(JSON.stringify(p)).not.toMatch(/seconds=|photo-archive|Removed/);
+    }
   });
 });
