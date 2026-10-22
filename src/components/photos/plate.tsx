@@ -16,6 +16,8 @@ export function Plate({ photo, size, surface, decorative }: { photo: PhotoSrc; s
       <img
         src={photo.src} srcSet={photo.srcSet} sizes={`${size}px`} width={size} height={size}
         alt={decorative ? "" : photo.alt} loading="lazy" decoding="async"
+        // Explicit CSS size: Tailwind's preflight (`height: auto; max-width: 100%`) would beat the attributes and stop the crop.
+        style={{ width: `${size}px`, height: `${size}px`, maxWidth: "none" }}
         className="block bg-board-wall-2 object-cover"
       />
     </span>

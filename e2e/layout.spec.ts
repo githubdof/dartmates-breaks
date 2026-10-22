@@ -388,6 +388,15 @@ test.describe("the break page with a photo (photos spec §8.2, Mosaic §8)", () 
     await expect(page.getByTestId("removed-plate")).toHaveCount(0);
   });
 
+  test("an 800 × 600 photo is cropped to a square 64 × 64 image, on the title plate and in Prizes", async ({ browser }) => {
+    const page = await anonymous(browser, 390, 664); await gotoReady(page, photoLong);
+    for (const img of [page.getByTestId("photo-plate").locator("img"), page.getByTestId("prizes-block").locator("img").first()]) {
+      await expect(img).toBeVisible();
+      const box = (await img.boundingBox())!;
+      expect(box.width).toBeCloseTo(64, 0); expect(box.height).toBeCloseTo(64, 0);
+    }
+  });
+
   test("a break with no photo has no plate and no empty Prizes plates", async ({ browser }) => {
     const page = await anonymous(browser, 390, 664); await page.goto(plainLong);
     await expect(page.getByTestId("photo-plate")).toHaveCount(0);

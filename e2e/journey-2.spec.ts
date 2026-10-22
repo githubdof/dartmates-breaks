@@ -58,6 +58,7 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await expect(places.nth(1)).toContainText("Or");
   await expect(places.nth(0)).toContainText(/Chronos 2[24]g/);
   await expect(places.nth(1)).toContainText(/Chronos 2[24]g/);
+  expect(await places.nth(0).textContent()).not.toBe(await places.nth(1).textContent());
   await expect(places.nth(2)).toContainText("2nd place");
   await expect(places.nth(2)).toContainText("Flight pack");
   await expect(host.getByText("Straight fill. Lines go out in order.")).toBeVisible();

@@ -199,7 +199,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
             />
           )}
         </div>
-        {pp && (
+        {pp && (pp.places.length > 0 || pp.untagged.length > 0 || pp.removed.length > 0 || pp.notice) && (
           <PrizesBlock places={pp.places} untagged={pp.untagged} removed={pp.removed} notice={pp.notice} noticeFirst={audience === "holder"} count={pp.count} />
         )}
         <DetailsFold
