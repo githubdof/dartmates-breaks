@@ -1,7 +1,9 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
+import { breakPhotos } from "@/db/schema";
 import { getCaller } from "@/auth/session";
 import { action, type ActionFailure, type ActionResult } from "@/lib/action";
 import { parseInput } from "@/lib/parse-input";
@@ -13,7 +15,7 @@ import { dropUploadTicket, peekPhoto } from "@/domain/photos/peek";
 import { MAX_PHOTOS, type PhotoLocation } from "@/domain/photos/types";
 import { copyVariants, removeVariants } from "@/photos/variants";
 import { BUCKETS } from "@/storage/buckets";
-import { photoStorage } from "@/storage/photo-storage";
+import { photoStorage, type PhotoStorage } from "@/storage/photo-storage";
 
 // The photo actions (photos spec §5.2, §6). No Storage call runs inside a transaction (plan ruling 28); every file
 // move writes the new copy, commits, then deletes the old one.
@@ -35,6 +37,23 @@ const log = (what: string) => (e: unknown) => console.error(`photos: ${what}`, e
 function revalidate(id: string): void {
   revalidatePath(`/b/${id}`);
   revalidatePath("/host");
+}
+
+/**
+ * Removes this request's archive copy of `prefix` unless a row names it in `photo-archive` (rulings 24, 25). A second
+ * removal of the same photo (a double click) shares the prefix, so its copy is the same files the first, committed
+ * removal's row now names; those stay. The re-read failing removes nothing (Task 11's cleanup is the backstop).
+ */
+async function dropUnusedArchiveCopy(storage: PhotoStorage, prefix: string): Promise<void> {
+  let named: boolean;
+  try {
+    named = (await db.transaction((tx) => tx.select({ id: breakPhotos.id }).from(breakPhotos)
+      .where(and(eq(breakPhotos.path, prefix), eq(breakPhotos.bucket, BUCKETS.archive))).limit(1))).length > 0;
+  } catch (e) {
+    log("re-reading the archive rows")(e);
+    return;
+  }
+  if (!named) await removeVariants(storage, BUCKETS.archive, prefix).catch(log("removing the archive copy"));
 }
 
 /** Raised inside the removal when the photo must go to the archive and its copy is not there yet (plan ruling 24). */
@@ -89,12 +108,12 @@ export async function removePhotoAction(id: string): Promise<ActionResult<void>>
       return true;
     } catch (e) {
       log("copying to the archive")(e);
-      await removeVariants(storage, BUCKETS.archive, p.prefix).catch(log("removing a partial archive copy"));
+      await dropUnusedArchiveCopy(storage, p.prefix);
       return false;
     }
   };
   const dropArchive = async () => {
-    if (archived) await removeVariants(storage, BUCKETS.archive, archived.prefix).catch(log("removing the archive copy"));
+    if (archived) await dropUnusedArchiveCopy(storage, archived.prefix);
   };
 
   // The host (or an admin) removing a live photo of a claimed break: archive first. Anyone else gets the refusal.

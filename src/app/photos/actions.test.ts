@@ -231,6 +231,40 @@ describe("removePhotoAction (photos spec §6, panel ruling 24)", () => {
     });
   });
 
+  it("a double removal refused after its archive copy keeps the archive files the first removal's row names", async () => {
+    await withTx(async (tx) => {
+      const { b, p } = await scene(tx, "claimed");
+      const stale = await realPeekPhoto(tx, p.photoId); // B read the photo before A committed
+      // A commits, but its delete from photos has not happened yet, so B's archive copy succeeds.
+      h.failOn = (op) => op === "remove:photos";
+      quiet();
+      expect((await removePhotoAction(p.photoId)).ok).toBe(true);
+      h.failOn = () => false;
+      vi.mocked(peekPhoto).mockImplementationOnce(async () => stale);
+      const r = await removePhotoAction(p.photoId);
+      expect(r).toMatchObject({ ok: false, code: "NOT_FOUND" }); // B's removal is refused: the photo is no longer live
+      expect(await rows(tx, b.id)).toMatchObject([{ id: p.photoId, bucket: "photo-archive", path: p.prefix }]);
+      expect(filesIn("photo-archive")).toHaveLength(3);
+      expect(storageInsideTx()).toEqual([]);
+    });
+  });
+
+  it("a double removal whose archive copy fails keeps the archive files the first removal's row names", async () => {
+    await withTx(async (tx) => {
+      const { b, p } = await scene(tx, "claimed");
+      const stale = await realPeekPhoto(tx, p.photoId);
+      expect((await removePhotoAction(p.photoId)).ok).toBe(true); // A: archived, committed, photos files gone
+      vi.mocked(peekPhoto).mockImplementationOnce(async () => stale);
+      quiet();
+      const r = await removePhotoAction(p.photoId); // B copies from photos, which no longer holds the files
+      expect(r).toEqual({ ok: false, code: "INTERNAL", message: "Couldn't remove the photo. Try again." });
+      expect(await rows(tx, b.id)).toMatchObject([{ id: p.photoId, bucket: "photo-archive", path: p.prefix }]);
+      expect(filesIn("photo-archive")).toHaveLength(3);
+      expect(filesIn("photos")).toEqual([]);
+      expect(storageInsideTx()).toEqual([]);
+    });
+  });
+
   it("another host's removePhotoAction is refused and no storage call is made", async () => {
     await withTx(async (tx) => {
       const { p } = await scene(tx, "claimed");
