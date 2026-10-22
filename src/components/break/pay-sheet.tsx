@@ -16,6 +16,8 @@ import { giveBackPrompt, lateReleaseText, payHeadline, releaseText, retryRandomL
 import type { Owe } from "./use-pay-sheet";
 import type { Flight } from "@/domain/flights";
 import { FlightGlyph } from "@/components/flight-glyph";
+import type { PhotoSrc } from "@/photos/urls";
+import { PayBreakHeader } from "./pay-break-header";
 
 type Props = {
   open: boolean;
@@ -27,6 +29,9 @@ type Props = {
   handles: { venmo?: string; paypal?: string };
   instructions: string;
   hostName: string;
+  /** The break's title and public lead photo, shown at the top of the sheet when there is a photo. */
+  breakTitle: string;
+  photo?: PhotoSrc | null;
   commitment: string | null;
   /** How many random lines may replace taken ones (0 hides the offer). */
   retryMax: number;
@@ -125,6 +130,7 @@ export function PaySheet(p: Props) {
   return (
     <Sheet open={p.open} onClose={p.onClose} title={p.owe ? "Pay for your lines" : "Your lines"} testId="pay-sheet">
       <div className="space-y-4 pb-2">
+        <PayBreakHeader title={p.breakTitle} photo={p.photo ?? null} />
         {p.outcome && (p.outcome.got.length > 0 || p.outcome.taken.length > 0) && (
           <div className="space-y-1">
             <p className="font-semibold" data-testid="pay-outcome">{outcomeText(p.outcome.got, p.outcome.taken)}</p>

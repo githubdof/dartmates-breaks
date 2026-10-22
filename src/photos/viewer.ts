@@ -3,6 +3,13 @@ import type { PhotoAudience } from "./page-photos";
 
 export type PhotoViewer = { id: string; isHost: boolean; isHolder: boolean; isAdmin: boolean };
 
+/** The distinct holders in a list of line owners (unowned lines drop out): the `holderIds` that `photoViewer` takes. */
+export function holderSet(ownerIds: Iterable<string | null | undefined>): Set<string> {
+  const out = new Set<string>();
+  for (const id of ownerIds) if (id) out.add(id);
+  return out;
+}
+
 /** Who is looking, for `breakPhotos`: null when anonymous. Shared by the break page and the result page. */
 export function photoViewer(caller: Caller | null, ctx: { hostId: string; holderIds: ReadonlySet<string> }): PhotoViewer | null {
   if (!caller) return null;

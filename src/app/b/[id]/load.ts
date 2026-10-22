@@ -5,7 +5,7 @@ import { getCaller } from "@/auth/session";
 import { readBreakView, type BreakView } from "@/domain/breaks/page-view";
 import { breakPhotos, type BreakPhotos } from "@/domain/photos/queries";
 import type { Caller } from "@/domain/types";
-import { photoViewer } from "@/photos/viewer";
+import { holderSet, photoViewer } from "@/photos/viewer";
 
 /**
  * One transaction per request for the break page; React cache shares it between generateMetadata and the page.
@@ -17,7 +17,7 @@ export const loadBreak = cache(async (breakId: string): Promise<{ view: BreakVie
   return db.transaction(async (tx) => {
     const view = await readBreakView(tx, breakId, caller ? { id: caller.id, role: caller.role } : null, now);
     const viewer = view
-      ? photoViewer(caller, { hostId: view.page.break.hostId, holderIds: new Set(view.page.lines.flatMap((l) => (l.ownerId ? [l.ownerId] : []))) })
+      ? photoViewer(caller, { hostId: view.page.break.hostId, holderIds: holderSet(view.page.lines.map((l) => l.ownerId)) })
       : null;
     const photos = view ? await breakPhotos(tx, breakId, viewer) : null;
     return { view, caller, now, photos };

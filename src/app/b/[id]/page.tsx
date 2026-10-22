@@ -34,7 +34,7 @@ import { placeRows } from "@/components/photos/prizes-model";
 import { countText, plateButtonName } from "@/components/photos/viewer-model";
 import { ViewerButton, ViewerRoot } from "@/components/photos/viewer-root";
 import { pagePhotos } from "@/photos/page-photos";
-import { photoAudience, photoViewer } from "@/photos/viewer";
+import { holderSet, photoAudience, photoViewer } from "@/photos/viewer";
 import { loadBreak } from "./load";
 
 /** The break page is on the wall from this task on: its browser chrome follows (Mosaic §8, recorded ruling 12). */
@@ -73,7 +73,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
   if (caller && !caller.onboarded && initialPick.length > 0) redirect(onboardingHref(id, initialPick));
   const zone = await viewerZone();
   // Who may see which photos is decided once: `load.ts` read them for this viewer, `pagePhotos` filters for the audience.
-  const audience = photoAudience(photoViewer(caller, { hostId: b.hostId, holderIds: new Set(page.lines.flatMap((l) => (l.ownerId ? [l.ownerId] : []))) }));
+  const audience = photoAudience(photoViewer(caller, { hostId: b.hostId, holderIds: holderSet(page.lines.map((l) => l.ownerId)) }));
   const pp = photos ? await pagePhotos(photoStorage(), photos, placeRows(page.prizes, page.items), { audience, tz: zone.tz }) : null;
   const grid = shapeGrid(page, caller ? { id: caller.id, role: caller.role, globalUnpaid } : null, now);
   const boardView: BoardView = grid.showHolders ? "member" : "kit";
@@ -169,6 +169,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
         initialPick={initialPick}
         payWithin={status === "open" ? payWithinText(b.paymentWindowHours) : null}
         legendFlight={legendFlight}
+        lead={pp?.lead ?? null}
         underBoard={
           <>
             {/* Plain text in this plan; it becomes the Show mine toggle in the game-structure plan (recorded ruling 1). */}
