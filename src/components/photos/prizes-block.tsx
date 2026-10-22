@@ -1,14 +1,18 @@
 import { LocalTime } from "@/components/local-time";
 import { Plate } from "./plate";
+import { ViewerButton } from "./viewer-root";
 import type { PlateData, PrizePlace, PrizesBlockNotice, RemovedPlate } from "./prizes-model";
 
 export type PrizesBlockProps = {
   places: PrizePlace[]; untagged: PlateData[]; removed: RemovedPlate[]; notice: PrizesBlockNotice | null; noticeFirst: boolean; count: number;
 };
 
-function LivePlate({ plate }: { plate: PlateData }) {
-  // Task 8b wraps these in the viewer's button; until then they are plain.
-  return <span data-viewer-index={plate.index}><Plate photo={plate.photo} size={64} surface="paper" /></span>;
+function LivePlate({ plate, count }: { plate: PlateData; count: number }) {
+  return (
+    <ViewerButton index={plate.index} name={`Photo ${plate.index + 1} of ${count}`} className="block shrink-0">
+      <Plate photo={plate.photo} size={64} surface="paper" />
+    </ViewerButton>
+  );
 }
 
 function Notice({ notice }: { notice: PrizesBlockNotice }) {
@@ -36,7 +40,7 @@ function RemovedMark({ r }: { r: RemovedPlate }) {
  * The prizes in rank order with the photos tagged to each (photos spec §8.2). A paper card like Details, always open.
  * It filters nothing: `pagePhotos` decides who may see what, and the result page renders this same block.
  */
-export function PrizesBlock({ places, untagged, removed, notice, noticeFirst }: PrizesBlockProps) {
+export function PrizesBlock({ places, untagged, removed, notice, noticeFirst, count }: PrizesBlockProps) {
   return (
     <section className="mt-6 rounded-card border border-wire bg-card px-4 py-3" data-testid="prizes-block" aria-labelledby="prizes-heading">
       <h2 id="prizes-heading" className="font-semibold">Prizes</h2>
@@ -50,14 +54,14 @@ export function PrizesBlock({ places, untagged, removed, notice, noticeFirst }: 
               {p.condition && <span className="text-ink-2">{`, ${p.condition}`}</span>}
             </p>
             {p.variants && <p className="text-small text-ink-2">{p.variants}</p>}
-            {p.plates.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{p.plates.map((pl) => <LivePlate key={pl.id} plate={pl} />)}</div>}
+            {p.plates.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{p.plates.map((pl) => <LivePlate key={pl.id} plate={pl} count={count} />)}</div>}
           </li>
         ))}
       </ul>
       {untagged.length > 0 && (
         <div className="mt-3">
           <h3 className="text-small font-semibold">Also in the photos</h3>
-          <div className="mt-2 flex flex-wrap gap-2">{untagged.map((pl) => <LivePlate key={pl.id} plate={pl} />)}</div>
+          <div className="mt-2 flex flex-wrap gap-2">{untagged.map((pl) => <LivePlate key={pl.id} plate={pl} count={count} />)}</div>
         </div>
       )}
       {!(notice && noticeFirst) && notice && <div className="mt-3"><Notice notice={notice} /></div>}

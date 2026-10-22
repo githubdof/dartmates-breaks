@@ -31,7 +31,8 @@ import { Plate } from "@/components/photos/plate";
 import { PrizesBlock } from "@/components/photos/prizes-block";
 import { NoticeSeen } from "@/components/photos/notice-seen";
 import { placeRows } from "@/components/photos/prizes-model";
-import { countText } from "@/components/photos/viewer-model";
+import { countText, plateButtonName } from "@/components/photos/viewer-model";
+import { ViewerButton, ViewerRoot } from "@/components/photos/viewer-root";
 import { pagePhotos } from "@/photos/page-photos";
 import { photoAudience, photoViewer } from "@/photos/viewer";
 import { loadBreak } from "./load";
@@ -107,17 +108,18 @@ export default async function BreakPage({ params, searchParams }: Props) {
 
   return (
     <main data-wall className="mx-auto max-w-[600px] px-4 pb-6 sm:px-6">
+      <ViewerRoot photos={pp?.viewer ?? []}>
       {/* Mosaic §8: the title in Big Shoulders, two lines at most; one 24 px media row; no thumbnail while there are no photos. */}
       <section className={pp?.lead ? undefined : "mt-3"}>
         {pp?.lead ? (
           <div className="flex items-start gap-3">
             <h1 className="mt-3 line-clamp-2 min-w-0 flex-1 font-shoulders text-wall-title font-extrabold text-[var(--board-text)]">{b.title}</h1>
-            <span className="relative mt-1 shrink-0" data-testid="photo-plate">
+            <ViewerButton index={0} name={plateButtonName(pp.count, pp.updated)} testId="photo-plate" className="relative mt-1 block shrink-0">
               <Plate photo={pp.lead} size={64} surface="board" decorative />
               <span className="absolute inset-x-[4px] bottom-[4px] flex h-4 items-center justify-center bg-board-wall-2 text-[11px] leading-none text-[var(--board-text)]">
                 {pp.updated ? "Updated" : countText(pp.count)}
               </span>
-            </span>
+            </ViewerButton>
           </div>
         ) : (
           <h1 className="line-clamp-2 font-shoulders text-wall-title font-extrabold text-[var(--board-text)]">{b.title}</h1>
@@ -212,6 +214,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
           hostName={hostName}
         />
       </BreakInteractive>
+      </ViewerRoot>
     </main>
   );
 }

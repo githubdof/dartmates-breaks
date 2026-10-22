@@ -60,6 +60,12 @@ describe("PrizesBlock", () => {
     expect(other.indexOf("Lead photo replaced")).toBeGreaterThan(other.indexOf("2nd place"));
     expect(block({ notice: null })).not.toContain("photo-notice-line");
   });
+  it("live plates are buttons named 'Photo K of N'; removed plates are not", () => {
+    const h = block({ removed: [{ id: "r1", photo: photoSrc(), alt: "Old lead", removedIso: "2026-10-21T15:05:00Z", removedFallback: "Oct 21" }] });
+    expect(h).toContain('aria-label="Photo 1 of 4"'); expect(h).toContain('aria-label="Photo 4 of 4"');
+    expect(h.match(/aria-label="Photo \d of 4"/g)).toHaveLength(4);
+    expect(h.split('data-testid="removed-plate"')[1]).not.toContain("<button");
+  });
   it("the block is headed Prizes and is not a <details> fold", () => {
     expect(block()).toContain(">Prizes<"); expect(block()).not.toContain("<details");
   });
