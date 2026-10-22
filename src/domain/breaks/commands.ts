@@ -243,6 +243,10 @@ export async function openBreak(tx: Tx, caller: Caller, breakId: string): Promis
   const { ciphertext, keyId } = encryptSecret(secret, breakId);
   await tx.insert(breakSecrets).values({ breakId, ciphertext, keyId });
   await tx.update(breaks).set({ status: "open", openedAt: new Date(), seedCommitment: commitment(secret) }).where(sql`${breaks.id} = ${breakId}`);
+  // The live photos go public (photos spec §5.4): their variants were copied to `photos` before this transaction
+  // (Task 6). The photo guard allows photos-draft -> photos while the break is draft or open, so after the flip is fine.
+  await tx.update(breakPhotos).set({ bucket: "photos" })
+    .where(sql`${breakPhotos.breakId} = ${breakId} and ${breakPhotos.removedAt} is null and ${breakPhotos.hiddenAt} is null and ${breakPhotos.bucket} = 'photos-draft'`);
   await tx.execute(sql`insert into lines (break_id, number) select ${breakId}::uuid, generate_series(1, ${b.lineCount})`);
   await appendEvent(tx, { breakId, actorId: caller.id, type: "break.opened", payload: { lineCount: b.lineCount, linePriceCents: b.linePriceCents } });
 }

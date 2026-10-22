@@ -163,6 +163,7 @@ export async function recordProcessedPhoto(tx: Tx, caller: Caller, p: {
   if (!found || found.hostId !== caller.id) throw new UploadNotFound();
   const b = await assertHostOf(tx, caller, found.breakId);
   const [upload] = await tx.select().from(photoUploads).where(eq(photoUploads.id, p.ticketId)).for("update");
+  if (!upload) throw new UploadNotFound(); // deleted (a draft deleted, a cleanup) while we waited for the break
   if (upload.consumedAt !== null) throw new UploadUsed();
   if (p.now.getTime() >= upload.expiresAt.getTime()) throw new UploadExpired();
   assertEditable(b);

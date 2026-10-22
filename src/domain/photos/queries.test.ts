@@ -44,6 +44,19 @@ describe("breakPhotos", () => {
       expect((await breakPhotos(tx, b.id, viewer(randomUUID(), { isAdmin: true }))).live).toHaveLength(1);
     });
   });
+  it("a row left in photos-draft on an open break reaches only the host and admins", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const b = await makeBreak(tx, { hostId: host.id });
+      const stuck = await makePhoto(tx, { breakId: b.id, createdBy: host.id, position: 0, bucket: "photos-draft" });
+      await setStatus(tx, b.id, "open"); // opened without the move: the step that must never leak
+      expect((await breakPhotos(tx, b.id, null)).live).toEqual([]);
+      expect((await breakPhotos(tx, b.id, viewer(randomUUID()))).live).toEqual([]);
+      expect((await breakPhotos(tx, b.id, viewer(randomUUID(), { isHolder: true }))).live).toEqual([]);
+      expect((await breakPhotos(tx, b.id, viewer(host.id, { isHost: true }))).live.map((p) => [p.id, p.location])).toEqual([[stuck.id, "photos-draft"]]);
+      expect((await breakPhotos(tx, b.id, viewer(randomUUID(), { isAdmin: true }))).live.map((p) => p.id)).toEqual([stuck.id]);
+    });
+  });
   it("a hidden photo, live or removed, reaches nobody", async () => {
     await withTx(async (tx) => {
       const { host, b, photos } = await claimedBreak(tx, 2);

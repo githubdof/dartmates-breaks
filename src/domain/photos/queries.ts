@@ -16,7 +16,7 @@ const view = (r: Row): PhotoView => ({
 
 /**
  * A break's photos as `viewer` may see them (photos spec §5.5, §6, decision 14). Live photos, in order: everyone, but
- * a draft's only for its host and admins. Removed photos: the host, holders and admins, never strangers. Hidden
+ * a draft's, and any row still in photos-draft, only for its host and admins. Removed photos: the host, holders and admins, never strangers. Hidden
  * photos: nobody. A row whose files expired (photo-archive, no path, neither removed nor hidden; ruling 26) is
  * neither live nor removed. The notice is everyone's; `unseen` is a holder's who has not seen the latest change.
  */
@@ -26,8 +26,11 @@ export async function breakPhotos(tx: Tx, breakId: string, viewer: { id: string;
   const privileged = !!viewer && (viewer.isHost || viewer.isAdmin);
   const seesLive = b.status !== "draft" || privileged;
   const seesRemoved = privileged || !!viewer?.isHolder;
+  // Everyone but the host and admins gets the public bucket only, as leadPhotos does: a row still in photos-draft on
+  // an open break (a step that slipped) never reaches them.
+  const liveBucket = privileged ? sql`${photoRows.bucket} in ('photos-draft', 'photos')` : sql`${photoRows.bucket} = 'photos'`;
   const rows = await tx.select().from(photoRows).where(sql`${photoRows.breakId} = ${breakId} and ${photoRows.hiddenAt} is null
-      and ((${photoRows.removedAt} is null and ${photoRows.path} is not null and ${photoRows.bucket} <> 'photo-archive' and ${seesLive}::boolean)
+      and ((${photoRows.removedAt} is null and ${photoRows.path} is not null and ${liveBucket} and ${seesLive}::boolean)
         or (${photoRows.removedAt} is not null and ${seesRemoved}::boolean))`)
     .orderBy(sql`${photoRows.removedAt} nulls first`, photoRows.position);
   const notice = b.at && b.note ? { text: b.note, at: b.at } : null;

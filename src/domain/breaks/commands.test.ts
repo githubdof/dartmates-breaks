@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
-import { makeUser, lineRows, prize, photoRow } from "../../../tests/helpers/fixtures";
+import { makeUser, lineRows, prize, photoRow, makePhoto } from "../../../tests/helpers/fixtures";
+import { breakPhotos as breakPhotos_ } from "@/domain/photos/queries";
 import { createDraft, deleteDraft, openBreak, updateDraft, updateHostKit } from "./commands";
 import { draftForEdit, getBreakPage } from "./queries";
 import { breaks, breakItems, breakPhotos, breakSecrets, events, hostProfiles, photoUploads, prizes } from "@/db/schema";
@@ -129,6 +130,22 @@ describe("openBreak", () => {
       const { breakId } = await createDraft(tx, asHost(host), input);
       await tx.execute(sql`update users set listing_paused_at = now() where id = ${host.id}`);
       await expect(openBreak(tx, asHost(host), breakId)).rejects.toBeInstanceOf(NotAuthorized);
+    });
+  });
+  it("moves every live photo from photos-draft to photos, positions kept, and leaves a removed one alone", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), input);
+      const a = await makePhoto(tx, { breakId, createdBy: host.id, position: 0, bucket: "photos-draft" });
+      const b = await makePhoto(tx, { breakId, createdBy: host.id, position: 1, bucket: "photos-draft" });
+      const gone = await makePhoto(tx, { breakId, createdBy: host.id, position: 2, removedAt: new Date(), bucket: "photo-archive" });
+      const [goneBefore] = await tx.select().from(breakPhotos).where(sql`${breakPhotos.id} = ${gone.id}`);
+      await openBreak(tx, asHost(host), breakId);
+      const rows = await tx.select().from(breakPhotos).where(sql`${breakPhotos.breakId} = ${breakId} and ${breakPhotos.removedAt} is null`).orderBy(breakPhotos.position);
+      expect(rows.map((r) => [r.id, r.position, r.bucket])).toEqual([[a.id, 0, "photos"], [b.id, 1, "photos"]]);
+      const [goneAfter] = await tx.select().from(breakPhotos).where(sql`${breakPhotos.id} = ${gone.id}`);
+      expect(goneAfter).toEqual(goneBefore);
+      expect((await breakPhotos_(tx, breakId, null)).live.map((p) => [p.id, p.location])).toEqual([[a.id, "photos"], [b.id, "photos"]]);
     });
   });
 });

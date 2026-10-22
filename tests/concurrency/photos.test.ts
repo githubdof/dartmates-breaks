@@ -7,9 +7,9 @@ import { breakPhotos, breaks, breakSecrets, photoUploads } from "@/db/schema";
 import { encryptSecret } from "@/crypto/secrets";
 import { claimLines, markPaid } from "@/domain/lines/commands";
 import { requestDraw } from "@/domain/draws/commands";
-import { InvalidInput, NotOpen, notOpenMessage } from "@/domain/errors";
-import type { Caller } from "@/domain/types";
-import { issueUploadTicket, recordProcessedPhoto, removePhoto, reorderPhotos } from "@/domain/photos/commands";
+import { InvalidInput, NotFound, NotOpen, notOpenMessage, UploadNotFound } from "@/domain/errors";
+import { SYSTEM, type Caller } from "@/domain/types";
+import { hidePhoto, issueUploadTicket, recordProcessedPhoto, removePhoto, reorderPhotos } from "@/domain/photos/commands";
 
 const c = (id: string, role: Caller["role"] = "member"): Caller => ({ id, role, onboarded: true, banned: false });
 const ROUNDS = 10;
@@ -127,5 +127,46 @@ describe("photo races", () => {
       if (reorder.status === "rejected") expect(reorder.reason.message, `round ${round}`).toBe("The photos just changed. Try again.");
       expect(await livePositions(b.id), `round ${round}`).toEqual([0, 1, 2]);
     }
+  });
+});
+
+describe("rows gone by the time the break lock is ours", () => {
+  /** An open break with no claim and one photo, committed; and a holder of its row lock that deletes `what`. */
+  async function openWithPhoto() {
+    return db.transaction(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const b = await openBreakWithLines(tx, { hostId: host.id });
+      const photo = await makePhoto(tx, { breakId: b.id, createdBy: host.id, position: 0 });
+      const upload = await makeTicket(tx, { hostId: host.id, breakId: b.id, expiresAt: new Date(Date.now() + 300_000) });
+      return { host, b, photo, upload };
+    });
+  }
+  const lockThenDelete = (breakId: string, del: (tx: Tx) => Promise<unknown>) => gated(async (tx) => {
+    await tx.execute(sql`select id from breaks where id = ${breakId} for update`);
+    await del(tx);
+  });
+
+  it("a finalise whose upload row was deleted while it waited for the break is UploadNotFound", async () => {
+    const { host, b, upload } = await openWithPhoto();
+    const holder = lockThenDelete(b.id, (tx) => tx.delete(photoUploads).where(sql`${photoUploads.id} = ${upload.id}`));
+    await holder.ready;
+    const rec = db.transaction(record(host.id, b.id, upload.id)); // reads the upload unlocked, then waits on the break
+    await blockedOnLock();
+    holder.release();
+    await holder.done;
+    await expect(rec).rejects.toBeInstanceOf(UploadNotFound);
+    expect(await livePositions(b.id)).toEqual([0]);
+  });
+
+  it("a hide whose photo was deleted while it waited for the break is NotFound", async () => {
+    const { b, photo } = await openWithPhoto();
+    const holder = lockThenDelete(b.id, (tx) => tx.delete(breakPhotos).where(sql`${breakPhotos.id} = ${photo.id}`));
+    await holder.ready;
+    const hide = db.transaction((tx) => hidePhoto(tx, SYSTEM, { photoId: photo.id, reason: "Report 12", now: new Date() }));
+    await blockedOnLock();
+    holder.release();
+    await holder.done;
+    await expect(hide).rejects.toThrow(new NotFound("Photo not found"));
+    expect(await livePositions(b.id)).toEqual([]);
   });
 });
