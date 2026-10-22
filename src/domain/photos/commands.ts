@@ -261,6 +261,7 @@ export async function hidePhoto(tx: Tx, caller: Caller, p: { photoId: string; re
   if (!ref) throw new NotFound(PHOTO_NOT_FOUND);
   const b = await lockBreak(tx, ref.breakId);
   const [row] = await tx.select().from(breakPhotos).where(eq(breakPhotos.id, p.photoId)).for("update");
+  if (!row) throw new NotFound(PHOTO_NOT_FOUND); // removed outright before the break lock was ours
   const result = { prefix: row.path, from: row.bucket };
   if (row.hiddenAt !== null) return result;
   if (FROZEN.includes(b.status)) await allowPhotoModeration(tx);

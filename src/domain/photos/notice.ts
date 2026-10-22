@@ -1,6 +1,9 @@
 import { ordinal } from "@/lib/list";
 import type { PhotoChange } from "./types";
 
+/** An item name in a notice is cut to this many characters, so the longest sentence stays within its 200. */
+const NAME_MAX = 60;
+
 /**
  * How a notice names a prize slot (plan ruling 3): "Top spot", "2nd place", "3rd place"; a rank with two or more items
  * (an "or" choice) names each by its item, since they share the rank. An unknown slot reads "A prize".
@@ -11,7 +14,10 @@ export function placeWords(prizes: readonly { slotKey: string; rank: number; ite
   const words = new Map<string, string>();
   for (const p of prizes) {
     const place = p.rank === 1 ? "Top spot" : `${ordinal(p.rank)} place`;
-    words.set(p.slotKey.toLowerCase(), (perRank.get(p.rank) ?? 0) > 1 && p.itemName.trim() !== "" ? p.itemName.trim() : place);
+    const name = [...p.itemName.trim()];
+    // Item names have no length limit; the stored sentence does (200), and two names can share one sentence.
+    const short = name.length > NAME_MAX ? `${name.slice(0, NAME_MAX - 1).join("").trimEnd()}…` : name.join("");
+    words.set(p.slotKey.toLowerCase(), (perRank.get(p.rank) ?? 0) > 1 && short !== "" ? short : place);
   }
   return (slot) => (slot === null ? undefined : words.get(slot.toLowerCase())) ?? "A prize";
 }

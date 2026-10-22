@@ -21,6 +21,19 @@ describe("placeWords", () => {
     expect(choice(PHANTOM)).toBe("Phantom 24g");
     expect(choice(SECOND)).toBe("2nd place");
   });
+  it("names a 3rd place by its ordinal, an unknown slot 'A prize', and matches slots in any case", () => {
+    const third = placeWords([{ slotKey: TOP, rank: 3, itemName: "Flights" }]);
+    expect(third(TOP)).toBe("3rd place");
+    expect(third(TOP.toUpperCase())).toBe("3rd place");
+    expect(third(SECOND)).toBe("A prize");
+  });
+  it("cuts a long item name so two of them fit the stored sentence's 200 characters", () => {
+    const long = "x".repeat(150);
+    const words = placeWords([{ slotKey: CHRONOS, rank: 1, itemName: long }, { slotKey: PHANTOM, rank: 1, itemName: `y${long}` }]);
+    expect(words(CHRONOS)).toBe(`${"x".repeat(59)}…`);
+    const sentence = noticeFor([{ kind: "retagged", from: CHRONOS, to: PHANTOM }], words)!;
+    expect([...sentence].length).toBeLessThanOrEqual(200);
+  });
 });
 
 describe("noticeFor", () => {
