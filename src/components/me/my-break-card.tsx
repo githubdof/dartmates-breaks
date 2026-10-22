@@ -7,6 +7,7 @@ import { Button } from "@/components/button";
 import { Cell } from "@/components/grid/cell";
 import { StatusPill } from "@/components/status-pill";
 import { LocalTime } from "@/components/local-time";
+import { Plate } from "@/components/photos/plate";
 import { PaySheet } from "@/components/break/pay-sheet";
 import { usePaySheet } from "@/components/break/use-pay-sheet";
 import { giveBackPrompt, lateReleaseText, releaseText } from "@/components/break/pay-copy";
@@ -104,10 +105,18 @@ export function MyBreakCard(p: MyBreakCardProps) {
 
   return (
     <li data-testid="my-break" className="space-y-3 rounded-card border border-wire bg-card p-4">
-      <div className="flex items-start justify-between gap-3">
-        <Link ref={titleRef} href={`/b/${p.breakId}`} className="min-w-0 font-semibold underline-offset-4 hover:underline">{p.title}</Link>
-        <StatusPill status={p.status} />
+      <div className="flex items-start gap-3">
+        {p.photo && <Plate photo={p.photo} size={40} surface="paper" decorative />}
+        <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+          <Link ref={titleRef} href={`/b/${p.breakId}`} className="min-w-0 font-semibold underline-offset-4 hover:underline">{p.title}</Link>
+          <StatusPill status={p.status} />
+        </div>
       </div>
+      {p.photoNotice && (
+        <p data-testid="my-photo-notice" role="status" className="text-small">
+          {p.photoNotice.text}, <LocalTime iso={p.photoNotice.iso} fallback={p.photoNotice.fallback} kind="datetime" />.
+        </p>
+      )}
       {/* The board cell, not the paper MiniCells: your lines in your flight with the yours ring (Mosaic §8, recorded ruling 24). */}
       <ul aria-label="Your lines" style={STEEL_WIRE} className="flex flex-wrap gap-1">
         {p.cells.map((c) => (
@@ -155,6 +164,8 @@ export function MyBreakCard(p: MyBreakCardProps) {
           handles={p.handles}
           instructions={p.instructions}
           hostName={p.hostName}
+          breakTitle={p.title}
+          photo={p.photo}
           commitment={p.commitment}
           retryMax={0}
           onRetry={() => {}}

@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import type { MyBreak } from "@/domain/lines/queries";
 import type { Flight } from "@/domain/flights";
+import type { PhotoSrc } from "@/photos/urls";
+import { formatDateTime } from "@/lib/time";
 import { toCardProps } from "./card-props";
 
 const now = new Date("2026-10-14T16:00:00Z");
@@ -14,6 +16,7 @@ const g: MyBreak = {
 };
 const zone = { tz: "America/New_York", labelled: false };
 const flight: Flight = { colour: "yellow", shape: "kite" };
+const photo: PhotoSrc = { src: "https://x.test/p-160.webp", srcSet: "https://x.test/p-160.webp 160w", width: 1600, height: 1200, alt: "Chronos" };
 
 describe("toCardProps", () => {
   it("turns a group into what the card shows: your lines in your flight, the deadline in your zone", () => {
@@ -27,8 +30,23 @@ describe("toCardProps", () => {
       ],
       stateLine: "Unpaid.",
       unpaidNote: null,
+      photo: null, photoNotice: null,
       owe: { numbers: [5], cents: 500, payByIso: "2026-10-15T01:40:00.000Z", payByFallback: "9:40 pm today", late: false, bonusLost: [] },
     });
+  });
+  it("carries the lead photo and no notice when none is pending", () => {
+    const p = toCardProps(g, now, zone, flight, { photo, notice: null });
+    expect(p.photo).toBe(photo);
+    expect(p.photoNotice).toBeNull();
+  });
+  it("turns a pending notice into a sentence with the viewer's local time", () => {
+    const at = new Date("2026-10-21T18:40:00Z");
+    const p = toCardProps(g, now, zone, flight, { photo, notice: { text: "Lead photo replaced", at } });
+    expect(p.photoNotice).toEqual({ text: "Lead photo replaced", iso: at.toISOString(), fallback: formatDateTime(at, zone.tz, zone.labelled) });
+  });
+  it("sets both photo fields to null for a break with no photos", () => {
+    const p = toCardProps(g, now, zone, flight);
+    expect([p.photo, p.photoNotice]).toEqual([null, null]);
   });
   it("draws only your own lines, in your flight, and carries nobody else's data (Mosaic §8)", () => {
     const { cells } = toCardProps(g, now, zone, flight);

@@ -2,6 +2,7 @@ import type { MyBreak } from "@/domain/lines/queries";
 import type { CellData } from "@/components/grid/cell-label";
 import type { Owe } from "@/components/break/use-pay-sheet";
 import { joinAnd, ordinal } from "@/lib/list";
+import type { PhotoSrc } from "@/photos/urls";
 
 /**
  * Where the viewer's lines in one break stand: cancelled first, then wins (an unanswered choice, shipped, else the best
@@ -40,4 +41,8 @@ export type MyBreakCardProps = {
   cells: CellData[]; stateLine: string; owe: Owe | null;
   /** Set on a break that no longer asks for money but still lists unsent lines; null otherwise. */
   unpaidNote: string | null;
+  /** The break's public lead photo, a decorative plate beside the title; null when it has none. */
+  photo: PhotoSrc | null;
+  /** The unseen photo-change sentence with its time; null once the holder has opened the break page. */
+  photoNotice: { text: string; iso: string; fallback: string } | null;
 };
