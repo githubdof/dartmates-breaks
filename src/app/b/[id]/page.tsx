@@ -23,6 +23,10 @@ import { KitSwatch } from "@/components/kit-swatch";
 import { HostTools } from "@/components/ledger/host-tools";
 import type { LedgerRowView } from "@/components/ledger/ledger-view";
 import { wallViewport } from "@/app/wall";
+import { EditPhotosSheet } from "@/components/photos/edit-photos-sheet";
+import { MAX_PHOTOS } from "@/domain/photos/types";
+import { prizeStripPrizes, toStripPhotos } from "@/photos/strip-data";
+import { photoStorage } from "@/storage/photo-storage";
 import { loadBreak } from "./load";
 
 /** The break page is on the wall from this task on: its browser chrome follows (Mosaic §8, recorded ruling 12). */
@@ -51,7 +55,7 @@ export default async function BreakPage({ params, searchParams }: Props) {
   const { id } = await params;
   if (!isUuid(id)) notFound();
   // One transaction for everything below, shared with generateMetadata (React cache).
-  const { view, caller, now } = await loadBreak(id);
+  const { view, caller, now, photos } = await loadBreak(id);
   // A missing break and someone else's draft look the same: 404.
   if (!view) notFound();
   const { page, trust, globalUnpaid, top, ledger, viewerFlight } = view;
@@ -152,6 +156,12 @@ export default async function BreakPage({ params, searchParams }: Props) {
         <div className="mt-4 flex flex-wrap gap-2">
           {share && <CopyButton value={share} label="Share" copiedLabel="Copied" testId="share" />}
           {grid.hostView && status === "draft" && <ButtonLink href={`/host/${id}/edit`} variant="secondary" data-testid="edit-draft">Edit draft</ButtonLink>}
+          {grid.hostView && photos && (status === "open" || status === "filled") && (
+            <EditPhotosSheet
+              breakId={id} initial={await toStripPhotos(photoStorage(), photos.live)} prizes={prizeStripPrizes(page)}
+              title={b.title} max={MAX_PHOTOS} claimed={b.firstClaimedAt !== null}
+            />
+          )}
           {grid.hostView && (
             <HostTools
               breakId={id}

@@ -260,3 +260,80 @@ test("a prize typed between two photos can be tagged on either (the draft is sav
   await page.getByRole("button", { name: "Tag" }).click();
   await expect(page.getByRole("radio", { name: "Dart case" })).toBeChecked();
 });
+
+test("Edit photos: the host adds a photo to an open break; a stranger has no button", async ({ page, browser }) => {
+  test.setTimeout(150_000);
+  await loginAs(page, `ps${run}@e2e.test`, "host");
+  const url = await composeBreakWithPhotos(page, { title: `Sheet ${run}`, photos: 1 });
+  await gotoReady(page, url);
+  await page.getByTestId("edit-photos").click();
+  await expect(page.getByRole("dialog", { name: "Edit photos" })).toBeVisible();
+  await expect(page.getByTestId("photo-add")).toBeEnabled();
+  await page.getByTestId("photo-input").setInputFiles([{ name: "b.jpg", mimeType: "image/jpeg", buffer: await jpeg(2) }]);
+  await expect(readyTiles(page)).toHaveCount(2);
+  await page.keyboard.press("Escape");
+  await page.getByTestId("edit-photos").click();
+  await expect(readyTiles(page)).toHaveCount(2);
+  const stranger = await (await browser.newContext()).newPage();
+  await gotoReady(stranger, url);
+  await expect(stranger.getByTestId("edit-photos")).toHaveCount(0);
+});
+
+test("Edit photos: tagging a photo to a prize persists with no draft save", async ({ page }) => {
+  test.setTimeout(150_000);
+  await loginAs(page, `pst${run}@e2e.test`, "host");
+  const url = await composeBreakWithPhotos(page, { title: `Tag ${run}`, photos: 1 });
+  const id = url.split("/").pop()!;
+  await gotoReady(page, url);
+  await page.getByTestId("edit-photos").click();
+  await page.getByTestId("photo-options-1").click();
+  await page.getByRole("button", { name: "Tag" }).click();
+  await page.getByLabel("Chronos 22g").check();
+  await expect.poll(() => tagged(id)).not.toBeNull();
+  await page.getByRole("button", { name: "Close" }).click();
+  await gotoReady(page, url);
+  await page.getByTestId("edit-photos").click();
+  await page.getByTestId("photo-options-1").click();
+  await page.getByRole("button", { name: "Tag" }).click();
+  await expect(page.getByLabel("Chronos 22g")).toBeChecked();
+});
+
+test("after a claim, Remove asks first; Keep keeps it, Remove photo removes at once with no Undo", async ({ page, browser }) => {
+  test.setTimeout(150_000);
+  await loginAs(page, `ps${run}@e2e.test`, "host");
+  const url = await composeBreakWithPhotos(page, { title: `Claimed ${run}`, photos: 2 });
+  const buyer = await (await browser.newContext()).newPage();
+  await loginAs(buyer, `pb${run}@e2e.test`);
+  await gotoReady(buyer, url);
+  await buyer.getByTestId("cell-1").click(); await buyer.getByTestId("claim-submit").click();
+  await expect(buyer.getByTestId("owed")).toBeVisible();
+  await gotoReady(page, url);
+  await page.getByTestId("edit-photos").click();
+  const [first, second] = await order(page);
+  await page.getByTestId("photo-options-1").click(); await page.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByText("Buyers in this break will still see this photo, marked Removed.")).toBeVisible();
+  await page.getByRole("button", { name: "Keep photo" }).click();
+  expect(await order(page)).toEqual([first, second]);
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await page.getByRole("button", { name: "Remove photo" }).click();
+  await expect.poll(() => order(page)).toEqual([second]);
+  await expect(page.getByTestId("photo-undo")).toHaveCount(0);
+  await expect.poll(() => withDb((sql) => sql`select count(*)::int as n from break_photos where id = ${first} and removed_at is not null`).then((r) => r[0].n)).toBe(1);
+});
+
+test("Edit photos: closing the sheet commits a removal still waiting on Undo", async ({ page }) => {
+  test.setTimeout(150_000);
+  await loginAs(page, `psc${run}@e2e.test`, "host");
+  const url = await composeBreakWithPhotos(page, { title: `Close ${run}`, photos: 2 });
+  await gotoReady(page, url);
+  await page.getByTestId("edit-photos").click();
+  const [first, second] = await order(page);
+  await page.getByTestId("photo-options-1").click(); await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(page.getByTestId("photo-undo")).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  // Before a claim the row goes outright: closing commits the removal at once, it is not left to lapse.
+  await expect.poll(() => withDb((sql) => sql`select count(*)::int as n from break_photos where id = ${first}`).then((r) => r[0].n)).toBe(0);
+  await expect(page.getByTestId("edit-photos")).toBeEnabled(); // the refresh the commit asked for has landed
+  await page.getByTestId("edit-photos").click();
+  await expect.poll(() => order(page)).toEqual([second]);
+});
