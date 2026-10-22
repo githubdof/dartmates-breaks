@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PhotoSrc } from "@/photos/urls";
 import {
-  canAddPhotos, defaultAlt, initStrip, limitNotice, nextToStart, NEED_FORM_NOTICE, readyIds, stripReducer, uploadsInFlight,
+  canAddPhotos, defaultAlt, initStrip, limitNotice, nextToStart, NO_ROOM_NOTICE, NEED_FORM_NOTICE, readyIds, stripReducer, uploadsInFlight,
   type AddGate, type StripAction, type StripPhoto, type StripState,
 } from "./strip-state";
 
@@ -170,6 +170,28 @@ describe("removing", () => {
     expect(keys(f)).toEqual(["a", "b", "c"]);
     expect(f.removal).toBeNull();
     expect(f.notice).toBe("Couldn't remove the photo. Try again.");
+  });
+  it("a pending removal holds its place: with 8 photos, remove one then pick one is refused until it commits", () => {
+    const full = initStrip(["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => photo(id)), 8);
+    const s = run(full, { type: "remove", key: "c" }, { type: "pick", files: files(1) });
+    expect(s.tiles).toHaveLength(7);
+    expect(s.notice).toBe(limitNotice(1));
+    const after = run(s, { type: "removalDone", photoId: "c" }, { type: "pick", files: files(1) });
+    expect(after.tiles).toHaveLength(8);
+    expect(after.notice).toBeNull();
+  });
+  it("with 6 photos and one removal waiting, 3 picks admit 2 (the held place counts)", () => {
+    const s = run(initStrip(["a", "b", "c", "d", "e", "f"].map((id) => photo(id)), 8), { type: "remove", key: "a" }, { type: "pick", files: files(3) });
+    expect(s.tiles).toHaveLength(7);
+    expect(s.notice).toBe(limitNotice(1));
+  });
+  it("undo never exceeds the limit: a full strip refuses it with a notice and keeps the record", () => {
+    const removed = run(ready3(), { type: "remove", key: "b" });
+    const crowded = { ...removed, max: 2 };
+    const u = run(crowded, { type: "undo" });
+    expect(u.tiles).toHaveLength(2);
+    expect(u.removal).toBe(removed.removal);
+    expect(u.notice).toBe(NO_ROOM_NOTICE);
   });
   it("remove on an unready tile does nothing (Cancel is its action)", () => {
     const s = run(initStrip([], 8), { type: "pick", files: files(1) });

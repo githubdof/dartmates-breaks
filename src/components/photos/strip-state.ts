@@ -28,6 +28,7 @@ export type StripAction =
 
 export const UNREADABLE_NOTICE = "This photo can't be read here. Pick a JPEG or PNG.";
 export const NEED_FORM_NOTICE = "Add a title, a price and the top spot first.";
+export const NO_ROOM_NOTICE = "There is no room to put that photo back.";
 const MAX_ALT = 120;
 const FALLBACK_ALT = "Photo of the items";
 
@@ -72,7 +73,8 @@ const insertReady = (tiles: StripTile[], tile: StripTile, index: number): StripT
 export function stripReducer(s: StripState, a: StripAction): StripState {
   switch (a.type) {
     case "pick": {
-      const room = Math.max(0, s.max - s.tiles.length);
+      // A removal waiting out its Undo still holds its place: the server counts it until it commits.
+      const room = Math.max(0, s.max - s.tiles.length - (s.removal ? 1 : 0));
       const admitted = a.files.slice(0, room);
       const refused = a.files.length - admitted.length;
       const added: StripTile[] = admitted.map((f) => ({
@@ -163,6 +165,8 @@ export function stripReducer(s: StripState, a: StripAction): StripState {
     }
     case "undo": {
       if (!s.removal) return s;
+      // Never past the limit: if the place was somehow taken, the photo stays out and the host is told.
+      if (s.tiles.length >= s.max) return { ...s, notice: NO_ROOM_NOTICE };
       return { ...s, tiles: insertReady(s.tiles, s.removal.tile, s.removal.index), removal: null };
     }
     case "removalDone":
