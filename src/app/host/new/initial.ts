@@ -1,6 +1,7 @@
 import { isGeneratedInstructions, type DraftForEdit, type LastBreakDefaults } from "@/domain/breaks/queries";
 import type { ClaimMode } from "@/domain/breaks/rules";
 import { formatMoney } from "@/lib/money";
+import type { StripPhoto } from "@/components/photos/strip-state";
 import { blankRow, type PrizeRow } from "./prize-rows";
 
 /**
@@ -11,6 +12,8 @@ export type ComposerInitial = {
   breakId: string | null; newBreakId: string | null; title: string; description: string; lineCount: number; price: string;
   paymentWindowHours: string; maxLinesPerUser: string; claimMode: ClaimMode; paymentInstructions: string;
   venmo: string; paypal: string; prize1: PrizeRow[]; prize2: PrizeRow | null;
+  /** The break's live photos for the strip: empty for a new break. */
+  photos: StripPhoto[];
 };
 
 type Handles = { venmo?: string; paypal?: string };
@@ -35,12 +38,12 @@ export function newComposerInitial(defaults: LastBreakDefaults | null, handles: 
     claimMode: defaults?.claimMode ?? "pick_or_random",
     paymentInstructions: defaults?.paymentInstructions ?? "",
     venmo: handles.venmo ?? "", paypal: handles.paypal ?? "",
-    prize1: [blankRow(newId)], prize2: null,
+    prize1: [blankRow(newId)], prize2: null, photos: [],
   };
 }
 
 /** Editing a draft starts from the draft itself. */
-export function draftComposerInitial(d: DraftForEdit, handles: Handles, newId: () => string): ComposerInitial {
+export function draftComposerInitial(d: DraftForEdit, handles: Handles, newId: () => string, photos: StripPhoto[] = []): ComposerInitial {
   const row = (p: DraftForEdit["topSpot"][number]): PrizeRow => ({ slotKey: p.slotKey, name: p.name, condition: p.condition ?? "" });
   const [firstSecond] = d.secondPlace;
   return {
@@ -55,5 +58,6 @@ export function draftComposerInitial(d: DraftForEdit, handles: Handles, newId: (
     // The composer has one 2nd-place row: a draft with several 2nd-place items (only possible through the API)
     // keeps every name in it, under the first one's slot and condition, rather than losing all but the first.
     prize2: firstSecond ? { ...row(firstSecond), name: d.secondPlace.map((p) => p.name).join(", ") } : null,
+    photos,
   };
 }

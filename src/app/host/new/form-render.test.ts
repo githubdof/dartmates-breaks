@@ -6,7 +6,10 @@ import { ComposerForm } from "./form";
 import { draftComposerInitial, newComposerInitial } from "./initial";
 
 // The server actions are never called by a static render; stub them so the form's imports pull in no database.
-vi.mock("./actions", () => ({ saveBreak: async () => null }));
+vi.mock("./actions", () => ({ saveBreak: async () => null, ensureDraftAction: vi.fn() }));
+vi.mock("@/app/photos/actions", () => ({
+  describePhotoAction: vi.fn(), removePhotoAction: vi.fn(), reorderPhotosAction: vi.fn(), requestPhotoUpload: vi.fn(), retagPhotoAction: vi.fn(),
+}));
 vi.mock("../actions", () => ({ deleteDraftAction: vi.fn() }));
 
 const ids = () => { let n = 0; return () => `00000000-0000-4000-8000-00000000000${++n}`; };
@@ -20,7 +23,7 @@ const draft = {
 
 describe("the composer's board preview (recorded ruling 32)", () => {
   it("wears the host's kit, so the host previews the board in the kit it opens in", () => {
-    const h = renderToStaticMarkup(createElement(ComposerForm, { initial: newComposerInitial(null, {}, ids()), maxLines: 100, kit: PLUM_LIME }));
+    const h = renderToStaticMarkup(createElement(ComposerForm, { initial: newComposerInitial(null, {}, ids()), maxLines: 100, kit: PLUM_LIME, maxPhotos: 8 }));
     expect(h).toContain(`--kit-dark:${FLIGHT_COLOURS.plum.face}`);
     expect(h).toContain(`--kit-light:${FLIGHT_COLOURS.lime.face}`);
     expect(h).not.toContain(FLIGHT_COLOURS.blue.face);
@@ -29,7 +32,7 @@ describe("the composer's board preview (recorded ruling 32)", () => {
 
 describe("the composer's prize rows", () => {
   it("posts the new break's id, a hidden slot per prize row and a required condition select", () => {
-    const h = renderToStaticMarkup(createElement(ComposerForm, { initial: newComposerInitial(null, {}, ids()), maxLines: 50, kit: PLUM_LIME }));
+    const h = renderToStaticMarkup(createElement(ComposerForm, { initial: newComposerInitial(null, {}, ids()), maxLines: 50, kit: PLUM_LIME, maxPhotos: 8 }));
     expect(h).toContain('name="newBreakId" value="00000000-0000-4000-8000-000000000001"');
     expect(h).toContain('name="prize1Slot" value="00000000-0000-4000-8000-000000000002"');
     expect(h).toMatch(/<select[^>]*name="prize1Condition"[^>]*required/);
@@ -40,7 +43,7 @@ describe("the composer's prize rows", () => {
   it("the draft editor posts the draft's id, keeps each prize's slot and condition, and requires a condition on every named row", () => {
     const d = { ...draft, topSpot: [{ slotKey: S1, name: "22g", condition: "used" as const }, { slotKey: S3, name: "24g", condition: null }],
       secondPlace: [{ slotKey: S2, name: "Flights", condition: "new_opened" as const }] };
-    const h = renderToStaticMarkup(createElement(ComposerForm, { initial: draftComposerInitial(d, {}, ids()), maxLines: 50, kit: PLUM_LIME }));
+    const h = renderToStaticMarkup(createElement(ComposerForm, { initial: draftComposerInitial(d, {}, ids()), maxLines: 50, kit: PLUM_LIME, maxPhotos: 8 }));
     expect(h).toContain(`name="breakId" value="${d.id}"`);
     expect(h).not.toContain('name="newBreakId"');
     expect(h).toContain(`name="prize1Slot" value="${S1}"`);
@@ -50,5 +53,23 @@ describe("the composer's prize rows", () => {
     expect(h.match(/<select[^>]*name="prize1Condition"[^>]*required/g)).toHaveLength(2); // both rows are named
     expect(h).toMatch(/<select[^>]*name="prize2Condition"[^>]*required/);
     expect(h).toContain('data-testid="delete-draft"');
+  });
+});
+
+describe("the composer's Photos fieldset (photos spec §9)", () => {
+  it("a new break has the strip, Add photos waiting on the form, and the quiet no-photo line", () => {
+    const h = renderToStaticMarkup(createElement(ComposerForm, { initial: newComposerInitial(null, {}, ids()), maxLines: 50, kit: PLUM_LIME, maxPhotos: 8 }));
+    expect(h).toMatch(/<legend[^>]*>Photos<\/legend>/);
+    expect(h).toContain('data-testid="photo-strip"');
+    expect(h).toMatch(/<button[^>]*disabled[^>]*>Add photos<\/button>/);
+    expect(h).toContain("Buyers see the lead photo first in the feed.");
+    expect(h.indexOf("Photos</legend>")).toBeGreaterThan(h.indexOf("Price per line"));
+    expect(h.indexOf("Photos</legend>")).toBeLessThan(h.indexOf("Payment</legend>"));
+  });
+  it("a draft with a photo shows it and drops the no-photo line", () => {
+    const photo = { photoId: "p1", slot: null, alt: "Darts", src: { src: "https://s.test/p1-160.webp", srcSet: "", width: 1600, height: 1200, alt: "Darts" } };
+    const h = renderToStaticMarkup(createElement(ComposerForm, { initial: draftComposerInitial(draft, {}, ids(), [photo]), maxLines: 50, kit: PLUM_LIME, maxPhotos: 8 }));
+    expect(h).toContain('data-photo-id="p1"');
+    expect(h).not.toContain("Buyers see the lead photo first in the feed.");
   });
 });

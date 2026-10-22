@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getCaller } from "@/auth/session";
-import { action } from "@/lib/action";
+import { action, type ActionResult } from "@/lib/action";
 import { isUuid } from "@/lib/is-uuid";
 import { createDraft, openBreak, updateDraft } from "@/domain/breaks/commands";
 import { PhotosNotReady } from "@/domain/errors";
@@ -59,4 +59,25 @@ export async function saveBreak(_: ComposerState, form: FormData): Promise<Compo
   revalidatePath("/host");
   revalidatePath(`/b/${opened}`);
   redirect(`/b/${opened}`);
+}
+
+const STALE_FORM = "This form is out of date. Reload the page and try again.";
+
+/**
+ * Saves the composer as a draft under the page's own id, for the first photo (photos spec §9, plan ruling 12). A draft
+ * needs no payment handle; `createDraft` is idempotent for the same host, so a Save pressed meanwhile or a repeat
+ * lands on this draft. It never redirects: the page stays where it is and moves its address itself.
+ */
+export async function ensureDraftAction(form: FormData): Promise<ActionResult<{ breakId: string }>> {
+  const copy = new FormData();
+  for (const [k, v] of form.entries()) copy.append(k, v);
+  copy.set("intent", "draft");
+  const parsed = parseComposer(copy);
+  if (!parsed.ok) return { ok: false, code: "INVALID_INPUT", message: parsed.error };
+  const rawId = form.get("newBreakId");
+  const breakId = typeof rawId === "string" ? rawId : "";
+  if (!isUuid(breakId)) return { ok: false, code: "INVALID_INPUT", message: STALE_FORM };
+  const r = await action((tx, c) => createDraft(tx, c, parsed.input, { breakId }));
+  if (!r.ok) return r;
+  return { ok: true, data: { breakId } };
 }

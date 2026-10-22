@@ -1,14 +1,17 @@
 "use client";
-import { useActionState, useState } from "react";
-import { saveBreak, type ComposerState } from "./actions";
+import { useActionState, useRef, useState } from "react";
+import { ensureDraftAction, saveBreak, type ComposerState } from "./actions";
 import { previewText } from "./preview";
-import type { ComposerInitial } from "./initial";
+import { composerBreakId, type ComposerInitial } from "./initial";
+import { moveToEditAddress } from "./draft-address";
 import { Button } from "@/components/button";
 import { Stepper } from "@/components/stepper";
 import { GridPreview } from "@/components/grid/grid-preview";
 import type { Kit } from "@/domain/flights";
 import { CONDITION_LABEL, ITEM_CONDITIONS, isItemCondition, type ItemCondition } from "@/domain/breaks/condition";
 import { DeleteDraftButton } from "../delete-draft-button";
+import { PhotoStrip, type EnsureDraft, type StripPrize } from "@/components/photos/photo-strip";
+import { canAddPhotos } from "@/components/photos/strip-state";
 import { addChoice, blankRow, removeChoice, setCondition, setName, type PrizeRow } from "./prize-rows";
 
 const field = "h-12 w-full rounded-input border border-wire-strong bg-card px-3";
@@ -27,9 +30,18 @@ type Props = {
   maxLines: number;
   /** The host's kit (hostKit): the preview shows the board in the kit it opens in (recorded ruling 32). */
   kit: Kit;
+  /** MAX_PHOTOS, passed from the server page for the same reason. */
+  maxPhotos: number;
 };
 
-export function ComposerForm({ initial, maxLines, kit }: Props) {
+/** One strip prize per named row, keyed by its stable slot, for the Tag menu. */
+function stripPrizes(choices: readonly PrizeRow[], second: PrizeRow | null): StripPrize[] {
+  return [...choices, ...(second ? [second] : [])]
+    .filter((r) => r.name.trim() !== "")
+    .map((r) => ({ slot: r.slotKey, label: r.name.trim(), itemName: r.name.trim() }));
+}
+
+export function ComposerForm({ initial, maxLines, kit, maxPhotos }: Props) {
   // React resets a <form action> after every action, failed ones too, and a controlled select keeps its mount-time
   // option as the reset target. Counting the answers lets the selects remount, so they come back showing their state.
   const [answers, setAnswers] = useState(0);
@@ -38,6 +50,34 @@ export function ComposerForm({ initial, maxLines, kit }: Props) {
     setAnswers((n) => n + 1);
     return next;
   }, null);
+  // Pinned at mount: a server refresh re-renders the page with fresh props, and a new break's id must not change under
+  // its photos (ruling 22: the id is the server's, and it is the one this page rendered with).
+  const [breakId] = useState(() => {
+    const id = composerBreakId(initial);
+    if (!id) throw new Error("The composer needs a break id");
+    return id;
+  });
+  const formRef = useRef<HTMLFormElement>(null);
+  const [title, setTitle] = useState(initial.title);
+  const [photoCount, setPhotoCount] = useState(initial.photos.length);
+  // The first photo saves the form as a draft (once; a failure clears the memo so Retry asks again) and moves the address.
+  const draftRef = useRef<ReturnType<EnsureDraft> | null>(null);
+  const ensureDraft: EnsureDraft = () => {
+    if (!draftRef.current) {
+      draftRef.current = (async () => {
+        try {
+          const r = await ensureDraftAction(new FormData(formRef.current ?? undefined));
+          if (r.ok) { moveToEditAddress(r.data.breakId); return { ok: true as const }; }
+          draftRef.current = null;
+          return { ok: false as const, message: r.message };
+        } catch {
+          draftRef.current = null;
+          return { ok: false as const, message: "Something went wrong. Please try again." };
+        }
+      })();
+    }
+    return draftRef.current;
+  };
   const [lineCount, setLineCount] = useState(initial.lineCount);
   const [price, setPrice] = useState(initial.price);
   // The prize rows are controlled, so their slots and conditions survive re-renders and a failed save.
@@ -48,14 +88,14 @@ export function ComposerForm({ initial, maxLines, kit }: Props) {
 
   return (
     <>
-    <form action={submit} className="mt-4 space-y-8">
+    <form ref={formRef} action={submit} className="mt-4 space-y-8">
       {/* Enter in a text field presses the first submit button in the DOM: make that a harmless draft save. */}
       <button type="submit" name="intent" value="draft" hidden aria-hidden tabIndex={-1} />
-      {initial.newBreakId && <input type="hidden" name="newBreakId" value={initial.newBreakId} />}
-      {initial.breakId && <input type="hidden" name="breakId" value={initial.breakId} />}
+      {initial.newBreakId && <input type="hidden" name="newBreakId" value={breakId} />}
+      {initial.breakId && <input type="hidden" name="breakId" value={breakId} />}
       <div className="space-y-1">
         <label htmlFor="title" className={label}>Title</label>
-        <input id="title" name="title" defaultValue={val("title", initial.title)} required maxLength={120} placeholder="Target Phil Taylor Chronos" className={field} />
+        <input id="title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={120} placeholder="Target Phil Taylor Chronos" className={field} />
       </div>
 
       <fieldset className="space-y-3">
@@ -124,6 +164,15 @@ export function ComposerForm({ initial, maxLines, kit }: Props) {
       </fieldset>
 
       <fieldset className="space-y-3">
+        <legend className="text-headline font-semibold">Photos</legend>
+        <PhotoStrip
+          breakId={breakId} initial={initial.photos} prizes={stripPrizes(choices, second)} title={title} max={maxPhotos}
+          canAdd={canAddPhotos({ title, lineCount, price, maxLines, topSpot: choices[0] ?? null })}
+          claimed={false} ensureDraft={initial.newBreakId === null ? undefined : ensureDraft} onCount={setPhotoCount}
+        />
+      </fieldset>
+
+      <fieldset className="space-y-3">
         <legend className="text-headline font-semibold">Payment</legend>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1">
@@ -152,6 +201,7 @@ export function ComposerForm({ initial, maxLines, kit }: Props) {
         <p className="font-condensed text-headline font-semibold tabular" aria-live="polite">{preview}</p>
       </div>
 
+      {photoCount === 0 && <p className="text-small text-ink-2">Buyers see the lead photo first in the feed.</p>}
       {state?.error && <p role="alert" className="text-small text-red">{state.error}</p>}
       <div className="flex flex-col gap-3 sm:flex-row-reverse">
         <Button type="submit" name="intent" value="open" disabled={pending} data-testid="composer-open">Open break</Button>

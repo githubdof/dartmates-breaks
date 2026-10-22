@@ -17,7 +17,7 @@ describe("composer initial values", () => {
     expect(newComposerInitial(null, {}, ids())).toEqual({
       breakId: null, newBreakId: id(1), title: "", description: "", lineCount: 50, price: "5", paymentWindowHours: "", maxLinesPerUser: "",
       claimMode: "pick_or_random", paymentInstructions: "", venmo: "", paypal: "",
-      prize1: [{ slotKey: id(2), name: "", condition: "" }], prize2: null,
+      prize1: [{ slotKey: id(2), name: "", condition: "" }], prize2: null, photos: [],
     });
     expect(newComposerInitial(
       { lineCount: 20, linePriceCents: 550, paymentWindowHours: 12, maxLinesPerUser: 3, claimMode: "straight", paymentInstructions: "Zelle only." },
@@ -29,7 +29,7 @@ describe("composer initial values", () => {
       breakId: "b1", newBreakId: null, title: "Chronos", description: "Mint", lineCount: 30, price: "1250", paymentWindowHours: "24", maxLinesPerUser: "",
       claimMode: "pick_only", paymentInstructions: "", venmo: "@Jim", paypal: "",
       prize1: [{ slotKey: "s1", name: "22g", condition: "new_in_box" }, { slotKey: "s2", name: "24g", condition: "" }],
-      prize2: { slotKey: "s3", name: "Flights", condition: "used" },
+      prize2: { slotKey: "s3", name: "Flights", condition: "used" }, photos: [],
     });
     expect(draftComposerInitial({ ...draft, topSpot: [], secondPlace: [], paymentInstructions: "Zelle only." }, {}, ids()))
       .toMatchObject({ prize1: [{ slotKey: id(1), name: "", condition: "" }], prize2: null, paymentInstructions: "Zelle only." });

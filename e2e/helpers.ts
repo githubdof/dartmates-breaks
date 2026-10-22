@@ -39,7 +39,8 @@ export async function jpeg(n: number): Promise<Buffer> {
 /** /host/new filled (title, top spot and its condition, handle, lines, price), `photos` JPEGs attached through the
  *  strip and waited for until ready, then Open break (or Save draft); returns the break's URL. */
 export async function composeBreakWithPhotos(page: Page, o: { title: string; photos: number; lineCount?: number; price?: string; intent?: "open" | "draft" }): Promise<string> {
-  await page.goto("/host/new");
+  // Hydrated first: a file set before React attaches its handler would be ignored.
+  await gotoReady(page, "/host/new");
   await page.fill("input[name=title]", o.title);
   await page.fill("input[name=prize1]", "Chronos 22g");
   await page.selectOption("select[name=prize1Condition]", "new_in_box");
@@ -54,6 +55,7 @@ export async function composeBreakWithPhotos(page: Page, o: { title: string; pho
   await page.waitForFunction(
     (n) => document.querySelectorAll('[data-testid="photo-tile"][data-status="ready"]').length === n,
     o.photos,
+    { timeout: 120_000 }, // up to 8 shrink + upload + finalise cycles, two at a time
   );
   await page.getByTestId(o.intent === "draft" ? "composer-draft" : "composer-open").click();
   await page.waitForURL(/\/b\/[0-9a-f-]{36}$/);

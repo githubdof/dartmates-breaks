@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
@@ -298,6 +299,27 @@ describe("reorder, retag, describe and notice-seen actions", () => {
       expect(await markPhotoNoticeSeenAction("nope")).toMatchObject({ ok: false, code: "INVALID_INPUT" });
       expect(h.ops).toEqual([]);
       expect(storageInsideTx()).toEqual([]);
+    });
+  });
+});
+
+describe("revalidation after a photo change", () => {
+  it("refreshes an open break's pages, but not a draft's (a refresh would reload a composer whose address moved)", async () => {
+    await withTx(async (tx) => {
+      const open = await scene(tx, "open");
+      const o2 = await seedPhoto(tx, h.mem, open.host, open.b.id);
+      vi.clearAllMocks();
+      expect((await reorderPhotosAction(open.b.id, [o2.photoId, open.p.photoId])).ok).toBe(true);
+      expect(vi.mocked(revalidatePath).mock.calls.map((c) => c[0])).toEqual([`/b/${open.b.id}`, "/host"]);
+
+      const draft = await scene(tx, "draft");
+      const d2 = await seedPhoto(tx, h.mem, draft.host, draft.b.id);
+      vi.clearAllMocks();
+      expect((await reorderPhotosAction(draft.b.id, [d2.photoId, draft.p.photoId])).ok).toBe(true);
+      expect((await describePhotoAction(draft.p.photoId, "Darts")).ok).toBe(true);
+      expect((await retagPhotoAction(draft.p.photoId, null)).ok).toBe(true);
+      expect((await removePhotoAction(draft.p.photoId)).ok).toBe(true);
+      expect(revalidatePath).not.toHaveBeenCalled();
     });
   });
 });

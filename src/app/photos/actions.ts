@@ -11,7 +11,7 @@ import { DomainError } from "@/domain/errors";
 import {
   describePhoto, issueUploadTicket, markPhotoNoticeSeen, removePhoto, reorderPhotos, retagPhoto,
 } from "@/domain/photos/commands";
-import { dropUploadTicket, peekPhoto } from "@/domain/photos/peek";
+import { dropUploadTicket, peekBreakStatus, peekPhoto } from "@/domain/photos/peek";
 import { MAX_PHOTOS, type PhotoLocation } from "@/domain/photos/types";
 import { copyVariants, removeVariants } from "@/photos/variants";
 import { BUCKETS } from "@/storage/buckets";
@@ -34,7 +34,15 @@ const order = z.array(z.uuid({ error: STALE }), { error: STALE }).min(1, { error
 
 const log = (what: string) => (e: unknown) => console.error(`photos: ${what}`, e);
 
-function revalidate(id: string): void {
+/**
+ * Refreshes the pages a photo change shows on. A draft shows nowhere but its own editor, and a revalidation makes Next
+ * refetch the page it was called from: the composer of a new break has moved its address to the draft's edit page
+ * without a navigation (Task 3b), so that refetch would reload the page and drop the host's unsaved fields and the
+ * uploads in flight. A draft is therefore left alone; if its status cannot be read, the pages are refreshed.
+ */
+async function revalidate(id: string): Promise<void> {
+  const status = await db.transaction((tx) => peekBreakStatus(tx, id)).catch(() => null);
+  if (status === "draft") return;
   revalidatePath(`/b/${id}`);
   revalidatePath("/host");
 }
@@ -174,7 +182,7 @@ export async function removePhotoAction(id: string): Promise<ActionResult<void>>
     await dropArchive();
   }
   await removeVariants(storage, gone.from, gone.prefix).catch(log(`removing ${gone.from} variants`));
-  if (gone.breakId) revalidate(gone.breakId);
+  if (gone.breakId) await revalidate(gone.breakId);
   return { ok: true, data: undefined };
 }
 
@@ -183,7 +191,7 @@ export async function reorderPhotosAction(id: string, ids: string[]): Promise<Ac
   const v = parseInput(z.object({ breakId, order }), { breakId: id, order: ids });
   if (!v.ok) return v;
   const r = await action((tx, c) => reorderPhotos(tx, c, { breakId: v.data.breakId, order: v.data.order, now: new Date() }));
-  if (r.ok) revalidate(v.data.breakId);
+  if (r.ok) await revalidate(v.data.breakId);
   return r;
 }
 
@@ -195,7 +203,7 @@ export async function retagPhotoAction(id: string, to: string | null): Promise<A
     await retagPhoto(tx, c, { photoId: v.data.photoId, slot: v.data.slot, now: new Date() });
     return (await peekPhoto(tx, v.data.photoId))?.breakId;
   });
-  return done(r);
+  return await done(r);
 }
 
 /** Sets a photo's description (alt text, 1 to 120 characters). */
@@ -206,7 +214,7 @@ export async function describePhotoAction(id: string, text: string): Promise<Act
     await describePhoto(tx, c, { photoId: v.data.photoId, alt: v.data.alt });
     return (await peekPhoto(tx, v.data.photoId))?.breakId;
   });
-  return done(r);
+  return await done(r);
 }
 
 /** Records that the caller saw the break's latest photo change. Revalidates nothing. */
@@ -216,8 +224,8 @@ export async function markPhotoNoticeSeenAction(id: string): Promise<ActionResul
   return action((tx, c) => markPhotoNoticeSeen(tx, c, { breakId: v.data, now: new Date() }));
 }
 
-function done(r: ActionResult<string | undefined>): ActionResult<void> {
+async function done(r: ActionResult<string | undefined>): Promise<ActionResult<void>> {
   if (!r.ok) return r;
-  if (r.data) revalidate(r.data);
+  if (r.data) await revalidate(r.data);
   return { ok: true, data: undefined };
 }
