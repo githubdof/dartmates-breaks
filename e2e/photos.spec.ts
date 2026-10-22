@@ -19,28 +19,36 @@ test.beforeAll(async ({ browser }) => {
 });
 
 async function open(page: Page, n: number) {
-  await page.getByRole("button", { name: `Prize photos, ${n}` }).click();
+  await page.getByRole("button", { name: `${n} ${n === 1 ? "photo" : "photos"} of the prizes` }).click();
   await expect(page.getByTestId("photo-viewer")).toBeVisible();
 }
 
 test("nothing of the viewer loads before the tap: no extra script, no 1600 px image", async ({ page }) => {
   const images: string[] = [];
-  page.on("request", (r) => { if (/-1600\.webp/.test(r.url())) images.push(r.url()); });
+  const scriptsBefore: string[] = [];
+  const scriptsAfter: string[] = [];
+  let tapped = false;
+  page.on("request", (r) => {
+    if (/-1600\.webp/.test(r.url())) images.push(r.url());
+    if (r.resourceType() === "script") (tapped ? scriptsAfter : scriptsBefore).push(r.url());
+  });
   await gotoReady(page, viewer3);
-  const scripts = () => page.evaluate(() => performance.getEntriesByType("resource").filter((e) => (e as PerformanceResourceTiming).initiatorType === "script" || e.name.endsWith(".js")).length);
-  const before = await scripts();
   expect(images).toEqual([]);
   expect(await page.locator("[data-photo-viewer-root]").count()).toBe(0);
-  await page.getByRole("button", { name: "Prize photos, 3" }).click();
+  const bodyHasMarker = async (url: string) => (await (await page.request.get(url)).text()).includes("data-photo-viewer-root");
+  for (const u of scriptsBefore) expect(await bodyHasMarker(u), u).toBe(false);
+  tapped = true;
+  await page.getByRole("button", { name: "3 photos of the prizes" }).click();
   await expect(page.getByTestId("photo-viewer")).toBeVisible();
   await expect(page.locator("[data-photo-viewer-root]")).toHaveCount(1);
-  expect(await scripts()).toBeGreaterThan(before);
+  const marked = await Promise.all(scriptsAfter.map(bodyHasMarker));
+  expect(marked.some(Boolean)).toBe(true);
   await expect.poll(() => images.length).toBeGreaterThan(0);
 });
 
 test("by keyboard: open, arrows, ends hide Previous and Next, Escape returns focus to the plate", async ({ page }) => {
   await gotoReady(page, viewer3);
-  const plate = page.getByRole("button", { name: "Prize photos, 3" });
+  const plate = page.getByRole("button", { name: "3 photos of the prizes" });
   await plate.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("viewer-announce")).toHaveText("Photo 1 of 3");
@@ -65,9 +73,29 @@ test("when Next disappears at the end, focus moves to Previous", async ({ page }
   await expect(page.getByTestId("viewer-prev")).toBeFocused();
 });
 
+test("two quick ArrowRight presses land on photo 3 and the announcement never steps back", async ({ browser }) => {
+  const page = await (await browser.newContext({ reducedMotion: "no-preference" })).newPage();
+  await gotoReady(page, viewer3);
+  await open(page, 3);
+  await page.getByTestId("viewer-announce").evaluate((el) => {
+    const w = window as unknown as { __seen: string[] };
+    w.__seen = [el.textContent ?? ""];
+    new MutationObserver(() => w.__seen.push(el.textContent ?? "")).observe(el, { childList: true, characterData: true, subtree: true });
+  });
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByTestId("viewer-announce")).toHaveText("Photo 3 of 3");
+  // The strip settles on the third slide, and the index is still the third once it has.
+  await expect.poll(() => page.getByTestId("viewer-strip").evaluate((e) => Math.abs(e.scrollLeft - 2 * e.clientWidth) < 2)).toBe(true);
+  await expect(page.getByTestId("viewer-announce")).toHaveText("Photo 3 of 3");
+  await expect(page.getByTestId("viewer-next")).toHaveCount(0);
+  const seen = await page.evaluate(() => (window as unknown as { __seen: string[] }).__seen.map((t) => Number(t.split(" ")[1])));
+  expect(seen).toEqual([...seen].sort((a, b) => a - b));
+});
+
 test("one photo: no Previous or Next; Close and Escape both close", async ({ page }) => {
   await gotoReady(page, viewer1);
-  const plate = page.getByRole("button", { name: "Prize photos, 1" });
+  const plate = page.getByRole("button", { name: "1 photo of the prizes" });
   await open(page, 1);
   await expect(page.getByTestId("viewer-announce")).toHaveText("Photo 1 of 1");
   await expect(page.getByTestId("viewer-prev")).toHaveCount(0);
@@ -135,11 +163,7 @@ test("reduced motion: the strip does not scroll smoothly; without it, it does", 
 test("axe is clean on a break page with photos, with the viewer closed and open", async ({ page }) => {
   const tags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
   await gotoReady(page, viewer3);
-  // The lead plate's name is the spec's "Prize photos, N" while its visible label reads "N photos", which axe's
-  // label-content-name-mismatch (WCAG 2.5.3) flags. Only that rule is skipped, and only for that button.
-  const plate = await new AxeBuilder({ page }).withTags(tags).include("[data-testid=photo-plate]").disableRules("label-content-name-mismatch").analyze();
-  expect(plate.violations).toEqual([]);
-  expect((await new AxeBuilder({ page }).withTags(tags).exclude("[data-testid=photo-plate]").analyze()).violations).toEqual([]);
+  expect((await new AxeBuilder({ page }).withTags(tags).analyze()).violations).toEqual([]);
   await open(page, 3);
   expect((await new AxeBuilder({ page }).withTags(tags).include("[data-testid=photo-viewer]").analyze()).violations).toEqual([]);
 });

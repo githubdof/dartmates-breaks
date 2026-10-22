@@ -246,7 +246,7 @@ for a break with no photo is unchanged. Card photos are decorative (`alt=""`): t
 - **Above the fold**: the lead as a 64 px square plate (72 px with mat and keyline) at the right of the title,
   top-aligned, inside the title's 76 px band. The media row below runs the full width, so it never wraps because
   of the plate. A count shows on the plate as text ("5 photos"); holders see "Updated" there after a change that
-  counts. The plate is a button named "Prize photos, 5"; it opens the viewer at the lead. No plate without photos.
+  counts. The plate is a button named "5 photos of the prizes" ("Updated, " first when the holder has an unseen change); it opens the viewer at the lead. No plate without photos.
   The layout test checks the longest title and handle at 390 and 360.
 - **Below the board, before Details**: a **Prizes** block, open, not folded. One row per place in order (top spot,
   each "or" alternative, 2nd place): the place word, the item name, its variants (§7), and up to three 64 px
@@ -353,3 +353,5 @@ import for the viewer's code, so it adds a second path without saving bytes); th
   fill. **§8** break page "the photo layout arrives with the storage plan": §8.2. **§6** link preview: `ogModel`
   gains `photo` (§8.4). **§11** "no texture image": item photos are content, not texture; the rule stands for the
   board.
+- **Photos §8.2 (this spec):** the lead plate's accessible name now starts with its visible label ("5 photos of the
+  prizes"), so it satisfies WCAG 2.5.3 Label in Name; it was "Prize photos, 5".

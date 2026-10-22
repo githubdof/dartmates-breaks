@@ -11,7 +11,7 @@ describe("viewer model", () => {
     expect(neighbours(4, 5)).toEqual({ prev: 3, next: null });
     expect(neighbours(0, 1)).toEqual({ prev: null, next: null });
     expect(countText(1)).toBe("1 photo"); expect(countText(5)).toBe("5 photos");
-    expect(plateButtonName(5, false)).toBe("Prize photos, 5");
-    expect(plateButtonName(5, true)).toBe("Prize photos, 5, updated");
+    expect(plateButtonName(5, false)).toBe("5 photos of the prizes");
+    expect(plateButtonName(5, true)).toBe("Updated, 5 photos of the prizes");
   });
 });

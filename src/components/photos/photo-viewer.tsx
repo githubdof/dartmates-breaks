@@ -35,10 +35,19 @@ export function PhotoViewer({ photos, index, onIndex, onClose, opener }: Props) 
   }, [opener]);
 
   // Scroll the strip to `index` (instantly on open) whenever the index changed by anything but a swipe.
+  const flight = useRef<number | null>(null);
+  const flightTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const scrollTo = (i: number, first: boolean) => {
     const el = strip.current;
     // "auto" follows the CSS: smooth only where motion is allowed.
-    if (el) el.scrollTo({ left: i * el.clientWidth, behavior: first ? "instant" : "auto" });
+    if (!el) return;
+    if (!first) {
+      // The observer must not report the slides the scroll passes on its way; see the observer below.
+      flight.current = i;
+      clearTimeout(flightTimer.current);
+      flightTimer.current = setTimeout(() => { flight.current = null; }, 1200); // scrollend is not everywhere
+    }
+    el.scrollTo({ left: i * el.clientWidth, behavior: first ? "instant" : "auto" });
   };
   useEffect(() => {
     if (current.current !== index) scrollTo(index, false);
@@ -54,12 +63,17 @@ export function PhotoViewer({ photos, index, onIndex, onClose, opener }: Props) 
       for (const e of entries) {
         if (e.intersectionRatio >= 0.6) { // a crossing downwards also reports isIntersecting
           const i = Number((e.target as HTMLElement).dataset.slide);
+          // While a button or key scroll is in flight only its target counts; reaching it ends the flight.
+          if (flight.current !== null && i !== flight.current) continue;
+          if (i === flight.current) flight.current = null;
           if (i !== current.current) { current.current = i; report.current(i); }
         }
       }
     }, { root: el, threshold: 0.6 });
     el.querySelectorAll("[data-slide]").forEach((s) => io.observe(s));
-    return () => io.disconnect();
+    const landed = () => { flight.current = null; };
+    el.addEventListener("scrollend", landed);
+    return () => { io.disconnect(); el.removeEventListener("scrollend", landed); clearTimeout(flightTimer.current); };
   }, [count]);
 
   // When the focused arrow disappears at an end, focus the one that remains (or Close).
