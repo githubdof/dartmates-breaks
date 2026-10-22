@@ -13,7 +13,8 @@ import {
 } from "./strip-state";
 
 export type StripPrize = { slot: string; label: string; itemName: string | null }; // label: typed name, else "Top spot" / "2nd place"
-export type EnsureDraft = () => Promise<{ ok: true } | { ok: false; message: string }>;
+/** `slots`: the prize slots the request carried, i.e. what the server holds once it succeeds. */
+export type EnsureDraft = () => Promise<{ ok: true; slots: string[] } | { ok: false; message: string }>;
 export type PhotoStripProps = {
   breakId: string; initial: StripPhoto[]; prizes: StripPrize[]; title: string; max: number;
   canAdd: boolean;                 // composer: canAddPhotos(form); the sheet: true
@@ -96,7 +97,7 @@ export function PhotoStrip(p: PhotoStripProps) {
           fail(key, r.message, true);
           return;
         }
-        for (const x of latest.current.p.prizes) savedSlots.current.add(x.slot);
+        for (const slot of r.slots) savedSlots.current.add(slot);
       }
       let blob: Blob;
       try {
@@ -212,7 +213,8 @@ export function PhotoStrip(p: PhotoStripProps) {
       // A prize typed since the draft was last saved: the server only accepts a tag on a saved one.
       const saved = await p.saveDraft().catch(() => ({ ok: false as const, message: SOMETHING_WRONG }));
       if (!saved.ok) { revert(saved.message); return; }
-      for (const x of latest.current.p.prizes) savedSlots.current.add(x.slot);
+      for (const s of saved.slots) savedSlots.current.add(s);
+      if (!savedSlots.current.has(prize.slot)) { revert(SOMETHING_WRONG); return; }
     }
     const r = await retagPhotoAction(photoId, slot).catch(() => failed);
     if (!r.ok) { revert(r.message); return; }

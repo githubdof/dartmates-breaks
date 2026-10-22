@@ -34,6 +34,15 @@ type Props = {
   maxPhotos: number;
 };
 
+/** The slots of the named prize rows in a form as it was posted: what a successful save leaves on the server. */
+function sentSlots(f: FormData): string[] {
+  const text = (k: string) => f.getAll(k).filter((v): v is string => typeof v === "string");
+  const names = text("prize1");
+  const slots = text("prize1Slot").filter((_, i) => (names[i] ?? "").trim() !== "");
+  const second = text("prize2")[0]?.trim() ? text("prize2Slot") : [];
+  return [...slots, ...second];
+}
+
 /** One strip prize per named row, keyed by its stable slot, for the Tag menu. */
 function stripPrizes(choices: readonly PrizeRow[], second: PrizeRow | null): StripPrize[] {
   return [...choices, ...(second ? [second] : [])]
@@ -66,8 +75,9 @@ export function ComposerForm({ initial, maxLines, kit, maxPhotos }: Props) {
     if (!draftRef.current) {
       draftRef.current = (async () => {
         try {
-          const r = await ensureDraftAction(new FormData(formRef.current ?? undefined));
-          if (r.ok) { moveToEditAddress(r.data.breakId); return { ok: true as const }; }
+          const sent = new FormData(formRef.current ?? undefined);
+          const r = await ensureDraftAction(sent);
+          if (r.ok) { moveToEditAddress(r.data.breakId); return { ok: true as const, slots: sentSlots(sent) }; }
           draftRef.current = null;
           return { ok: false as const, message: r.message };
         } catch {
@@ -81,9 +91,10 @@ export function ComposerForm({ initial, maxLines, kit, maxPhotos }: Props) {
   // Saves the form as it stands (the draft exists by now), so prizes typed since can be tagged.
   const saveDraft: EnsureDraft = async () => {
     try {
-      const r = await ensureDraftAction(new FormData(formRef.current ?? undefined));
+      const sent = new FormData(formRef.current ?? undefined);
+      const r = await ensureDraftAction(sent);
       if (r.ok) moveToEditAddress(r.data.breakId);
-      return r.ok ? { ok: true } : { ok: false, message: r.message };
+      return r.ok ? { ok: true, slots: sentSlots(sent) } : { ok: false, message: r.message };
     } catch {
       return { ok: false, message: "Something went wrong. Please try again." };
     }

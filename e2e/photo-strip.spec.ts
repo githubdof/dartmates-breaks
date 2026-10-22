@@ -18,7 +18,7 @@ async function fillDraftable(page: Page, title: string) {
 }
 const readyTiles = (page: Page) => page.getByTestId("photo-tile").and(page.locator("[data-status=ready]"));
 const order = (page: Page) => page.getByTestId("photo-tile").evaluateAll((els) => els.map((e) => e.getAttribute("data-photo-id")));
-const tagged = (id: string) => withDb(async (sql) => (await sql`select prize_slot from break_photos where break_id = ${id} and removed_at is null`)[0]?.prize_slot ?? null);
+const tagged = (id: string) => withDb(async (sql) => (await sql`select prize_slot from break_photos where break_id = ${id} and removed_at is null and prize_slot is not null order by position desc`)[0]?.prize_slot ?? null);
 const files = (n: number, prefix = "f") => Promise.all(Array.from({ length: n }, async (_, i) => ({ name: `${prefix}${i + 1}.jpg`, mimeType: "image/jpeg", buffer: await jpeg(i + 1) })));
 
 test("composeBreakWithPhotos opens a break with two published photos (Task 7a's helper)", async ({ page }) => {
@@ -235,4 +235,28 @@ test("a prize typed after the draft exists can be tagged, on the new page and on
   await page.getByTestId("photo-options-1").click();
   await page.getByRole("button", { name: "Tag" }).click();
   await expect(page.getByRole("radio", { name: "Spare steel set" })).toBeChecked();
+});
+
+test("a prize typed between two photos can be tagged on either (the draft is saved again for the tag)", async ({ page }) => {
+  await loginAs(page, host, "host");
+  await gotoReady(page, "/host/new");
+  await fillDraftable(page, "Between photos");
+  const id = await page.locator("input[name=newBreakId]").inputValue();
+  await page.getByTestId("photo-input").setInputFiles(await files(1, "b"));
+  await expect(readyTiles(page)).toHaveCount(1);
+  await page.getByRole("button", { name: "Add 2nd place" }).click();
+  await page.fill("input[name=prize2]", "Dart case");
+  await page.selectOption("select[name=prize2Condition]", "new_in_box");
+  await page.getByTestId("photo-input").setInputFiles((await files(2, "c")).slice(1));
+  await expect(readyTiles(page)).toHaveCount(2);
+  await page.getByTestId("photo-options-2").click();
+  await page.getByRole("button", { name: "Tag" }).click();
+  await page.getByRole("radio", { name: "Dart case" }).check();
+  await expect.poll(() => tagged(id)).not.toBeNull();
+  await expect(page.getByTestId("photo-notice")).toHaveCount(0);
+  await page.reload();
+  await expect(readyTiles(page)).toHaveCount(2);
+  await page.getByTestId("photo-options-2").click();
+  await page.getByRole("button", { name: "Tag" }).click();
+  await expect(page.getByRole("radio", { name: "Dart case" })).toBeChecked();
 });
