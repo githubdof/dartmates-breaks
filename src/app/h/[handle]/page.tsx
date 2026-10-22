@@ -6,6 +6,9 @@ import { hostProfile } from "@/domain/breaks/queries";
 import { feedThumbs, listFeed } from "@/domain/breaks/feed";
 import { formatMonthYear } from "@/lib/time";
 import { Avatar } from "@/components/avatar";
+import { leadPhotos } from "@/domain/photos/queries";
+import { leadSrcs } from "@/photos/lead-srcs";
+import { photoStorage } from "@/storage/photo-storage";
 import { BreakCard } from "@/components/break-card";
 import { hostRecordLines, hostRecordText, pastText } from "@/components/break/frame-copy";
 import { KitThumb } from "@/components/kit-thumb";
@@ -27,14 +30,19 @@ function cleanHandle(raw: string): string {
 }
 
 /** One transaction per request, shared by the metadata and the page. Public data only (hostProfile). */
-const loadProfile = cache(async (raw: string) =>
-  db.transaction(async (tx) => {
+const loadProfile = cache(async (raw: string) => {
+  const d = await db.transaction(async (tx) => {
     const profile = await hostProfile(tx, cleanHandle(raw));
     if (!profile) return null;
     const now = new Date();
     const open = await listFeed(tx, { sort: "newest", hostHandle: profile.handle, now });
-    return { profile, open, now, thumbs: await feedThumbs(tx, open.map((b) => b.id)) };
-  }));
+    const thumbs = await feedThumbs(tx, open.map((b) => b.id));
+    return { profile, open, now, thumbs, leads: await leadPhotos(tx, open.map((b) => b.id)) };
+  });
+  if (!d) return null;
+  const { leads, ...rest } = d;
+  return { ...rest, srcs: await leadSrcs(photoStorage(), leads, 160) };
+});
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { handle } = await params;
@@ -46,7 +54,7 @@ export default async function HostProfilePage({ params }: Props) {
   const { handle } = await params;
   const d = await loadProfile(handle);
   if (!d) notFound();
-  const { profile, open, thumbs, now } = d;
+  const { profile, open, thumbs, srcs, now } = d;
   const [record, stall] = hostRecordLines(profile, now);
   return (
     // A wall route (Mosaic §8): data-wall switches on Task 1's wall background (recorded ruling 12), so its text takes the wall inks.
@@ -73,7 +81,7 @@ export default async function HostProfilePage({ params }: Props) {
       <section aria-labelledby="open-breaks" className="space-y-3">
         <h2 id="open-breaks" className="text-headline font-semibold">Open breaks</h2>
         {open.length > 0 ? (
-          <ul className="space-y-3">{open.map((b) => <BreakCard key={b.id} b={b} cells={thumbs.get(b.id) ?? []} />)}</ul>
+          <ul className="space-y-3">{open.map((b) => <BreakCard key={b.id} b={b} cells={thumbs.get(b.id) ?? []} photo={srcs.get(b.id) ?? null} />)}</ul>
         ) : (
           <p style={{ color: "var(--board-text-2)" }}>No open breaks right now.</p>
         )}
