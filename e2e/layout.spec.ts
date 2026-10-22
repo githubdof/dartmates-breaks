@@ -1,6 +1,6 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { composeBreak, gotoReady, loginAs } from "./helpers";
+import { composeBreak, composeBreakWithPhotos, gotoReady, loginAs } from "./helpers";
 import { ageClaims } from "./db";
 
 // The design's layout and accessibility claims, checked in a real browser (no jsdom). One 50-line open break
@@ -314,4 +314,83 @@ test("axe finds no WCAG 2.1 A or AA violation on the main pages, the pay sheet a
     found.push(...(await axeViolations(page, `${who} result page`)));
   }
   expect(found).toEqual([]);
+});
+
+// Task 8a: the lead photo's plate in the title band. One host with the longest handle and title the app allows,
+// a 50-line break without a photo and one with a photo, so the two can be measured against each other.
+test.describe("the break page with a photo (photos spec §8.2, Mosaic §8)", () => {
+  const longHandleEmail = `${"h".repeat(7)}${run}@e2e.test`; // 7 + 13 digits: a 20-character handle
+  const longTitle = "Taylor Chronos 24g ".repeat(7).slice(0, 120); // 120 characters, the composer's maximum
+  expect(longHandleEmail.split("@")[0]).toHaveLength(20);
+  expect(longTitle).toHaveLength(120);
+  let plainLong = "";
+  let photoLong = "";
+
+  async function signedInMobile(browser: Browser, email: string, width: number, height: number): Promise<Page> {
+    const page = await (await browser.newContext({ viewport: { width, height }, isMobile: true, hasTouch: true })).newPage();
+    await loginAs(page, email);
+    return page;
+  }
+
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(150_000);
+    const host = await signedIn(browser, longHandleEmail, "host");
+    plainLong = await composeBreak(host, { title: longTitle, lineCount: 50 });
+    photoLong = await composeBreakWithPhotos(host, { title: longTitle, photos: 1, lineCount: 50 });
+    const buyer = await signedIn(browser, `${buyerHandle}@e2e.test`);
+    await gotoReady(buyer, photoLong);
+    await buyer.getByTestId("cell-3").click();
+    await buyer.getByTestId("cell-9").click();
+    await buyer.getByTestId("claim-submit").click();
+    await expect(buyer.getByTestId("owed")).toBeVisible();
+  });
+
+  test("the plate sits in the title's 76 px band and never wraps the media row (390 and 360)", async ({ browser }) => {
+    for (const [w, h] of [[390, 664], [360, 640]] as const) {
+      const withPlate = await anonymous(browser, w, h); await withPlate.goto(photoLong);
+      const plain = await anonymous(browser, w, h); await plain.goto(plainLong);
+      const plate = (await withPlate.getByTestId("photo-plate").boundingBox())!;
+      const title = (await withPlate.locator("h1").boundingBox())!;
+      const media = (await withPlate.getByTestId("media-row").boundingBox())!;
+      expect(plate.width).toBeCloseTo(72, 0); expect(plate.height).toBeCloseTo(72, 0);
+      expect(plate.x + plate.width).toBeLessThanOrEqual(w - 16 + 0.5);
+      expect(title.x + title.width).toBeLessThanOrEqual(plate.x); // the title never runs under the plate
+      expect(media.y).toBeGreaterThanOrEqual(plate.y + plate.height - 0.5); // the media row is below the plate, full width
+      const mediaPlain = (await plain.getByTestId("media-row").boundingBox())!;
+      expect(media.height).toBeCloseTo(mediaPlain.height, 0); // the plate did not make it wrap
+      expect(media.y).toBeCloseTo(mediaPlain.y, 0); // the band is the same 76 px: nothing moved down
+      const legendA = (await withPlate.getByTestId("legend").boundingBox())!; const legendB = (await plain.getByTestId("legend").boundingBox())!;
+      expect(legendA.y).toBeCloseTo(legendB.y, 0);
+    }
+  });
+
+  test("the board, legend and 'You have …' line stay above the bar at 390 × 664 with a plate (holder)", async ({ browser }) => {
+    const page = await signedInMobile(browser, `${buyerHandle}@e2e.test`, 390, 664); await page.goto(photoLong);
+    const legend = (await page.getByRole("list", { name: "What the cells mean" }).boundingBox())!;
+    const line = (await page.getByTestId("you-have").boundingBox())!; const bar = (await page.locator("[data-sticky-bar]").boundingBox())!;
+    expect(legend.y + legend.height).toBeLessThanOrEqual(bar.y);
+    expect(line.y + line.height).toBeLessThanOrEqual(bar.y);
+    const grid = (await page.locator("[data-grid-rows]").first().boundingBox())!;
+    expect(grid.y + grid.height).toBeLessThanOrEqual(legend.y);
+  });
+
+  test("at 360 × 640 the legend sits at the fold with a plate, as without one", async ({ browser }) => {
+    const page = await anonymous(browser, 360, 640); await page.goto(photoLong);
+    expect((await page.getByTestId("legend").boundingBox())!.y).toBeLessThanOrEqual(640);
+  });
+
+  test("a stranger reads the count on the plate, and the Prizes block replaces the prize list in Details", async ({ browser }) => {
+    const page = await anonymous(browser, 390, 664); await page.goto(photoLong);
+    await expect(page.getByTestId("photo-plate")).toContainText("1 photo");
+    await expect(page.getByTestId("photo-plate")).not.toContainText("Updated");
+    await expect(page.getByTestId("prizes-block").getByRole("heading", { name: "Prizes" })).toBeVisible();
+    await expect(page.getByTestId("prize-place")).toHaveCount(1);
+    await expect(page.getByTestId("removed-plate")).toHaveCount(0);
+  });
+
+  test("a break with no photo has no plate and no empty Prizes plates", async ({ browser }) => {
+    const page = await anonymous(browser, 390, 664); await page.goto(plainLong);
+    await expect(page.getByTestId("photo-plate")).toHaveCount(0);
+    await expect(page.getByTestId("prizes-block").getByTestId("plate")).toHaveCount(0);
+  });
 });

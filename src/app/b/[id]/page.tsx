@@ -18,7 +18,7 @@ import { DetailsFold } from "@/components/break/details-fold";
 import { BreakInteractive } from "@/components/break/break-interactive";
 import { bonusGoesWith, commitmentShort, payeeFor } from "@/components/break/pay-copy";
 import { onboardingHref, parsePick } from "@/components/break/selection";
-import { closesText, hostedByText, hostLabel, hostRecordLines, mediaText, payWithinText, perPersonText, pickingText, prizeLines, trustText, youHaveText } from "@/components/break/frame-copy";
+import { closesText, hostedByText, hostLabel, hostRecordLines, mediaText, payWithinText, perPersonText, pickingText, trustText, youHaveText } from "@/components/break/frame-copy";
 import { KitSwatch } from "@/components/kit-swatch";
 import { HostTools } from "@/components/ledger/host-tools";
 import type { LedgerRowView } from "@/components/ledger/ledger-view";
@@ -27,6 +27,13 @@ import { EditPhotosSheet } from "@/components/photos/edit-photos-sheet";
 import { MAX_PHOTOS } from "@/domain/photos/types";
 import { prizeStripPrizes, toStripPhotos } from "@/photos/strip-data";
 import { photoStorage } from "@/storage/photo-storage";
+import { Plate } from "@/components/photos/plate";
+import { PrizesBlock } from "@/components/photos/prizes-block";
+import { NoticeSeen } from "@/components/photos/notice-seen";
+import { placeRows } from "@/components/photos/prizes-model";
+import { countText } from "@/components/photos/viewer-model";
+import { pagePhotos } from "@/photos/page-photos";
+import { photoAudience, photoViewer } from "@/photos/viewer";
 import { loadBreak } from "./load";
 
 /** The break page is on the wall from this task on: its browser chrome follows (Mosaic §8, recorded ruling 12). */
@@ -64,6 +71,9 @@ export default async function BreakPage({ params, searchParams }: Props) {
   const initialPick = parsePick(pick, b.lineCount);
   if (caller && !caller.onboarded && initialPick.length > 0) redirect(onboardingHref(id, initialPick));
   const zone = await viewerZone();
+  // Who may see which photos is decided once: `load.ts` read them for this viewer, `pagePhotos` filters for the audience.
+  const audience = photoAudience(photoViewer(caller, { hostId: b.hostId, holderIds: new Set(page.lines.flatMap((l) => (l.ownerId ? [l.ownerId] : []))) }));
+  const pp = photos ? await pagePhotos(photoStorage(), photos, placeRows(page.prizes, page.items), { audience, tz: zone.tz }) : null;
   const grid = shapeGrid(page, caller ? { id: caller.id, role: caller.role, globalUnpaid } : null, now);
   const boardView: BoardView = grid.showHolders ? "member" : "kit";
   // The legend draws "yours" and "paid" in the viewer's own flight: the first line they hold here (recorded ruling 20).
@@ -98,8 +108,20 @@ export default async function BreakPage({ params, searchParams }: Props) {
   return (
     <main data-wall className="mx-auto max-w-[600px] px-4 pb-6 sm:px-6">
       {/* Mosaic §8: the title in Big Shoulders, two lines at most; one 24 px media row; no thumbnail while there are no photos. */}
-      <section className="mt-3">
-        <h1 className="line-clamp-2 font-shoulders text-wall-title font-extrabold text-[var(--board-text)]">{b.title}</h1>
+      <section className={pp?.lead ? undefined : "mt-3"}>
+        {pp?.lead ? (
+          <div className="flex items-start gap-3">
+            <h1 className="mt-3 line-clamp-2 min-w-0 flex-1 font-shoulders text-wall-title font-extrabold text-[var(--board-text)]">{b.title}</h1>
+            <span className="relative mt-1 shrink-0" data-testid="photo-plate">
+              <Plate photo={pp.lead} size={64} surface="board" decorative />
+              <span className="absolute inset-x-[4px] bottom-[4px] flex h-4 items-center justify-center bg-board-wall-2 text-[11px] leading-none text-[var(--board-text)]">
+                {pp.updated ? "Updated" : countText(pp.count)}
+              </span>
+            </span>
+          </div>
+        ) : (
+          <h1 className="line-clamp-2 font-shoulders text-wall-title font-extrabold text-[var(--board-text)]">{b.title}</h1>
+        )}
         <p className="mt-1 flex min-h-6 flex-wrap items-center gap-x-3 text-small">
           <span className="text-[var(--board-text-2)]" data-testid="media-row">{mediaText(b.lineCount, b.linePriceCents)}</span>
           {/* A draft renders no claim bar, so its pill stays in the head; every other status has it in the bar. */}
@@ -113,6 +135,8 @@ export default async function BreakPage({ params, searchParams }: Props) {
           )}
         </p>
       </section>
+
+      {pp && audience === "holder" && <NoticeSeen breakId={id} unseen={pp.unseen} />}
 
       {/* "See the result" lives in the bar (bar-result) on a drawn break, not in the page flow (pixel budget). */}
       <BreakInteractive
@@ -175,9 +199,11 @@ export default async function BreakPage({ params, searchParams }: Props) {
             />
           )}
         </div>
+        {pp && (
+          <PrizesBlock places={pp.places} untagged={pp.untagged} removed={pp.removed} notice={pp.notice} noticeFirst={audience === "holder"} count={pp.count} />
+        )}
         <DetailsFold
           description={b.description}
-          prizes={prizeLines(page.prizes, page.items)}
           perPerson={perPersonText(b.maxLinesPerUser)}
           picking={pickingText(b.claimMode)}
           closes={closesText(hostName)}

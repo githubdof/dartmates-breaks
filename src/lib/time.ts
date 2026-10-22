@@ -57,6 +57,11 @@ export function formatDateTime(d: Date, tz: string, labelled = false): string {
   return `${date} at ${formatClock(d, tz)}${labelled ? ` ${zoneLabel(tz, d)}` : ""}`;
 }
 
+/** "Oct 21": the month and day in the zone. */
+export function formatShortDate(d: Date, tz: string): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: tz, month: "short", day: "numeric" }).format(d);
+}
+
 export function formatMonthYear(d: Date, tz: string = DEFAULT_TZ): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: tz, month: "short", year: "numeric" }).format(d);
 }

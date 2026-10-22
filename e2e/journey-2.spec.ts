@@ -51,9 +51,15 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await host.getByTestId("composer-open").click();
   await host.waitForURL(url);
   await host.locator("summary", { hasText: "Details" }).click();
-  // These three lines are Plan A's prizeLines / pickingText copy: a task that changes that wording updates them here.
-  await expect(host.getByText("Top spot gets a choice: Chronos 22g or Chronos 24g.").or(host.getByText("Top spot gets a choice: Chronos 24g or Chronos 22g."))).toBeVisible();
-  await expect(host.getByText("2nd place gets Flight pack.")).toBeVisible();
+  // The prizes now read in the Prizes block (one row per place); the picking line stays in Details (pickingText).
+  const places = host.getByTestId("prize-place");
+  await expect(places).toHaveCount(3);
+  await expect(places.nth(0)).toContainText("Top spot");
+  await expect(places.nth(1)).toContainText("Or");
+  await expect(places.nth(0)).toContainText(/Chronos 2[24]g/);
+  await expect(places.nth(1)).toContainText(/Chronos 2[24]g/);
+  await expect(places.nth(2)).toContainText("2nd place");
+  await expect(places.nth(2)).toContainText("Flight pack");
   await expect(host.getByText("Straight fill. Lines go out in order.")).toBeVisible();
 
   // 3. Buyer A finds it in the feed, takes the next two lines, and pays later from My lines.
