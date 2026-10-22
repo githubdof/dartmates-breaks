@@ -391,7 +391,11 @@ test.describe("the break page with a photo (photos spec §8.2, Mosaic §8)", () 
   test("an 800 × 600 photo is cropped to a square 64 × 64 image, on the title plate and in Prizes", async ({ browser }) => {
     const page = await anonymous(browser, 390, 664); await gotoReady(page, photoLong);
     for (const img of [page.getByTestId("photo-plate").locator("img"), page.getByTestId("prizes-block").locator("img").first()]) {
-      await expect(img).toBeVisible();
+      await img.scrollIntoViewIfNeeded();
+      // Measured only once decoded: before that Chrome sizes a lazy image from its attributes, which would hide the bug.
+      await expect.poll(() => img.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
+      const natural = await img.evaluate((i: HTMLImageElement) => i.naturalWidth / i.naturalHeight);
+      expect(natural).not.toBeCloseTo(1, 1); // the source is not square, so only the crop makes the box square
       const box = (await img.boundingBox())!;
       expect(box.width).toBeCloseTo(64, 0); expect(box.height).toBeCloseTo(64, 0);
     }
