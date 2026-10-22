@@ -6,6 +6,7 @@ import { assertHostOf, assertOnboarded, lockBreak } from "@/auth/authz";
 import { appendEvent } from "@/domain/events";
 import { InvalidInput, NotAuthorized, NotOpen } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
+import type { PhotoLocation } from "@/domain/photos/types";
 import { commitment } from "@/crypto/commit";
 import { newSecret, encryptSecret } from "@/crypto/secrets";
 import { isUuid } from "@/lib/is-uuid";
@@ -207,8 +208,6 @@ export async function updateDraft(tx: Tx, caller: Caller, breakId: string, input
   await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.updated", payload: { claimMode, lineCount: input.lineCount, linePriceCents: input.linePriceCents } });
   return { breakId: b.id };
 }
-
-type PhotoLocation = (typeof breakPhotos.$inferSelect)["bucket"];
 
 /**
  * Delete draft (photos spec §9): the host or an admin, drafts only. The prizes, items, photo rows and upload rows

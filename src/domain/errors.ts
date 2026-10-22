@@ -46,4 +46,9 @@ export class LineTaken extends DomainError { constructor(public numbers: number[
 export class OwnerChanged extends DomainError { constructor() { super("OWNER_CHANGED", "This line changed hands; refresh and try again", 409); } }
 export class CapExceeded extends DomainError { constructor(public kind: CapName, public limit: number) { super("CAP_EXCEEDED", capMessage(kind, limit), 409); } }
 export class InvalidInput extends DomainError { constructor(msg: string) { super("INVALID_INPUT", msg, 400); } }
+// Uploading a photo (photos spec §5.2, §5.3; plan D ruling 23).
+export class PhotosNotReady extends DomainError { constructor() { super("PHOTOS_NOT_READY", "Photos are still being prepared. Try again.", 409); } }
+export class UploadNotFound extends DomainError { constructor() { super("UPLOAD_NOT_FOUND", "This upload could not be found. Try again.", 404); } }
+export class UploadExpired extends DomainError { constructor() { super("UPLOAD_EXPIRED", "This upload took too long. Try again.", 410); } }
+export class UploadUsed extends DomainError { constructor() { super("UPLOAD_USED", "This upload was already used. Try again.", 409); } }
 export class BeaconUnavailable extends DomainError { constructor() { super("BEACON_UNAVAILABLE", "Waiting for the public beacon — try again in a moment", 503); } }
