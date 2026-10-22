@@ -74,10 +74,13 @@ export async function ensureDraftAction(form: FormData): Promise<ActionResult<{ 
   copy.set("intent", "draft");
   const parsed = parseComposer(copy);
   if (!parsed.ok) return { ok: false, code: "INVALID_INPUT", message: parsed.error };
-  const rawId = form.get("newBreakId");
-  const breakId = typeof rawId === "string" ? rawId : "";
+  // A new break arrives with newBreakId, an open draft with breakId; either way the draft ends up holding this form.
+  const rawNew = form.get("newBreakId");
+  const rawEdit = form.get("breakId");
+  const editing = typeof rawEdit === "string" && rawEdit !== "" ? rawEdit : null;
+  const breakId = editing ?? (typeof rawNew === "string" ? rawNew : "");
   if (!isUuid(breakId)) return { ok: false, code: "INVALID_INPUT", message: STALE_FORM };
-  const r = await action((tx, c) => createDraft(tx, c, parsed.input, { breakId }));
+  const r = await action((tx, c) => (editing ? updateDraft(tx, c, breakId, parsed.input) : createDraft(tx, c, parsed.input, { breakId })));
   if (!r.ok) return r;
   return { ok: true, data: { breakId } };
 }

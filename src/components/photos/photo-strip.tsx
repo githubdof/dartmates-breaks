@@ -19,6 +19,7 @@ export type PhotoStripProps = {
   canAdd: boolean;                 // composer: canAddPhotos(form); the sheet: true
   claimed: boolean;                // breaks.first_claimed_at is set
   ensureDraft?: EnsureDraft;       // composer, new break only
+  saveDraft?: EnsureDraft;         // composer: saves the form's current prizes, so a tag can name one the server has not seen
   onCount?: (live: number) => void;
   onChange?: () => void;           // any committed action (Task 7c refreshes on close)
 };
@@ -45,6 +46,8 @@ export function PhotoStrip(p: PhotoStripProps) {
   const controllers = useRef(new Map<string, AbortController>());
   const running = useRef(new Set<string>());
   const counter = useRef(0);
+  // Prize slots the server holds. With a composer that creates the draft later, none until it does.
+  const savedSlots = useRef(new Set<string>(p.ensureDraft ? [] : p.prizes.map((x) => x.slot)));
   const input = useRef<HTMLInputElement>(null);
   const panelId = useId();
   const [panel, setPanel] = useState<Panel>(null);
@@ -93,6 +96,7 @@ export function PhotoStrip(p: PhotoStripProps) {
           fail(key, r.message, true);
           return;
         }
+        for (const x of latest.current.p.prizes) savedSlots.current.add(x.slot);
       }
       let blob: Blob;
       try {
@@ -200,12 +204,18 @@ export function PhotoStrip(p: PhotoStripProps) {
     if (!photoId || slot === tile.slot) return;
     const alt = defaultAlt({ itemName: prize?.itemName ?? null, title: p.title });
     dispatch({ type: "tag", key: tile.key, slot, defaultAlt: alt });
-    const r = await retagPhotoAction(photoId, slot).catch(() => failed);
-    if (!r.ok) {
+    const revert = (message: string) => {
       dispatch({ type: "tag", key: tile.key, slot: tile.slot, defaultAlt: tile.alt });
-      notice(r.message);
-      return;
+      notice(message);
+    };
+    if (prize && !savedSlots.current.has(prize.slot) && p.saveDraft) {
+      // A prize typed since the draft was last saved: the server only accepts a tag on a saved one.
+      const saved = await p.saveDraft().catch(() => ({ ok: false as const, message: SOMETHING_WRONG }));
+      if (!saved.ok) { revert(saved.message); return; }
+      for (const x of latest.current.p.prizes) savedSlots.current.add(x.slot);
     }
+    const r = await retagPhotoAction(photoId, slot).catch(() => failed);
+    if (!r.ok) { revert(r.message); return; }
     if (!tile.altEdited) {
       const d = await describePhotoAction(photoId, alt).catch(() => failed);
       if (!d.ok) notice(d.message);
@@ -260,6 +270,7 @@ export function PhotoStrip(p: PhotoStripProps) {
   const toggle = (t: Tile) => { setPanelError(null); setPanel(panel?.key === t.key ? null : { key: t.key, mode: "menu" }); };
   const openAt = (t: Tile, mode: Mode) => { setPanelError(null); setPanel({ key: t.key, mode }); };
   const n = open ? state.tiles.indexOf(open) + 1 : 0;
+  const readyIndex = open ? state.tiles.filter((t) => t.status === "ready").indexOf(open) : -1;
 
   return (
     <div data-testid="photo-strip" className="space-y-3">
@@ -313,7 +324,7 @@ export function PhotoStrip(p: PhotoStripProps) {
               <Button variant="secondary" onClick={() => openAt(open, "tag")}>Tag</Button>
               <Button variant="secondary" onClick={() => { setDescribeText(open.alt); openAt(open, "describe"); }}>Describe</Button>
               <Button variant="secondary" aria-disabled={n === 1} onClick={() => { if (n > 1) reorder({ type: "move", key: open.key, by: -1 }); }}>Move earlier</Button>
-              <Button variant="secondary" aria-disabled={n === readyCount} onClick={() => { if (n < readyCount) reorder({ type: "move", key: open.key, by: 1 }); }}>Move later</Button>
+              <Button variant="secondary" aria-disabled={readyIndex === readyCount - 1} onClick={() => { if (readyIndex < readyCount - 1) reorder({ type: "move", key: open.key, by: 1 }); }}>Move later</Button>
               <Button variant="secondary" onClick={() => (claimed ? openAt(open, "confirm") : remove(open))}>Remove</Button>
             </div>
           )}

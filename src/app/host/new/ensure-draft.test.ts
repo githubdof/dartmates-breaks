@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { withTx } from "../../../../tests/helpers/db";
 import { makeUser } from "../../../../tests/helpers/fixtures";
 import { h, resetHarness } from "../../../../tests/helpers/pipeline-harness";
-import { breaks } from "@/db/schema";
+import { breaks, prizes } from "@/db/schema";
 import type { Caller } from "@/domain/types";
 import { ensureDraftAction } from "./actions";
 
@@ -68,6 +68,21 @@ describe("ensureDraftAction (photos spec §9, plan ruling 12)", () => {
       h.current = tx;
       h.caller = as(await makeUser(tx, { role: "host" }));
       expect(await ensureDraftAction(form({ newBreakId: "x" }))).toMatchObject({ ok: false, message: "This form is out of date. Reload the page and try again." });
+    });
+  });
+  it("an open draft's form (breakId, no newBreakId) saves into that draft, 2nd place included", async () => {
+    await withTx(async (tx) => {
+      h.current = tx;
+      h.caller = as(await makeUser(tx, { role: "host" }));
+      await ensureDraftAction(form());
+      const SLOT2 = "6f1c2a3b-0000-4000-8000-0000000000a2";
+      const f = form({ title: "Edited", prize2: "Flights", prize2Slot: SLOT2, prize2Condition: "used", breakId: ID });
+      f.delete("newBreakId");
+      expect(await ensureDraftAction(f)).toEqual({ ok: true, data: { breakId: ID } });
+      const [b] = await tx.select().from(breaks).where(eq(breaks.id, ID));
+      expect(b.title).toBe("Edited");
+      const slots = (await tx.select({ s: prizes.slotKey }).from(prizes).where(eq(prizes.breakId, ID))).map((r) => r.s);
+      expect(slots.sort()).toEqual([SLOT, SLOT2].sort());
     });
   });
 });

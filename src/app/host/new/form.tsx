@@ -78,6 +78,16 @@ export function ComposerForm({ initial, maxLines, kit, maxPhotos }: Props) {
     }
     return draftRef.current;
   };
+  // Saves the form as it stands (the draft exists by now), so prizes typed since can be tagged.
+  const saveDraft: EnsureDraft = async () => {
+    try {
+      const r = await ensureDraftAction(new FormData(formRef.current ?? undefined));
+      if (r.ok) moveToEditAddress(r.data.breakId);
+      return r.ok ? { ok: true } : { ok: false, message: r.message };
+    } catch {
+      return { ok: false, message: "Something went wrong. Please try again." };
+    }
+  };
   const [lineCount, setLineCount] = useState(initial.lineCount);
   const [price, setPrice] = useState(initial.price);
   // The prize rows are controlled, so their slots and conditions survive re-renders and a failed save.
@@ -168,7 +178,7 @@ export function ComposerForm({ initial, maxLines, kit, maxPhotos }: Props) {
         <PhotoStrip
           breakId={breakId} initial={initial.photos} prizes={stripPrizes(choices, second)} title={title} max={maxPhotos}
           canAdd={canAddPhotos({ title, lineCount, price, maxLines, topSpot: choices[0] ?? null })}
-          claimed={false} ensureDraft={initial.newBreakId === null ? undefined : ensureDraft} onCount={setPhotoCount}
+          claimed={false} ensureDraft={initial.newBreakId === null ? undefined : ensureDraft} saveDraft={saveDraft} onCount={setPhotoCount}
         />
       </fieldset>
 
