@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
-import { db, type Tx } from "@/db/client";
+import { db, inTransaction, type Tx } from "@/db/client";
+import { deleteIfSafe } from "@/jobs/photo-cleanup";
 import { breaks, breakPhotos } from "@/db/schema";
 import { PhotosNotReady } from "@/domain/errors";
 import { peekBreakStatus } from "@/domain/photos/peek";
@@ -7,7 +8,7 @@ import type { Caller } from "@/domain/types";
 import type { ActionFailure } from "@/lib/action-result";
 import { BUCKETS } from "@/storage/buckets";
 import type { PhotoStorage } from "@/storage/photo-storage";
-import { copyVariants, removeVariants } from "./variants";
+import { copyVariants } from "./variants";
 
 // Opening a break publishes its draft photos (photos spec §5.4): their variants are copied from `photos-draft` to
 // `photos` before the open transaction (no Storage call under the break lock, plan ruling 28), openBreak moves the
@@ -39,7 +40,7 @@ export async function publishDraftPhotos(s: PhotoStorage, caller: Caller, breakI
   const failed = copies.find((c) => c.status === "rejected");
   if (failed) {
     log("copying to photos")(failed.reason);
-    await dropUnusedPublicCopies(s, breakId, prefixes);
+    await dropUnusedPublicCopies(s, prefixes);
     throw new PhotosNotReady();
   }
   return { ids: new Set(photos.map((p) => p.id)), prefixes };
@@ -59,18 +60,21 @@ export async function assertPhotosPublished(tx: Tx, breakId: string, copied: Rea
  * After the open transaction returns; resolves true when the open is known to have committed. No failure: the draft
  * originals go. A refusal (the transaction rolled back): the `photos` copies go. INTERNAL (the commit may have
  * landed): the break's status is re-read; still a draft (or gone), the `photos` copies go; anything else, the open
- * committed and the draft originals go; the re-read failing, nothing goes. Every removal logs and swallows its error
- * (Task 11's cleanup is the backstop).
+ * committed and the draft originals go; the re-read failing, nothing goes. Every removal goes through the cleanup
+ * job's gate (deleteIfSafe), never unconditionally: a second open of the same draft shares these object keys, and a
+ * refused one may have removed the `photos` copies just before this open committed; the gate then copies them back
+ * from the draft originals and keeps those. Every removal logs and swallows its error (Task 11's cleanup is the
+ * backstop).
  */
 export async function settleOpenCopies(s: PhotoStorage, breakId: string, prefixes: readonly string[], failure: ActionFailure | null): Promise<boolean> {
   const dropDraftOriginals = () =>
-    Promise.all(prefixes.map((p) => removeVariants(s, BUCKETS.draft, p).catch(log("removing draft originals"))));
+    Promise.all(prefixes.map((p) => deleteIfSafe(s, inTransaction, BUCKETS.draft, p).catch(log("removing draft originals"))));
   if (failure === null) {
     await dropDraftOriginals();
     return true;
   }
   if (failure.code !== "INTERNAL") {
-    await dropUnusedPublicCopies(s, breakId, prefixes);
+    await dropUnusedPublicCopies(s, prefixes);
     return false;
   }
   let status: string | null;
@@ -81,7 +85,7 @@ export async function settleOpenCopies(s: PhotoStorage, breakId: string, prefixe
     return false;
   }
   if (status === null || status === "draft") {
-    await dropUnusedPublicCopies(s, breakId, prefixes);
+    await dropUnusedPublicCopies(s, prefixes);
     return false;
   }
   await dropDraftOriginals();
@@ -89,21 +93,11 @@ export async function settleOpenCopies(s: PhotoStorage, breakId: string, prefixe
 }
 
 /**
- * Removes the `photos` copies of `prefixes` that no row names in `photos`. A refused open is usually a rolled-back
- * one, but a second open of the same draft (a double click) can have committed in between: its rows name these
- * copies, so they stay. The re-read failing removes nothing.
+ * Removes the `photos` copies of `prefixes` through the cleanup gate (deleteIfSafe), which re-reads each prefix's rows
+ * in a fresh transaction. A refused open is usually a rolled-back one, but a second open of the same draft (a double
+ * click, two tabs) can have committed in between: its rows name these copies, so they stay. The re-read failing
+ * removes nothing.
  */
-async function dropUnusedPublicCopies(s: PhotoStorage, breakId: string, prefixes: readonly string[]): Promise<void> {
-  if (prefixes.length === 0) return;
-  let named: Set<string>;
-  try {
-    const rows = await db.transaction((tx) => tx.select({ prefix: breakPhotos.path }).from(breakPhotos)
-      .where(sql`${breakPhotos.breakId} = ${breakId} and ${breakPhotos.bucket} = 'photos'`));
-    named = new Set(rows.flatMap((r) => (r.prefix === null ? [] : [r.prefix])));
-  } catch (e) {
-    log("re-reading the photos")(e);
-    return;
-  }
-  await Promise.all(prefixes.filter((p) => !named.has(p))
-    .map((p) => removeVariants(s, BUCKETS.public, p).catch(log("removing photos copies"))));
+async function dropUnusedPublicCopies(s: PhotoStorage, prefixes: readonly string[]): Promise<void> {
+  await Promise.all(prefixes.map((p) => deleteIfSafe(s, inTransaction, BUCKETS.public, p).catch(log("removing photos copies"))));
 }

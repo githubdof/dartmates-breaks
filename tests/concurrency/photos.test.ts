@@ -2,14 +2,20 @@ import { describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db, type Tx } from "@/db/client";
-import { makeUser, openBreakWithLines, makePhoto, makeTicket, newPrefix, assertInvariants } from "../helpers/fixtures";
+import { makeUser, makeBreak, openBreakWithLines, makePhoto, makeTicket, newPrefix, assertInvariants } from "../helpers/fixtures";
+import { createMemoryStorage } from "../helpers/memory-storage";
+import { seedPhoto } from "../helpers/photos";
 import { breakPhotos, breaks, breakSecrets, photoUploads } from "@/db/schema";
 import { encryptSecret } from "@/crypto/secrets";
 import { claimLines, markPaid } from "@/domain/lines/commands";
 import { requestDraw } from "@/domain/draws/commands";
-import { InvalidInput, NotFound, NotOpen, notOpenMessage, UploadNotFound } from "@/domain/errors";
+import { openBreak } from "@/domain/breaks/commands";
+import { InvalidInput, NotFound, NotOpen, notOpenMessage, PhotosNotReady, UploadNotFound } from "@/domain/errors";
 import { SYSTEM, type Caller } from "@/domain/types";
 import { hidePhoto, issueUploadTicket, recordProcessedPhoto, removePhoto, reorderPhotos } from "@/domain/photos/commands";
+import { toFailure } from "@/lib/action-result";
+import { assertPhotosPublished, publishDraftPhotos, settleOpenCopies } from "@/photos/publish";
+import { VARIANT_WIDTHS, variantPath } from "@/storage/buckets";
 
 const c = (id: string, role: Caller["role"] = "member"): Caller => ({ id, role, onboarded: true, banned: false });
 const ROUNDS = 10;
@@ -169,4 +175,41 @@ describe("rows gone by the time the break lock is ours", () => {
     await expect(hide).rejects.toThrow(new NotFound("Photo not found"));
     expect(await livePositions(b.id)).toEqual([]);
   });
+});
+
+describe("two opens of one draft (I3; photos spec §5.4)", () => {
+  // Open A is refused (a finalise landed between its copy and its lock); open B commits. Both copied the same draft
+  // photo to the same `photos` keys. Whatever order their settling runs in, the live photo keeps a complete copy in the
+  // bucket its row names. Each step runs to completion, so every ordering of the steps is deterministic.
+  type Step = "settleA" | "commitB" | "settleB";
+  const orderings: Step[][] = [
+    ["settleA", "commitB", "settleB"], // A cleans up before B commits: the old code lost both copies here
+    ["commitB", "settleA", "settleB"],
+    ["commitB", "settleB", "settleA"],
+  ];
+
+  for (const order of orderings) {
+    it(`a live photo keeps a complete copy: ${order.join(" → ")}`, async () => {
+      const mem = createMemoryStorage();
+      const { host, b, photo } = await db.transaction(async (tx) => {
+        const host = await makeUser(tx, { role: "host" });
+        const b = await makeBreak(tx, { hostId: host.id });
+        return { host, b, photo: await seedPhoto(tx, mem, c(host.id, "host"), b.id) };
+      });
+      const caller = c(host.id, "host");
+      const a = await publishDraftPhotos(mem, caller, b.id);
+      const bb = await publishDraftPhotos(mem, caller, b.id);
+      const steps: Record<Step, () => Promise<unknown>> = {
+        settleA: () => settleOpenCopies(mem, b.id, a.prefixes, toFailure(new PhotosNotReady())),
+        commitB: () => db.transaction(async (tx) => { await assertPhotosPublished(tx, b.id, bb.ids); await openBreak(tx, caller, b.id); }),
+        settleB: () => settleOpenCopies(mem, b.id, bb.prefixes, null),
+      };
+      for (const s of order) await steps[s]();
+
+      const [row] = await db.select({ bucket: breakPhotos.bucket, removedAt: breakPhotos.removedAt }).from(breakPhotos)
+        .where(sql`${breakPhotos.id} = ${photo.photoId}`);
+      expect(row).toEqual({ bucket: "photos", removedAt: null });
+      for (const w of VARIANT_WIDTHS) expect(mem.files.has(`photos/${variantPath(photo.prefix, w)}`), `photos ${w}`).toBe(true);
+    });
+  }
 });

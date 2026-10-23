@@ -9,5 +9,10 @@ export default defineConfig({
     fileParallelism: false,
     sequence: { concurrent: false },
   },
-  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "server-only": fileURLToPath(new URL("./tests/helpers/server-only-stub.ts", import.meta.url)),
+    },
+  },
 });
