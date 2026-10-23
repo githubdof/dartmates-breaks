@@ -110,7 +110,11 @@ run copies it into the row's bucket first and deletes nothing for that photo; th
 A file no bucket holds any more is logged (`"missing"`) and skipped.
 
 Opening a break goes through the same gate: the draft originals and, for a refused open, the `photos` copies are
-removed only after a fresh read of the rows, so two opens of one draft racing each other never lose a live photo.
+removed only after a fresh read of the rows. Two opens of one draft racing each other (a double click included) keep
+every live photo, with one exception: if one open is refused for another reason (a photo finished uploading between its
+copy and its lock) and the other open commits and removes the draft originals within the refused open's single Storage
+listing, both copies of that photo can go. The host then sees a broken image. A follow-up closes this by leaving the
+draft originals to the daily orphans rule.
 
 ### Two known windows where a removed photo can lose its archive copy
 
