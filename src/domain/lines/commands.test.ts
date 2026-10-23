@@ -285,7 +285,7 @@ describe("markSent", () => {
       await markSent(tx, c(a), { breakId: b.id, numbers: [1, 2] }); // all already sent: no error, no event
       await expect(markSent(tx, c(bb), { breakId: b.id, numbers: [1] })).rejects.toBeInstanceOf(NotAuthorized);
       const evs = await tx.select().from(events).where(sql`${events.breakId} = ${b.id} and ${events.type} = 'line.sent'`)
-        .orderBy(sql`jsonb_array_length(${events.payload}->'numbers')`);
+        .orderBy(sql`(${events.payload}->'numbers'->>0)::int`);
       expect(evs.map((e) => e.payload)).toEqual([{ numbers: [1] }, { numbers: [2] }]);
     });
   });
