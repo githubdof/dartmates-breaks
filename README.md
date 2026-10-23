@@ -19,7 +19,7 @@ DRAW_KEY_V1=$(openssl rand -base64 32)   # paste the output into the env files
 IP_HASH_KEY=$(openssl rand -base64 32)   # likewise, a separate value
 ```
 
-Create the photo buckets once: `ENV_FILE=.env.local pnpm exec tsx scripts/create-buckets.ts` (it prints each bucket with `ok` or `created`, then `no client policies on storage`).
+Storage runs with the stack (`[storage]` is enabled in `supabase/config.toml`), but the four photo buckets still have to exist: create them once, as set out under "Photos and Storage" below.
 
 Environment variables:
 
@@ -84,9 +84,17 @@ pnpm dev
 
 Sign-in emails are caught by Mailpit at http://127.0.0.1:54324.
 
-### Storage
+### Photos and Storage
 
-Photos live in four Supabase Storage buckets (photos spec §5.5):
+Photos live in four Supabase Storage buckets (photos spec §5.5). Create them with the buckets script, once per environment:
+
+```bash
+ENV_FILE=.env.local pnpm exec tsx scripts/create-buckets.ts
+```
+
+It creates `incoming` (private, 5 MB), `photos-draft` (private), `photos` (public, `image/webp` only) and `photo-archive` (private), prints each with `ok` or `created`, then `no client policies on storage`: it fails while any `storage.objects` policy exists for `anon` or `authenticated`. It is idempotent, so a second run prints `ok` four times, and it is also run once against production (see Deploy).
+
+The buckets:
 
 - `incoming`: private; camera uploads land here through a signed upload URL, 5 MB per file, JPEG, PNG or WebP only.
 - `photos-draft`: private; a draft break's re-encoded variants, shown to the host through signed URLs.
@@ -94,6 +102,8 @@ Photos live in four Supabase Storage buckets (photos spec §5.5):
 - `photo-archive`: private, service role only; removed and hidden photos kept for retention.
 
 `supabase/config.toml` declares them for the local stack, and `scripts/create-buckets.ts` creates or aligns them in any other environment (`src/storage/buckets.ts` `BUCKET_SETTINGS` is the source for both). No `storage.objects` policy may exist for `anon` or `authenticated`: every write is the service role or a signed upload URL, and both the script and `pnpm test:ci` fail if such a policy exists.
+
+The preflight below includes a Storage probe: Docker, every `supabase_*` container (Kong and Storage included), auth health, Mailpit, then Storage. The e2e reaches Storage with the service-role key from `.env.local` (`e2e/db.ts`, never the app's own Storage module), fails, never skips, when Storage or a bucket is missing, and empties all four buckets before each run.
 
 After a change to `supabase/config.toml`, run `pnpm supabase stop` then `pnpm supabase start` (stop keeps the database). Run them from the main checkout: the containers mount files from the checkout that started them, and a stack started from a worktree breaks when that worktree is removed.
 
@@ -115,6 +125,11 @@ Before testing or handing over a URL, check the stack:
 
 6. The app: `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/` prints `200` once `pnpm dev` runs.
 
+### Photo processing and cleanup
+
+- `sharp` is a direct, pinned dependency. Only the finalise route (`/api/photos/finalise`, Node runtime) uses it to re-encode an upload into the three WebP variants, plus the link preview (`src/app/b/[id]/og/photo.ts`, loaded on demand to turn the WebP into a PNG for the renderer); nothing else imports it.
+- A second cron, `/api/photos/cleanup` (schedule `17 9 * * *` in `vercel.json`, daily at 09:17 UTC), runs in batches outside any transaction, with its own lock. It removes `incoming` files and unconsumed tickets older than 24 hours, published or draft objects with no row older than 24 hours, the photos of deleted drafts, `photo-archive` past 180 days (kept while a report on that break is open) and a cancelled break's photos 180 days after cancellation (photos spec §5.6). It is separate from the minute `/api/tick` and needs `CRON_SECRET` the same way. Hiding a photo by hand is in the runbook, [`docs/runbooks/photos.md`](docs/runbooks/photos.md) (`scripts/hide-photo.ts`).
+
 ## Scripts
 
 | Script | What it does |
@@ -126,6 +141,7 @@ Before testing or handing over a URL, check the stack:
 | `pnpm test:watch` | Vitest in watch mode |
 | `pnpm test:concurrency` | Concurrency suite against Postgres |
 | `pnpm test:e2e` | Playwright end-to-end journey |
+| `pnpm budget` | Measure `/b/[id]` first-load JS from the last build and fail past the allowance; run after `pnpm build` |
 | `pnpm test:ci` | Security checks (RLS, anon role) intended for CI |
 | `pnpm db:generate` | Generate a migration from schema changes |
 | `pnpm db:migrate` | Apply migrations (reads `ENV_FILE`, default `.env.local`) |
@@ -181,6 +197,8 @@ The test and e2e databases are emptied by their suites, so they need no backfill
 - Grid shaping, holder and flight visibility and the host-only overdue flag are decided in `src/domain/breaks/grid.ts` (`shapeGrid`) on the server; client components receive the result. A cell carries a `flight` exactly when it carries a `holder` (the break's host, an admin, or a viewer holding a line there); everyone else, and the feed, the landing page, the host profile and the link preview, see the board in the host's kit, never a flight.
 - Copy rules (no middle dots or bullets, gambling-neutral words, `formatMoney` for money, no default palette, no caps labels or caps chips, no "Submit", the community's state words, no exclamation marks, and the Mosaic bans: the heat words, streaks and levels, winnings and "You won", "lucky colour", betting words near a kit, the retired counts and sorts, "his") are enforced by `src/lib/copy-audit.test.ts`. The count everywhere is "N to go".
 - Absolute times reach the browser as ISO plus a server fallback and render through `LocalTime` in the viewer's zone; the `tz` cookie lets the server's fallback match.
+- A photo is a plate (photos spec §8.0), never the board's own language: on board surfaces it sits in a `--board-wall-2` mat with a `--board-steel` keyline, on paper surfaces (the Prizes block, `/me`, `/host`) in a `--wire-strong` keyline alone, cropped square, never tinted, and never in the caller banner or the reveal. It never takes the kit frame, the lamp or a flight colour.
+- `e2e/photos.spec.ts` runs the viewer in a real browser and the photo journeys across surfaces (composer, feed, break page, `/me`, drafts, the notice after a claim), with axe on every page photos touch. Every photo is generated by `jpeg(n)` in `e2e/helpers.ts`; no image file is committed.
 - `e2e/layout.spec.ts` pins the break page's pixel budget, grid columns, cell names, focus return and bar hiding in a real browser.
 - The Playwright journey keys on `data-testid`; keep ids stable when restyling.
 - Migration `0001_claim_mode` adds the picking mode (`pick_or_random`, `pick_only`, `straight`); `allow_random_claims` is kept in step and will be dropped later.

@@ -4,6 +4,8 @@ import { withDb } from "./db";
 
 /** Sets the strip's file input to `p${n}.jpg` for each `n` and waits until every tile is ready (the new ones included). */
 export async function addPhotos(page: Page, ns: number[]): Promise<void> {
+  // The strip in the Edit photos sheet loads on the first open: count its tiles only once it is there.
+  await page.getByTestId("photo-strip").waitFor();
   const tiles = page.getByTestId("photo-tile");
   const before = await tiles.count();
   const files = await Promise.all(ns.map(async (n) => ({ name: `p${n}.jpg`, mimeType: "image/jpeg", buffer: await jpeg(n) })));
