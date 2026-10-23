@@ -16,7 +16,7 @@ const PhotoStrip = dynamic(() => import("./photo-strip").then((m) => m.PhotoStri
  * Closing tells it to commit a removal still waiting on Undo. The page refreshes (so the break page's own photo
  * data follows the host's edits) once something changed: on close, or later if the change lands behind a closed sheet.
  */
-export function EditPhotosSheet(p: Omit<PhotoStripProps, "canAdd" | "ensureDraft" | "onCount" | "onChange" | "flushToken">) {
+export function EditPhotosSheet(p: Omit<PhotoStripProps, "canAdd" | "ensureDraft" | "onCount" | "onUploads" | "onChange" | "flushToken">) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);

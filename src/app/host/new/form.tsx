@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useCallback, useRef, useState, type FormEvent } from "react";
 import { ensureDraftAction, saveBreak, type ComposerState } from "./actions";
 import { previewText } from "./preview";
 import { composerBreakId, type ComposerInitial } from "./initial";
@@ -99,6 +99,25 @@ export function ComposerForm({ initial, maxLines, kit, maxPhotos }: Props) {
       return { ok: false, message: "Something went wrong. Please try again." };
     }
   };
+  // Save draft and Open break never cut an upload off (spec §5.3): pressed while photos upload, the press waits for
+  // them and goes ahead once they settle (the strip's banner shows meanwhile). If one failed, the host decides again.
+  const inFlight = useRef(0);
+  const waitingFor = useRef<HTMLElement | null>(null);
+  const [waiting, setWaiting] = useState(false);
+  const onUploads = useCallback((n: number, failed: number) => {
+    inFlight.current = n;
+    const submitter = waitingFor.current;
+    if (n > 0 || !submitter) return;
+    waitingFor.current = null;
+    setWaiting(false);
+    if (failed === 0) formRef.current?.requestSubmit(submitter);
+  }, []);
+  const holdWhileUploading = (e: FormEvent<HTMLFormElement>) => {
+    if (inFlight.current === 0) return;
+    e.preventDefault(); // React runs no form action for a cancelled submit
+    waitingFor.current = (e.nativeEvent as SubmitEvent).submitter ?? null;
+    setWaiting(true);
+  };
   const [lineCount, setLineCount] = useState(initial.lineCount);
   const [price, setPrice] = useState(initial.price);
   // The prize rows are controlled, so their slots and conditions survive re-renders and a failed save.
@@ -109,7 +128,7 @@ export function ComposerForm({ initial, maxLines, kit, maxPhotos }: Props) {
 
   return (
     <>
-    <form ref={formRef} action={submit} className="mt-4 space-y-8">
+    <form ref={formRef} action={submit} onSubmit={holdWhileUploading} className="mt-4 space-y-8">
       {/* Enter in a text field presses the first submit button in the DOM: make that a harmless draft save. */}
       <button type="submit" name="intent" value="draft" hidden aria-hidden tabIndex={-1} />
       {initial.newBreakId && <input type="hidden" name="newBreakId" value={breakId} />}
@@ -189,7 +208,7 @@ export function ComposerForm({ initial, maxLines, kit, maxPhotos }: Props) {
         <PhotoStrip
           breakId={breakId} initial={initial.photos} prizes={stripPrizes(choices, second)} title={title} max={maxPhotos}
           canAdd={canAddPhotos({ title, lineCount, price, maxLines, topSpot: choices[0] ?? null })}
-          claimed={false} ensureDraft={initial.newBreakId === null ? undefined : ensureDraft} saveDraft={saveDraft} onCount={setPhotoCount}
+          claimed={false} ensureDraft={initial.newBreakId === null ? undefined : ensureDraft} saveDraft={saveDraft} onCount={setPhotoCount} onUploads={onUploads}
         />
       </fieldset>
 
@@ -224,6 +243,7 @@ export function ComposerForm({ initial, maxLines, kit, maxPhotos }: Props) {
 
       {photoCount === 0 && <p className="text-small text-ink-2">Buyers see the lead photo first in the feed.</p>}
       {state?.error && <p role="alert" className="text-small text-red">{state.error}</p>}
+      {waiting && <p role="status" data-testid="composer-waiting" className="text-small text-ink-2">This goes ahead once the photos finish uploading.</p>}
       <div className="flex flex-col gap-3 sm:flex-row-reverse">
         <Button type="submit" name="intent" value="open" disabled={pending} data-testid="composer-open">Open break</Button>
         <Button type="submit" name="intent" value="draft" variant="secondary" disabled={pending} data-testid="composer-draft">Save draft</Button>

@@ -140,6 +140,62 @@ test("while an upload is in flight the banner shows and Save and Open stay enabl
   await expect(page.getByTestId("photo-uploading-banner")).toHaveCount(0);
 });
 
+/** Holds the next photo upload's bytes until the returned release is called. */
+async function holdUpload(page: Page): Promise<() => Promise<void>> {
+  let hold: Route | null = null;
+  await page.route("**/storage/v1/object/upload/sign/**", (route) => { hold = route; });
+  return async () => {
+    await expect.poll(() => hold !== null).toBe(true);
+    await page.unroute("**/storage/v1/object/upload/sign/**");
+    await (hold as unknown as Route).fallback();
+  };
+}
+
+test("Open break pressed while a photo uploads waits for it, then opens with the photo published (spec §5.3)", async ({ page }) => {
+  await loginAs(page, `psw${run}@e2e.test`, "host"); // its own host: the upload rate limit is per host
+  await gotoReady(page, "/host/new");
+  await fillDraftable(page, "Waits for photos");
+  await page.fill("input[name=venmo]", "@e2e-host"); // opening needs a way to be paid
+  const release = await holdUpload(page);
+  await page.getByTestId("photo-input").setInputFiles([{ name: "w.jpg", mimeType: "image/jpeg", buffer: await jpeg(4) }]);
+  await expect(page.getByTestId("photo-uploading-banner")).toBeVisible();
+  await page.getByTestId("composer-open").click();
+  await expect(page.getByTestId("composer-waiting")).toHaveText("This goes ahead once the photos finish uploading.");
+  await page.waitForTimeout(1000); // nothing leaves while the photo is still on its way
+  expect(page.url()).toMatch(/\/host\//);
+  await expect(page.getByTestId("photo-uploading-banner")).toBeVisible();
+  await release();
+  await page.waitForURL(/\/b\/[0-9a-f-]{36}$/, { timeout: 30_000 });
+  const id = page.url().split("/").pop()!;
+  const rows = await withDb((sql) => sql`select bucket from break_photos where break_id = ${id} and removed_at is null`);
+  expect(rows.map((r) => r.bucket)).toEqual(["photos"]);
+});
+
+test("a link pressed while a photo uploads asks first: No stays and the upload finishes; Yes leaves", async ({ page }) => {
+  await loginAs(page, `psl${run}@e2e.test`, "host");
+  await gotoReady(page, "/host/new");
+  await fillDraftable(page, "Link guard");
+  const release = await holdUpload(page);
+  await page.getByTestId("photo-input").setInputFiles([{ name: "l1.jpg", mimeType: "image/jpeg", buffer: await jpeg(5) }]);
+  await expect(page.getByTestId("photo-uploading-banner")).toBeVisible();
+  let asked = "";
+  page.once("dialog", (d) => { asked = d.message(); void d.dismiss(); });
+  await page.getByTestId("account-link").click();
+  await expect.poll(() => asked).toBe("Photos are still uploading. Leave this page? Photos that have not finished will not be added.");
+  await page.waitForTimeout(500);
+  expect(page.url()).toMatch(/\/host\//);
+  await release();
+  await expect(readyTiles(page)).toHaveCount(1);
+  // Another photo in flight, and this time the host says yes: the page goes.
+  await holdUpload(page);
+  await page.getByTestId("photo-input").setInputFiles([{ name: "l2.jpg", mimeType: "image/jpeg", buffer: await jpeg(6) }]);
+  await expect(page.getByTestId("photo-uploading-banner")).toBeVisible();
+  page.once("dialog", (d) => { void d.accept(); });
+  await page.getByTestId("account-link").click();
+  await page.waitForURL(/\/account$/);
+  await page.unroute("**/storage/v1/object/upload/sign/**");
+});
+
 test("drag the third tile onto the first: it becomes the lead, and the order survives a reload", async ({ page }) => {
   await loginAs(page, host, "host");
   await gotoReady(page, "/host/new");

@@ -5,7 +5,7 @@ import { describePhotoAction, removePhotoAction, reorderPhotosAction, requestPho
 import { shrinkForUpload, CannotRead } from "./shrink";
 import { NETWORK_FAILED, UploadError, uploadPhoto } from "./upload-client";
 import { removalQueue, timers, type RemovalQueue } from "./removal-queue";
-import { guardUnload } from "./unload-guard";
+import { guardLinks, guardUnload } from "./unload-guard";
 import { StripTile } from "./strip-tile";
 import {
   NEED_FORM_NOTICE, canUndo, defaultAlt, initStrip, nextToStart, readyIds, stripReducer, uploadsInFlight,
@@ -22,6 +22,7 @@ export type PhotoStripProps = {
   ensureDraft?: EnsureDraft;       // composer, new break only
   saveDraft?: EnsureDraft;         // composer: saves the form's current prizes, so a tag can name one the server has not seen
   onCount?: (live: number) => void;
+  onUploads?: (inFlight: number, failed: number) => void; // composer: Save and Open wait for uploads in flight
   onChange?: () => void;           // any committed action (Task 7c refreshes on close)
   flushToken?: number;             // the sheet bumps it on close: a removal waiting on Undo commits now
 };
@@ -144,8 +145,13 @@ export function PhotoStrip(p: PhotoStripProps) {
     }
   }, [state.tiles]);
 
-  const uploading = uploadsInFlight(state) > 0;
+  const inFlight = uploadsInFlight(state);
+  const uploading = inFlight > 0;
   useEffect(() => guardUnload(window, uploading), [uploading]);
+  // In-app links navigate on the client, where beforeunload never fires: they ask first too (spec §5.3).
+  useEffect(() => guardLinks(document, uploading, (m) => window.confirm(m)), [uploading]);
+  const failedCount = state.tiles.filter((t) => t.status === "failed").length;
+  useEffect(() => { latest.current.p.onUploads?.(inFlight, failedCount); }, [inFlight, failedCount]);
   useEffect(() => {
     const online = () => dispatch({ type: "online" });
     window.addEventListener("online", online);
