@@ -62,7 +62,8 @@ const ALLOW: { path: RegExp; text: RegExp; why: string }[] = [
   { path: /^src\/lib\/share-text\.ts$/, text: /^CLOSED\b/, why: "the community idiom quoted in share text, the one caps exception (Plan B Global Constraints)" },
   { path: /^src\/components\/handle-field(-copy)?\.tsx?$/, text: /^NFKC$/, why: "a Unicode normalisation form passed to String.normalize, not copy" },
   { path: /^src\/(app\/landing-copy|domain\/breaks\/og)\.ts$/, text: /^en-US$/, why: "an Intl locale tag passed to a date formatter, not copy" },
-  { path: /^src\/(app\/api\/photos\/finalise\/route|components\/photos\/strip-state)\.ts$/, text: /\b(?:JPEG|PNG|MB)\b/, why: "image format names and a size unit in the spec's own photo error sentences (spec §5.4, §7.1), spelled as the formats are" },
+  { path: /^src\/components\/photos\/strip-state\.ts$/, text: /^This photo can't be read here\. Pick a JPEG or PNG\.$/, why: "image format names in the spec's own sentence (§5.1), spelled as the formats are" },
+  { path: /^src\/app\/api\/photos\/finalise\/route\.ts$/, text: /^This photo (?:can't be used\. Pick a JPEG, PNG or WebP|is over 5 MB\. Pick a smaller one)\.$/, why: "format names and a size unit in the finalise route's two error sentences (not spec text), spelled as the formats and unit are" },
   { path: /^src\/app\/photos\/actions\.ts$/, text: /^INTERNAL$/, why: "an action failure code that sits beside the message, not copy" },
   { path: /^src\/app\/legal\/draw\/page\.tsx$/, text: /\b(SHA-256|HMAC)\b/, why: "algorithm names on the draw explainer, spelled as their standards spell them" },
 ];
