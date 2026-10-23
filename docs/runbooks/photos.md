@@ -109,6 +109,10 @@ It never deletes the last copy a row relies on: when the bucket a row relies on 
 run copies it into the row's bucket first and deletes nothing for that photo; the next run finds the bucket complete.
 A file no bucket holds any more is logged (`"missing"`) and skipped.
 
+A Storage call that fails (a listing, a removal, a copy) is logged with its bucket and prefix, counted in `failed`, and
+retried on the next run; the rest of the run goes on. When `failed` is above 0 the route answers 500 with the counts,
+so the cron shows red in Vercel. Look for the `"error"` log lines of that run.
+
 Rules 3 and 4 skip breaks under hold (`breaksUnderHold` in `src/domain/photos/holds.ts`). It holds nothing today; the
 reports plan makes it return every break with an open report on the break or on anything in it.
 

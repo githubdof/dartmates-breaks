@@ -169,7 +169,7 @@ describe("runPhotoCleanup (photos spec §5.6)", () => {
     expect(r).toMatchObject({ orphans: 6, archive: 3, done: true }); // the orphan, and due's public copy
     const [row] = await tx.select({ bucket: breakPhotos.bucket, path: breakPhotos.path }).from(breakPhotos).where(eq(breakPhotos.id, lost.photoId));
     expect(row).toEqual({ bucket: "photo-archive", path: lost.prefix }); // left as it is
-    expect(await job(s, tx)).toEqual({ incoming: 0, tickets: 0, orphans: 0, archive: 0, cancelled: 0, done: true });
+    expect(await job(s, tx)).toEqual({ incoming: 0, tickets: 0, orphans: 0, archive: 0, cancelled: 0, failed: 0, done: true });
   }));
 
   it("copies what it can into a relying row's bucket, counts the variants no bucket holds, and finishes on the next run", async () => withTx(async (tx) => {
@@ -188,6 +188,71 @@ describe("runPhotoCleanup (photos spec §5.6)", () => {
     expect(second.orphans).toBe(1);
     expect([has(s, BUCKETS.archive, variantPath(prefix, 640)), has(s, BUCKETS.public, variantPath(prefix, 640))]).toEqual([true, false]);
     expect(await job(s, tx)).toMatchObject({ orphans: 0, done: true });
+  }));
+
+  it("a removal that fails on one prefix is logged and counted, and the other prefixes and rules 3 and 4 still run", async () => withTx(async (tx) => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const s = store(); const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+    const b = await claimedBreak(tx, host, buyer);
+    const stuck = prefixOf(b.id); await variants(s, BUCKETS.public, stuck);
+    const other = prefixOf(b.id); await variants(s, BUCKETS.public, other);
+    const due = await archived(tx, s, host, b.id, 181);
+    const c = await claimedBreak(tx, host, buyer);
+    const live = await addPhoto(tx, s, host, c.id, "photos");
+    await tx.execute(sql`update breaks set status = 'cancelled' where id = ${c.id}`);
+    await tx.execute(sql`insert into events (break_id, type, created_at) values (${c.id}, 'break.cancelled', ${daysAgo(181).toISOString()}::timestamptz)`);
+    const remove = s.remove.bind(s);
+    vi.spyOn(s, "remove").mockImplementation(async (bucket, paths) => {
+      if (bucket === BUCKETS.public && paths.some((p) => p.startsWith(stuck))) throw new Error("storage down");
+      return remove(bucket, paths);
+    });
+    const r = await job(s, tx);
+    expect(hasAll(s, BUCKETS.public, stuck)).toBe(true); // left for the next run
+    expect(hasNone(s, BUCKETS.public, other)).toBe(true);
+    expect(hasNone(s, BUCKETS.archive, due.prefix)).toBe(true);
+    expect(hasNone(s, BUCKETS.public, live.prefix)).toBe(true);
+    expect(r).toMatchObject({ orphans: 6, archive: 3, cancelled: 3, failed: 1, done: true }); // other, and due's public copy
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error.mock.calls[0][0]).toContain(stuck);
+  }));
+
+  it("a failed incoming or junk removal is logged and counted, and the run goes on", async () => withTx(async (tx) => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const s = store(); const host = await makeUser(tx, { role: "host" });
+    const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+    clock = hoursAgo(25);
+    await s.put(BUCKETS.incoming, `${b.id}/${randomUUID()}`, Buffer.from("x"), "image/webp");
+    await s.put(BUCKETS.public, `${b.id}/junk.txt`, Buffer.from("x"), "image/webp");
+    clock = T0;
+    const orphan = prefixOf(b.id); await variants(s, BUCKETS.public, orphan);
+    const remove = s.remove.bind(s);
+    vi.spyOn(s, "remove").mockImplementation(async (bucket, paths) => {
+      if (bucket === BUCKETS.incoming || paths.some((p) => p.endsWith("junk.txt"))) throw new Error("storage down");
+      return remove(bucket, paths);
+    });
+    const r = await job(s, tx);
+    expect(has(s, BUCKETS.public, `${b.id}/junk.txt`)).toBe(true);
+    expect(hasNone(s, BUCKETS.public, orphan)).toBe(true);
+    expect(r).toMatchObject({ incoming: 0, orphans: 3, failed: 2, done: true });
+    expect(error).toHaveBeenCalledTimes(2);
+  }));
+
+  it("a bucket whose listing fails is skipped for this run; the other buckets and rules still run", async () => withTx(async (tx) => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const s = store(); const host = await makeUser(tx, { role: "host" });
+    const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+    const pub = prefixOf(b.id); await variants(s, BUCKETS.public, pub);
+    const arc = prefixOf(b.id); await variants(s, BUCKETS.archive, arc);
+    const list = s.list.bind(s);
+    vi.spyOn(s, "list").mockImplementation(async (bucket, prefix) => {
+      if (bucket === BUCKETS.public && prefix === "") throw new Error("storage down");
+      return list(bucket, prefix);
+    });
+    const r = await job(s, tx);
+    expect(hasAll(s, BUCKETS.public, pub)).toBe(true);
+    expect(hasNone(s, BUCKETS.archive, arc)).toBe(true);
+    expect(r).toMatchObject({ orphans: 3, failed: 1, done: true });
+    expect(error).toHaveBeenCalledTimes(1);
   }));
 
   it("drops archived photos after 180 days, keeps them before, and keeps them while the break is under hold", async () => withTx(async (tx) => {
@@ -275,7 +340,7 @@ describe("runPhotoCleanup (photos spec §5.6)", () => {
     await job(s, tx);
     const [row] = await tx.select({ path: breakPhotos.path }).from(breakPhotos).where(eq(breakPhotos.id, due.photoId));
     expect(row.path).toBeNull();
-    expect(await job(s, tx)).toEqual({ incoming: 0, tickets: 0, orphans: 0, archive: 0, cancelled: 0, done: true });
+    expect(await job(s, tx)).toEqual({ incoming: 0, tickets: 0, orphans: 0, archive: 0, cancelled: 0, failed: 0, done: true });
   }));
 
   it("returns locked while another run holds the lock, and touches nothing", async () => {

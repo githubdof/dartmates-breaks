@@ -5,7 +5,7 @@ import { GET } from "./route";
 
 const sentinel = vi.hoisted(() => ({ storage: "sentinel" }));
 vi.mock("@/jobs/photo-cleanup", () => ({
-  runPhotoCleanup: vi.fn(async () => ({ incoming: 1, tickets: 0, orphans: 3, archive: 0, cancelled: 0, done: true })),
+  runPhotoCleanup: vi.fn(async () => ({ incoming: 1, tickets: 0, orphans: 3, archive: 0, cancelled: 0, failed: 0, done: true })),
 }));
 vi.mock("@/storage/photo-storage", () => ({ photoStorage: () => sentinel }));
 
@@ -26,7 +26,7 @@ describe("GET /api/photos/cleanup", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const r = await GET(req(`Bearer ${secret}`));
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ incoming: 1, tickets: 0, orphans: 3, archive: 0, cancelled: 0, done: true });
+    expect(await r.json()).toEqual({ incoming: 1, tickets: 0, orphans: 3, archive: 0, cancelled: 0, failed: 0, done: true });
     expect(runPhotoCleanup).toHaveBeenCalledTimes(1);
     expect(runPhotoCleanup).toHaveBeenCalledWith(sentinel, expect.any(Date));
     expect(JSON.parse(log.mock.calls[0][0] as string)).toMatchObject({ job: "photo-cleanup", ms: expect.any(Number), result: { orphans: 3 } });
@@ -37,6 +37,14 @@ describe("GET /api/photos/cleanup", () => {
     const r = await GET(req(`Bearer ${secret}`));
     expect(r.status).toBe(200);
     expect(await r.json()).toBe("locked");
+  });
+  it("answers 500 with the counts when a Storage step failed, so the cron shows red", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const counts = { incoming: 0, tickets: 0, orphans: 2, archive: 3, cancelled: 0, failed: 1, done: true };
+    vi.mocked(runPhotoCleanup).mockResolvedValueOnce(counts);
+    const r = await GET(req(`Bearer ${secret}`));
+    expect(r.status).toBe(500);
+    expect(await r.json()).toEqual(counts);
   });
   it("is scheduled daily beside the minute tick, and vercel.json keeps every other key (ruling 39)", () => {
     const v = JSON.parse(readFileSync("vercel.json", "utf8"));

@@ -14,5 +14,6 @@ export async function GET(req: Request) {
   const started = Date.now();
   const result = await runPhotoCleanup(photoStorage(), new Date());
   console.log(JSON.stringify({ job: "photo-cleanup", ms: Date.now() - started, result }));
-  return NextResponse.json(result);
+  // A Storage step that failed was skipped and is retried tomorrow; 500 makes the cron show red meanwhile.
+  return NextResponse.json(result, { status: result !== "locked" && result.failed > 0 ? 500 : 200 });
 }

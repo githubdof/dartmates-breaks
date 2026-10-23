@@ -19,6 +19,13 @@ require.cache[require.resolve("server-only")] = { exports: {} } as NodeJS.Module
 
 // No top-level await: package.json has no "type": "module", so tsx emits CJS (as src/db/migrate.ts notes).
 async function main(): Promise<number> {
+  // Checked before the app modules load: src/db/client.ts would otherwise fail on it with a long environment error.
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    console.error(`DATABASE_URL is not set: put it in ${process.env.ENV_FILE ?? ".env.local"} or the environment.`);
+    console.error(USAGE);
+    return 2;
+  }
   const { hidePhotoAndFiles, parseHideArgs } = await import("../src/photos/hide");
   const args = parseHideArgs(process.argv.slice(2));
   if ("error" in args) {
@@ -27,7 +34,7 @@ async function main(): Promise<number> {
     return 2;
   }
   const { photoStorage } = await import("../src/storage/photo-storage");
-  const client = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false });
+  const client = postgres(url, { max: 1, prepare: false });
   try {
     const db = drizzle(client, { schema });
     const run: TxRunner = (fn) => db.transaction(fn);

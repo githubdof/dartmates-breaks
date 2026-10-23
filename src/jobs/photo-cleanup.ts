@@ -21,8 +21,9 @@ type PhotoBucket = (typeof PHOTO_BUCKETS)[number];
 // relies on (ruling 25); only `incoming` uploads and junk names, which no row can name, skip it.
 
 export type CleanupRule = "incoming" | "orphans" | "archive" | "cancelled";
-/** Files removed per rule, upload grants deleted; `done` is false when the time budget ran out. */
-export type PhotoCleanupResult = { incoming: number; tickets: number; orphans: number; archive: number; cancelled: number; done: boolean };
+/** Files removed per rule, upload grants deleted, Storage steps that failed (logged, retried next run); `done` is
+ *  false when the time budget ran out. */
+export type PhotoCleanupResult = { incoming: number; tickets: number; orphans: number; archive: number; cancelled: number; failed: number; done: boolean };
 export type PhotoCleanupDeps = {
   run?: TxRunner;
   holds?: (tx: Tx) => Promise<ReadonlySet<string>>;
@@ -116,25 +117,38 @@ type Ctx = {
   afterRead: (rule: CleanupRule) => Promise<void>; checkTime: () => void; result: PhotoCleanupResult;
 };
 
-/** One prefix's removal: a Storage failure is logged and left for the next run, so it never blocks the others. */
-async function removeSafely(c: Ctx, bucket: PhotoBucket, prefix: string, widths?: readonly VariantWidth[]): Promise<number> {
+/**
+ * One Storage step (a listing, a removal, one prefix's deleteIfSafe). A failure is logged, counted in `failed` and left
+ * for the next run, so one stuck object never stops the other rules; null tells the caller to skip what depended on it.
+ */
+async function storageStep<T>(c: Ctx, where: Record<string, unknown>, step: () => Promise<T>): Promise<T | null> {
   try {
-    return await deleteIfSafe(c.storage, c.run, bucket, prefix, widths);
+    return await step();
   } catch (e) {
-    console.error(JSON.stringify({ job: "photo-cleanup", prefix, bucket, error: e instanceof Error ? e.message : String(e) }));
-    return 0;
+    c.result.failed += 1;
+    console.error(JSON.stringify({ job: "photo-cleanup", ...where, error: e instanceof Error ? e.message : String(e) }));
+    return null;
   }
+}
+
+/** One prefix's removal through the gate; a failure counts and removes nothing. */
+async function removeSafely(c: Ctx, bucket: PhotoBucket, prefix: string, widths?: readonly VariantWidth[]): Promise<number> {
+  return (await storageStep(c, { bucket, prefix }, () => deleteIfSafe(c.storage, c.run, bucket, prefix, widths))) ?? 0;
 }
 
 /** Rule 1: `incoming` objects older than 24 hours, and upload grants never used that lapsed over 24 hours ago. */
 async function incoming(c: Ctx): Promise<void> {
   const cutoff = c.now.getTime() - LEFTOVER_MS;
-  const old = (await c.storage.list(BUCKETS.incoming, "")).filter((o) => o.createdAt.getTime() < cutoff).map((o) => o.name);
+  const listed = await storageStep(c, { bucket: BUCKETS.incoming, step: "list" }, () => c.storage.list(BUCKETS.incoming, ""));
+  const old = (listed ?? []).filter((o) => o.createdAt.getTime() < cutoff).map((o) => o.name);
   for (const batch of chunks(old, c.batchSize)) {
     c.checkTime();
     await c.afterRead("incoming");
-    await c.storage.remove(BUCKETS.incoming, batch);
-    c.result.incoming += batch.length;
+    const removed = await storageStep(c, { bucket: BUCKETS.incoming, paths: batch.length }, async () => {
+      await c.storage.remove(BUCKETS.incoming, batch);
+      return true;
+    });
+    if (removed) c.result.incoming += batch.length;
   }
   const lapsed = sql`${photoUploads.consumedAt} is null and ${photoUploads.expiresAt} < ${new Date(cutoff).toISOString()}::timestamptz`;
   for (;;) {
@@ -161,7 +175,9 @@ async function orphans(c: Ctx): Promise<void> {
     // Old objects by prefix (the widths found), and junk: names that are no photo's variant.
     const groups = new Map<string, VariantWidth[]>();
     const junk: string[] = [];
-    for (const o of await c.storage.list(bucket, "")) {
+    const listed = await storageStep(c, { bucket, step: "list" }, () => c.storage.list(bucket, ""));
+    if (listed === null) continue; // this bucket waits for the next run; the others and rules 3 and 4 go on
+    for (const o of listed) {
       if (o.createdAt.getTime() >= cutoff) continue;
       const m = VARIANT_NAME.exec(o.name);
       if (m && PREFIX_PATTERN.test(m[1]) && isUuid(breakIdOf(m[1]))) groups.set(m[1], [...(groups.get(m[1]) ?? []), Number(m[2]) as VariantWidth]);
@@ -186,8 +202,12 @@ async function orphans(c: Ctx): Promise<void> {
       for (const u of batch) {
         if (u.prefix === null) {
           // No row can name a file that is not a variant: nothing relies on it.
-          await c.storage.remove(bucket, [u.name]);
-          c.result.orphans += 1;
+          const name = u.name;
+          const removed = await storageStep(c, { bucket, path: name }, async () => {
+            await c.storage.remove(bucket, [name]);
+            return true;
+          });
+          if (removed) c.result.orphans += 1;
         } else if (!keeps(u.prefix)) {
           c.result.orphans += await removeSafely(c, bucket, u.prefix, u.widths);
         }
@@ -232,7 +252,7 @@ async function cancelled(c: Ctx): Promise<void> {
     const ids = await c.run(async (tx) => {
       const held = arrayLiteral([...(await c.holds(tx))].filter(isUuid));
       const rows = await tx.execute<{ id: string }>(sql`select b.id from breaks b
-        where b.status = 'cancelled' and b.id <> all(${held}::uuid[])
+        where b.status = 'cancelled' and b.deleted_at is null and b.id <> all(${held}::uuid[])
           and (select max(e.created_at) from events e where e.break_id = b.id and e.type = 'break.cancelled') < ${cutoff}::timestamptz
           and exists (select 1 from break_photos p where p.break_id = b.id and p.path is not null)
         order by b.id limit ${c.batchSize}`);
@@ -265,7 +285,7 @@ export async function runPhotoCleanup(storage: PhotoStorage, now: Date, deps: Ph
   const budgetMs = deps.budgetMs ?? 240_000;
   return withHeldJobLock("photo-cleanup", async () => {
     const started = Date.now();
-    const result: PhotoCleanupResult = { incoming: 0, tickets: 0, orphans: 0, archive: 0, cancelled: 0, done: true };
+    const result: PhotoCleanupResult = { incoming: 0, tickets: 0, orphans: 0, archive: 0, cancelled: 0, failed: 0, done: true };
     const c: Ctx = {
       storage, now, result,
       run: deps.run ?? inTransaction,
