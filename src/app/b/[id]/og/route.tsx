@@ -3,7 +3,7 @@ import { db } from "@/db/client";
 import { getBreakPage } from "@/domain/breaks/queries";
 import { drawPlacesForPreview } from "@/domain/draws/queries";
 import { placesOf } from "@/domain/draws/places";
-import { ogModel, type OgDraw, type OgPage } from "@/domain/breaks/og";
+import { ogModel, type OgDraw, type OgModel, type OgPage } from "@/domain/breaks/og";
 import { leadPhotos } from "@/domain/photos/queries";
 import { isUuid } from "@/lib/is-uuid";
 import { ogFonts } from "./fonts";
@@ -49,11 +49,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const photo = m.photo ? await leadPhotoDataUri(id, m.photo.prefix) : null;
   // Drawn here, not while streaming: ImageResponse renders inside its body stream, after a 200 is already sent, so a
   // missing font or a renderer error would reach the crawler as a broken image. Either answers 404, as above.
+  // A plate the renderer cannot draw is no photo: one more try without it, so the photo never fails the preview.
+  return (await render(m, photo)) ?? (photo ? await render(m, null) : null) ?? notFound();
+}
+
+/** The PNG, fully rendered (arrayBuffer) so a renderer error is caught here, not mid-stream; null on any error. */
+async function render(m: OgModel, photo: string | null): Promise<Response | null> {
   try {
     const image = new ImageResponse(ogImage(m, photo), { ...OG_SIZE, fonts: ogFonts(), headers: { "Cache-Control": "public, max-age=300, s-maxage=300" } });
     const png = await image.arrayBuffer();
     return new Response(png, { status: 200, headers: image.headers });
   } catch {
-    return notFound();
+    return null;
   }
 }

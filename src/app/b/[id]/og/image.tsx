@@ -8,7 +8,7 @@ const PAD = 64;
 /** The lead photo plate's image side (photos spec §8.4): 200 px beside the board, 120 px on a ran break. */
 export const OG_PLATE_PX = 200;
 export const OG_PLATE_RAN_PX = 120;
-/** The paper plate ×2 (photos spec §8.0), as the frame is: a 6 px wall-2 mat inside a 2 px steel keyline. */
+/** The board plate ×2 (photos spec §8.0), as the frame is: a 6 px wall-2 mat inside a 2 px steel keyline. */
 const PLATE_MAT = 6;
 const PLATE_KEYLINE = 2;
 

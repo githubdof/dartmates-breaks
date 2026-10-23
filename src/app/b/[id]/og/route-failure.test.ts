@@ -30,7 +30,25 @@ const fontList = () => {
   return [{ name: "Barlow", data: Buffer.from("not a font"), weight: 500, style: "normal" }];
 };
 vi.mock("./fonts", () => ({ ogFonts: fontList, get OG_FONTS() { return fontList(); } }));
-afterEach(() => { fonts = "ok"; prefixOverride = null; vi.unstubAllGlobals(); });
+// The plate step's failures: a data URI the real leadPhotoDataUri would never hand over, or an ogImage that throws
+// only when it is given a photo. Off (null / false) by default, so the real modules run.
+let photoOverride: string | null = null;
+let imageThrowsWithPhoto = false;
+vi.mock("./photo", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./photo")>();
+  return { ...real, leadPhotoDataUri: (...a: Parameters<typeof real.leadPhotoDataUri>) => photoOverride ?? real.leadPhotoDataUri(...a) };
+});
+vi.mock("./image", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./image")>();
+  return {
+    ...real,
+    ogImage: (m: OgModel, photo: string | null = null) => {
+      if (imageThrowsWithPhoto && photo !== null) throw new Error("plate cannot be drawn");
+      return real.ogImage(m, photo);
+    },
+  };
+});
+afterEach(() => { fonts = "ok"; prefixOverride = null; photoOverride = null; imageThrowsWithPhoto = false; vi.unstubAllGlobals(); });
 
 const { GET } = await import("./route");
 const get = (id: string) => GET(new Request(`http://localhost/b/${id}/og`), { params: Promise.resolve({ id }) });
@@ -97,5 +115,23 @@ describe("GET /b/{id}/og when the lead photo cannot be had (photos spec §8.4)",
     const f = vi.fn(); vi.stubGlobal("fetch", f);
     expect(await png(await get(ID))).toBe(false);
     expect(f).not.toHaveBeenCalled();
+  }, 30_000);
+
+  // Satori renders inside ImageResponse's body stream: a bad image only throws when the bytes are read (arrayBuffer).
+  it("answers the PNG without the photo when the renderer cannot decode the plate (one retry with no plate)", async () => {
+    photoOverride = "data:image/png;base64,AAAA";
+    expect(await png(await get(ID))).toBe(false);
+  }, 30_000);
+  it("answers the PNG without the photo when drawing the plate throws", async () => {
+    imageThrowsWithPhoto = true;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(webp, { headers: { "content-type": "image/webp" } })));
+    expect(await png(await get(ID))).toBe(false);
+  }, 30_000);
+  it("still answers 404 when the retry without the plate fails too", async () => {
+    photoOverride = "data:image/png;base64,AAAA";
+    fonts = "garbage";
+    const r = await get(ID);
+    expect(r.status).toBe(404);
+    expect(r.headers.get("content-type")).not.toBe("image/png");
   }, 30_000);
 });

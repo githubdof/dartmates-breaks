@@ -88,7 +88,7 @@ describe("the PNG fallback (rulings 15 and 31): tested whichever OG_PHOTO_FORMAT
     const corrupt = Buffer.concat([webp.subarray(0, 64), Buffer.alloc(64)]);
     expect(await leadPhotoDataUri(B, P, { fetcher: async () => new Response(corrupt, { headers: { "content-type": "image/webp" } }), format: "png" })).toBeNull();
   });
-  it("with format webp, never loads the transcode (the data URI is the fetched bytes)", async () => {
+  it("with format webp, hands over the fetched bytes untouched as a WebP data URI (no transcode)", async () => {
     const f = vi.fn(async () => ok());
     expect(await leadPhotoDataUri(B, P, { fetcher: f, format: "webp" })).toBe(`data:image/webp;base64,${webp.toString("base64")}`);
   });
