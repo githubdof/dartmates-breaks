@@ -95,6 +95,38 @@ test("two quick ArrowRight presses land on photo 3 and the announcement never st
   expect(seen).toEqual([...seen].sort((a, b) => a - b));
 });
 
+test("Next, then a swipe back before the strip lands: the caption follows the photo on screen (I1)", async ({ browser }) => {
+  const page = await (await browser.newContext({ reducedMotion: "no-preference" })).newPage();
+  await gotoReady(page, viewer3);
+  await open(page, 3);
+  const strip = page.getByTestId("viewer-strip");
+  // Press Next, wait until the smooth scroll has left slide 1 but not reached slide 2, then move the strip back by
+  // hand, as a swipe would. All in the page, so nothing lands in between.
+  const midFlight = await strip.evaluate(async (el) => {
+    (document.querySelector("[data-testid=viewer-next]") as HTMLElement).click();
+    const started = await new Promise<boolean>((res) => {
+      const t0 = performance.now();
+      const tick = () => {
+        if (el.scrollLeft > 0) res(el.scrollLeft < el.clientWidth - 1);
+        else if (performance.now() - t0 > 2000) res(false);
+        else requestAnimationFrame(tick);
+      };
+      tick();
+    });
+    el.scrollTo({ left: 0, behavior: "instant" });
+    return started;
+  });
+  expect(midFlight).toBe(true);
+  await expect.poll(() => strip.evaluate((e) => e.scrollLeft)).toBe(0);
+  await expect(page.getByTestId("viewer-announce")).toHaveText("Photo 1 of 3");
+  await expect(page.getByTestId("photo-viewer").getByText("Photo 1 of 3.")).toBeVisible();
+  await expect(page.getByTestId("viewer-prev")).toHaveCount(0);
+  // The next press steps from the photo on screen.
+  await page.getByTestId("viewer-next").click();
+  await expect(page.getByTestId("viewer-announce")).toHaveText("Photo 2 of 3");
+  await expect.poll(() => strip.evaluate((e) => Math.abs(e.scrollLeft - e.clientWidth) < 2)).toBe(true);
+});
+
 test("one photo: no Previous or Next; Close and Escape both close", async ({ page }) => {
   await gotoReady(page, viewer1);
   const plate = page.getByRole("button", { name: "1 photo of the prizes" });

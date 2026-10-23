@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { neighbours, positionText, viewerCaption, type ViewerPhoto } from "./viewer-model";
+import { landedSlide, neighbours, positionText, viewerCaption, type ViewerPhoto } from "./viewer-model";
 
 type Props = { photos: ViewerPhoto[]; index: number; onIndex(i: number): void; onClose(): void; opener: HTMLElement | null };
 
@@ -37,6 +37,15 @@ export function PhotoViewer({ photos, index, onIndex, onClose, opener }: Props) 
   // Scroll the strip to `index` (instantly on open) whenever the index changed by anything but a swipe.
   const flight = useRef<number | null>(null);
   const flightTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // A scroll came to rest: the flight is over whatever ended it (a swipe can interrupt it, a no-op scroll never
+  // moves), and the slide actually on screen is the index.
+  const settle = useRef(() => {
+    flight.current = null;
+    clearTimeout(flightTimer.current);
+    const el = strip.current;
+    const i = el ? landedSlide(el.scrollLeft, el.clientWidth, el.children.length) : null;
+    if (i !== null && i !== current.current) { current.current = i; report.current(i); }
+  });
   const scrollTo = (i: number, first: boolean) => {
     const el = strip.current;
     // "auto" follows the CSS: smooth only where motion is allowed.
@@ -45,7 +54,7 @@ export function PhotoViewer({ photos, index, onIndex, onClose, opener }: Props) 
       // The observer must not report the slides the scroll passes on its way; see the observer below.
       flight.current = i;
       clearTimeout(flightTimer.current);
-      flightTimer.current = setTimeout(() => { flight.current = null; }, 1200); // scrollend is not everywhere
+      flightTimer.current = setTimeout(() => settle.current(), 1200); // scrollend is not everywhere
     }
     el.scrollTo({ left: i * el.clientWidth, behavior: first ? "instant" : "auto" });
   };
@@ -71,7 +80,7 @@ export function PhotoViewer({ photos, index, onIndex, onClose, opener }: Props) 
       }
     }, { root: el, threshold: 0.6 });
     el.querySelectorAll("[data-slide]").forEach((s) => io.observe(s));
-    const landed = () => { flight.current = null; };
+    const landed = () => settle.current();
     el.addEventListener("scrollend", landed);
     return () => { io.disconnect(); el.removeEventListener("scrollend", landed); clearTimeout(flightTimer.current); };
   }, [count]);
