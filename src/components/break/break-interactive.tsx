@@ -21,6 +21,7 @@ import { clampStep } from "@/components/stepper-math";
 import { canRefresh, NETWORK_NOTE, OFFLINE_NOTE } from "@/lib/network-note";
 import { ClaimBar } from "./claim-bar";
 import { LineList } from "./line-list";
+import type { PhotoSrc } from "@/photos/urls";
 import { PaySheet } from "./pay-sheet";
 import { nextPendingOwe, owedAfterClaim } from "./pay-copy";
 import { barCheckout, barShown, claimBar, failureNote, limitText, sentNote } from "./claim-bar-state";
@@ -44,6 +45,8 @@ export type BreakInteractiveProps = {
   underBoard?: React.ReactNode;
   /** The legend's flight: the viewer's own (recorded ruling 20). The island draws the legend, so it follows the held board. */
   legendFlight: Flight | null;
+  /** The break's lead photo for the pay sheet's header; null when it has none. */
+  lead: PhotoSrc | null;
   /** "Pay within 24 hours." while open, for the pay sheet's pay block (Mosaic §8); null once the break is not open. */
   payWithin: string | null;
   cells: GridCell[];
@@ -498,6 +501,8 @@ export function BreakInteractive(p: BreakInteractiveProps) {
         handles={p.handles}
         instructions={p.instructions}
         hostName={p.hostName}
+        breakTitle={p.title}
+        photo={p.lead}
         commitment={p.commitment}
         retryMax={retryMax}
         onRetry={onRetry}

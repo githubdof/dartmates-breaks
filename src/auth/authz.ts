@@ -6,10 +6,13 @@ import type { Caller } from "@/domain/types";
 
 export type BreakRow = typeof breaks.$inferSelect;
 
-/** Row-locks the break. Every command that mutates a break or its lines calls this first. */
+/**
+ * Row-locks the break. Every command that mutates a break or its lines calls this first. A deleted draft (a tombstone
+ * kept for its events, photos spec §9) is not found, so every command refuses it.
+ */
 export async function lockBreak(tx: Tx, breakId: string): Promise<BreakRow> {
   const rows = await tx.select().from(breaks).where(sql`${breaks.id} = ${breakId}`).for("update");
-  if (rows.length === 0) throw new NotFound("Break not found");
+  if (rows.length === 0 || rows[0].deletedAt !== null) throw new NotFound("Break not found");
   return rows[0];
 }
 

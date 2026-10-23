@@ -36,4 +36,15 @@ describe("appendEvent", () => {
       expect(await appendEvent(tx, { breakId: b.id, type: "x", batchId }, { ignoreDuplicateBatch: true })).toBeNull();
     });
   });
+
+  it("sets processed_at at insert for an audit-only event", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const b = await makeBreak(tx, { hostId: host.id });
+      const at = new Date("2026-10-21T10:50:00Z");
+      const id = await appendEvent(tx, { breakId: b.id, actorId: host.id, type: "photo.added" }, { processedAt: at });
+      const [row] = await tx.select().from(events).where(sql`${events.id} = ${id}`);
+      expect(row.processedAt).toEqual(at);
+    });
+  });
 });

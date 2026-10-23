@@ -2,7 +2,6 @@ import { CopyField } from "@/components/copy-field";
 
 type Props = {
   description: string;
-  prizes: string[];
   perPerson: string;
   picking: string;
   closes: string;
@@ -12,13 +11,12 @@ type Props = {
 };
 
 /** Everything below the fold (design §5.4). Payment handles are public here, as the design specifies. */
-export function DetailsFold({ description, prizes, perPerson, picking, closes, handles, instructions, hostName }: Props) {
+export function DetailsFold({ description, perPerson, picking, closes, handles, instructions, hostName }: Props) {
   return (
     <details className="mt-6 rounded-card border border-wire bg-card">
       <summary className="flex min-h-11 cursor-pointer items-center px-4 font-semibold">Details</summary>
       <div className="space-y-4 px-4 pb-4">
         {description && <p className="max-w-[65ch] whitespace-pre-line">{description}</p>}
-        {prizes.length > 0 && <ul className="space-y-1">{prizes.map((p) => <li key={p}>{p}</li>)}</ul>}
         <ul className="space-y-1 text-small text-ink-2">
           <li>{perPerson}</li>
           <li>{picking}</li>

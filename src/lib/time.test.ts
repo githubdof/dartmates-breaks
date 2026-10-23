@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_TZ, daysSince, formatClock, formatDateTime, formatDeadline, formatLate, formatMonthYear, isTimeZone, resolveZone, zoneLabel } from "./time";
+import { DEFAULT_TZ, daysSince, formatClock, formatDateTime, formatDeadline, formatLate, formatMonthYear, formatShortDate, isTimeZone, resolveZone, zoneLabel } from "./time";
 
 const now = new Date("2026-10-13T16:00:00Z"); // Tuesday: 12:00 pm in New York (EDT), 5:00 pm in London (BST)
 
@@ -86,5 +86,12 @@ describe("relative times and dates", () => {
     expect(daysSince(new Date(now.getTime() - 3.5 * 86_400_000), now)).toBe(3);
     expect(formatMonthYear(new Date("2026-10-01T12:00:00Z"))).toBe("Oct 2026");
     expect(formatMonthYear(new Date("2026-10-01T12:00:00Z"), "Europe/London")).toBe("Oct 2026");
+  });
+});
+
+describe("formatShortDate", () => {
+  it("gives the month and day in the viewer's zone", () => {
+    expect(formatShortDate(new Date("2026-10-21T15:05:00Z"), "America/New_York")).toBe("Oct 21");
+    expect(formatShortDate(new Date("2026-10-22T02:00:00Z"), "America/New_York")).toBe("Oct 21");
   });
 });

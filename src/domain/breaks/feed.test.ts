@@ -221,3 +221,18 @@ describe("the landing hero in the host's kit (Mosaic §6, §8, §10; Review Focu
     });
   });
 });
+
+describe("deleted drafts (ruling 12)", () => {
+  // Regression pin (ruling 41): the feed lists open breaks only and a deleted break stays a draft (Task 2's guard).
+  it("regression pin: listFeed, its host filter and feedHosts never show a deleted draft", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host", handle: "feeddel" });
+      const d = await makeBreak(tx, { hostId: host.id, status: "draft" });
+      await tx.execute(sql`update breaks set deleted_at = now() where id = ${d.id}`);
+      const now = new Date();
+      expect((await listFeed(tx, { sort: "newest", now })).map((b) => b.id)).not.toContain(d.id);
+      expect(await listFeed(tx, { sort: "newest", hostHandle: "feeddel", now })).toEqual([]);
+      expect((await feedHosts(tx)).map((h) => h.handle)).not.toContain("feeddel");
+    });
+  });
+});

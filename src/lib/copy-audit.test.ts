@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { noticeFor } from "@/domain/photos/notice";
+import { CONDITION_LABEL } from "@/domain/photos/types";
+import { defaultAlt } from "@/components/photos/strip-state";
 
 // src/auth throws messages the login and onboarding screens show, so it is buyer copy too.
 const ROOTS = ["src/app", "src/components", "src/lib", "src/domain", "src/auth"];
@@ -45,7 +48,7 @@ const segments = sources.flatMap(segmentsOf);
 // UI copy: components and pages, plus the domain errors that reach the UI as messages.
 const uiSegments = segments.filter((g) => /^src\/(components|app)\//.test(g.path) || g.path === "src/domain/errors.ts");
 // What a viewer reads: .tsx copy, plus the modules that build sentences for it.
-const COPY_MODULE = /(-copy|share-text|claim-bar-state|reveal-plan|board-moments|selection|status-word|network-note|messages|account\/actions)\.ts$|\/breaks\/og\.ts$/;
+const COPY_MODULE = /(-copy|share-text|claim-bar-state|reveal-plan|board-moments|selection|status-word|network-note|messages|account\/actions|domain\/photos\/(types|notice)|components\/photos\/(shrink|strip-state)|app\/photos\/actions|api\/photos\/finalise\/route)\.ts$|\/breaks\/og\.ts$/;
 const shown = segments.filter((g) => g.path.endsWith(".tsx") || COPY_MODULE.test(g.path));
 // The count and state-word rules read UI copy and the copy modules, so share text (pasted into Facebook) counts too.
 const countCopy = [...uiSegments, ...segments.filter((g) => COPY_MODULE.test(g.path) && !uiSegments.includes(g))];
@@ -59,6 +62,9 @@ const ALLOW: { path: RegExp; text: RegExp; why: string }[] = [
   { path: /^src\/lib\/share-text\.ts$/, text: /^CLOSED\b/, why: "the community idiom quoted in share text, the one caps exception (Plan B Global Constraints)" },
   { path: /^src\/components\/handle-field(-copy)?\.tsx?$/, text: /^NFKC$/, why: "a Unicode normalisation form passed to String.normalize, not copy" },
   { path: /^src\/(app\/landing-copy|domain\/breaks\/og)\.ts$/, text: /^en-US$/, why: "an Intl locale tag passed to a date formatter, not copy" },
+  { path: /^src\/components\/photos\/strip-state\.ts$/, text: /^This photo can't be read here\. Pick a JPEG or PNG\.$/, why: "image format names in the spec's own sentence (§5.1), spelled as the formats are" },
+  { path: /^src\/app\/api\/photos\/finalise\/route\.ts$/, text: /^This photo (?:can't be used\. Pick a JPEG, PNG or WebP|is over 5 MB\. Pick a smaller one)\.$/, why: "format names and a size unit in the finalise route's two error sentences (not spec text), spelled as the formats and unit are" },
+  { path: /^src\/app\/photos\/actions\.ts$/, text: /^INTERNAL$/, why: "an action failure code that sits beside the message, not copy" },
   { path: /^src\/app\/legal\/draw\/page\.tsx$/, text: /\b(SHA-256|HMAC)\b/, why: "algorithm names on the draw explainer, spelled as their standards spell them" },
 ];
 const allowed = (g: Seg) => ALLOW.some((a) => a.path.test(g.path) && a.text.test(g.text));
@@ -171,7 +177,7 @@ describe("copy audit, Mosaic (spec §3, Plan C Global Constraints)", () => {
   it("keeps every copy module in COPY_MODULE (a new *copy*.ts fails here until it is listed)", () => {
     const unlisted = sources.map((s) => s.path).filter((p) => /copy[^/]*\.ts$/.test(p) && !COPY_MODULE.test(p));
     expect(unlisted).toEqual([]);
-    for (const known of ["src/lib/share-text.ts", "src/components/break/claim-bar-state.ts", "src/app/b/[id]/result/reveal-plan.ts", "src/components/grid/board-moments.ts", "src/components/break/selection.ts", "src/domain/breaks/og.ts", "src/lib/network-note.ts", "src/app/account/actions.ts", "src/app/(auth)/login/messages.ts"]) {
+    for (const known of ["src/lib/share-text.ts", "src/components/break/claim-bar-state.ts", "src/app/b/[id]/result/reveal-plan.ts", "src/components/grid/board-moments.ts", "src/components/break/selection.ts", "src/domain/breaks/og.ts", "src/lib/network-note.ts", "src/app/account/actions.ts", "src/app/(auth)/login/messages.ts", "src/domain/photos/types.ts", "src/domain/photos/notice.ts", "src/components/photos/shrink.ts", "src/components/photos/strip-state.ts", "src/app/photos/actions.ts", "src/app/api/photos/finalise/route.ts"]) {
       expect(sources.some((s) => s.path === known), `${known} exists`).toBe(true);
       expect(COPY_MODULE.test(known), `${known} listed`).toBe(true);
     }
@@ -249,5 +255,47 @@ describe("copy audit, Mosaic (spec §3, Plan C Global Constraints)", () => {
     expect(segments.some((g) => /heatStep/.test(g.text))).toBe(false);
     expect(segments.some((g) => g.path === "src/app/host/new/parse.ts" && /^Hours to pay/.test(g.text))).toBe(true);
     expect(segments.some((g) => g.kind === "jsx" && /We'll send you/.test(g.text))).toBe(true);
+  });
+});
+
+const PHOTO_PATH = /(^|\/)photos?(\/|-)|photo[^/]*\.tsx?$/;
+const RE_PHOTO = { verified: /\b(verified|authentic(?:ated)?|genuine|certified|guaranteed|proof|checked by)\b/i };
+const photoSegs = segments.filter((g) => PHOTO_PATH.test(g.path));
+
+describe("copy audit, photos (spec §10, §11)", () => {
+  it("reads the photo modules at all (a guard against a path that silently matches nothing)", () => {
+    expect(photoSegs.some((g) => g.text === "Photo removed")).toBe(true);
+    expect(photoSegs.some((g) => /can't be read here/.test(g.text))).toBe(true);
+  });
+  it("never implies the platform checked a photo", () => expect(copyHits(RE_PHOTO.verified, photoSegs)).toEqual([]));
+  it("catches that claim and lets the near-misses through", () => {
+    for (const t of ["Verified photo", "Photo checked by Breaks", "An authentic item", "Proof of the item", "Guaranteed real"]) expect(RE_PHOTO.verified.test(t), t).toBe(true);
+    for (const t of ["Photos of the items.", "Rules and specs go in the description.", "Photo removed"]) expect(RE_PHOTO.verified.test(t), t).toBe(false);
+  });
+  it("keeps every notice sentence inside every Mosaic and photo rule", () => {
+    const place = (s: string | null) => (s === null ? "" : s === "top" ? "Top spot" : s === "second" ? "2nd place" : "Phantom 24g");
+    const sentences = [
+      noticeFor([{ kind: "lead" }], place), noticeFor([{ kind: "removed", slot: null, wasLead: false }], place),
+      noticeFor([{ kind: "removed", slot: "top", wasLead: true }], place), noticeFor([{ kind: "removed", slot: "second", wasLead: false }], place),
+      noticeFor([{ kind: "removed", slot: "or", wasLead: false }], place),
+      noticeFor([{ kind: "retagged", from: "top", to: "second" }], place),
+      noticeFor([{ kind: "lead" }, { kind: "removed", slot: null, wasLead: false }], place),
+    ];
+    expect(sentences.every((s) => typeof s === "string" && s.length > 0)).toBe(true);
+    expect(new Set(sentences)).toEqual(new Set(["Lead photo replaced", "Photo removed", "Top-spot photo removed", "2nd-place photo removed", "Phantom 24g photo removed", "A photo moved from Top spot to 2nd place", "Photos changed"]));
+    for (const s of sentences as string[]) for (const [rule, re] of Object.entries(RE)) expect(re.test(s), `${rule}: "${s}"`).toBe(false);
+    for (const s of sentences as string[]) expect(RE_PHOTO.verified.test(s), s).toBe(false);
+  });
+  it("keeps the labels and the viewer's caption inside the rules", () => {
+    const texts = [...Object.values(CONDITION_LABEL), "Updated", "Removed Oct 21", "5 photos", "Updated, 5 photos of the prizes", "Top spot: Taylor Chronos 24g. Photo 2 of 5.", "Photos of the items. Rules and specs go in the description.", "Buyers in this break will still see this photo, marked Removed.", "Buyers see the lead photo first in the feed."];
+    for (const t of texts) { for (const [rule, re] of Object.entries(RE)) expect(re.test(t), `${rule}: "${t}"`).toBe(false); expect(RE_PHOTO.verified.test(t), t).toBe(false); }
+  });
+  it("gives every default alt text inside the rules, within 1 to 120 characters, even for a very long title", () => {
+    for (const a of [defaultAlt({ itemName: "Taylor Chronos 24g", title: "Chronos night" }), defaultAlt({ itemName: null, title: "Chronos night" }), defaultAlt({ itemName: null, title: "x".repeat(300) })]) {
+      expect(a.length).toBeGreaterThanOrEqual(1);
+      expect(a.length).toBeLessThanOrEqual(120);
+      for (const [rule, re] of Object.entries(RE)) expect(re.test(a), `${rule}: "${a}"`).toBe(false);
+      expect(RE_PHOTO.verified.test(a), a).toBe(false);
+    }
   });
 });

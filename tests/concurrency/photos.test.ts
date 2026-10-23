@@ -1,0 +1,215 @@
+import { describe, it, expect } from "vitest";
+import { randomUUID } from "node:crypto";
+import { sql } from "drizzle-orm";
+import { db, type Tx } from "@/db/client";
+import { makeUser, makeBreak, openBreakWithLines, makePhoto, makeTicket, newPrefix, assertInvariants } from "../helpers/fixtures";
+import { createMemoryStorage } from "../helpers/memory-storage";
+import { seedPhoto } from "../helpers/photos";
+import { breakPhotos, breaks, breakSecrets, photoUploads } from "@/db/schema";
+import { encryptSecret } from "@/crypto/secrets";
+import { claimLines, markPaid } from "@/domain/lines/commands";
+import { requestDraw } from "@/domain/draws/commands";
+import { openBreak } from "@/domain/breaks/commands";
+import { InvalidInput, NotFound, NotOpen, notOpenMessage, PhotosNotReady, UploadNotFound } from "@/domain/errors";
+import { SYSTEM, type Caller } from "@/domain/types";
+import { hidePhoto, issueUploadTicket, recordProcessedPhoto, removePhoto, reorderPhotos } from "@/domain/photos/commands";
+import { toFailure } from "@/lib/action-result";
+import { assertPhotosPublished, publishDraftPhotos, settleOpenCopies } from "@/photos/publish";
+import { VARIANT_WIDTHS, variantPath } from "@/storage/buckets";
+
+const c = (id: string, role: Caller["role"] = "member"): Caller => ({ id, role, onboarded: true, banned: false });
+const ROUNDS = 10;
+const livePositions = async (breakId: string) => (await db.select({ p: breakPhotos.position }).from(breakPhotos)
+  .where(sql`${breakPhotos.breakId} = ${breakId} and ${breakPhotos.removedAt} is null and ${breakPhotos.hiddenAt} is null`)
+  .orderBy(breakPhotos.position)).map((r) => r.p);
+const record = (hostId: string, breakId: string, ticketId: string) => (tx: Tx) => recordProcessedPhoto(tx, c(hostId, "host"),
+  { ticketId, prefix: newPrefix(breakId), width: 1600, height: 1200, slot: null, alt: "Darts", location: "photos", now: new Date() });
+/** Resolves once some backend waits on a row lock: the second transaction is queued behind the first. */
+async function blockedOnLock(): Promise<void> {
+  for (let i = 0; i < 300; i++) {
+    const [r] = await db.execute<{ n: number }>(sql`select count(*)::int as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`);
+    if (r.n > 0) return;
+    await new Promise((res) => setTimeout(res, 10));
+  }
+  throw new Error("the second transaction never waited on the break lock");
+}
+/** Runs `first` in a transaction that holds its locks until `release()`; `held` resolves once `first` returned. */
+function gated<T>(first: (tx: Tx) => Promise<T>) {
+  let release!: () => void; let held!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const ready = new Promise<void>((r) => (held = r));
+  const done = db.transaction(async (tx) => { const v = await first(tx); held(); await gate; return v; });
+  return { done, ready, release };
+}
+/** A committed, filled 2-line break and one ticket issued while filled. */
+async function filledWithTicket() {
+  return db.transaction(async (tx) => {
+    const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
+    const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 2 });
+    const { ciphertext, keyId } = encryptSecret(b.secret, b.id);
+    await tx.insert(breakSecrets).values({ breakId: b.id, ciphertext, keyId });
+    await claimLines(tx, c(a.id), { breakId: b.id, numbers: [1, 2], batchId: randomUUID() });
+    await markPaid(tx, c(host.id, "host"), { breakId: b.id, number: 1, expectedOwnerId: a.id });
+    await markPaid(tx, c(host.id, "host"), { breakId: b.id, number: 2, expectedOwnerId: a.id });
+    const { ticketId } = await issueUploadTicket(tx, c(host.id, "host"), { breakId: b.id, now: new Date() });
+    return { host, b, ticketId };
+  });
+}
+
+describe("photo races", () => {
+  it("two finalises racing for the 8th place: exactly one wins", async () => {
+    for (let round = 0; round < ROUNDS; round++) {
+      const { host, b, t1, t2 } = await db.transaction(async (tx) => {
+        const host = await makeUser(tx, { role: "host" });
+        const b = await openBreakWithLines(tx, { hostId: host.id });
+        for (let i = 0; i < 7; i++) await makePhoto(tx, { breakId: b.id, createdBy: host.id, position: i });
+        // Two valid tickets for one place: issuing would refuse the second; this is the lock's own guarantee under test.
+        const exp = new Date(Date.now() + 300_000);
+        return { host, b, t1: await makeTicket(tx, { hostId: host.id, breakId: b.id, expiresAt: exp }), t2: await makeTicket(tx, { hostId: host.id, breakId: b.id, expiresAt: exp }) };
+      });
+      const results = await Promise.allSettled([db.transaction(record(host.id, b.id, t1.id)), db.transaction(record(host.id, b.id, t2.id))]);
+      expect(results.filter((r) => r.status === "fulfilled"), `round ${round}`).toHaveLength(1);
+      const rejected = results.find((r): r is PromiseRejectedResult => r.status === "rejected")!;
+      expect(rejected.reason, `round ${round}`).toBeInstanceOf(InvalidInput); // the cap, not a unique-index violation
+      expect(rejected.reason.message).toBe("A break can have up to 8 photos.");
+      expect(await livePositions(b.id), `round ${round}`).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+      const consumed = await db.select().from(photoUploads).where(sql`${photoUploads.breakId} = ${b.id} and ${photoUploads.consumedAt} is not null`);
+      expect(consumed, `round ${round}`).toHaveLength(1);
+    }
+  });
+
+  it("a draw requested first: the finalise queued behind it is refused and adds nothing", async () => {
+    const { host, b, ticketId } = await filledWithTicket();
+    const draw = gated((tx) => requestDraw(tx, c(host.id, "host"), { breakId: b.id }));
+    await draw.ready;
+    const rec = db.transaction(record(host.id, b.id, ticketId));
+    await blockedOnLock();
+    draw.release();
+    await expect(draw.done).resolves.toBeTruthy();
+    await expect(rec).rejects.toBeInstanceOf(NotOpen);
+    await expect(db.transaction(record(host.id, b.id, ticketId))).rejects.toThrow(notOpenMessage("drawing"));
+    expect(await livePositions(b.id)).toEqual([]);
+  });
+
+  it("a finalise first: the draw waits for it, and the photo is there before drawing", async () => {
+    const { host, b, ticketId } = await filledWithTicket();
+    const rec = gated(record(host.id, b.id, ticketId));
+    await rec.ready;
+    const draw = db.transaction((tx) => requestDraw(tx, c(host.id, "host"), { breakId: b.id }));
+    await blockedOnLock();
+    rec.release();
+    await expect(rec.done).resolves.toMatchObject({ location: "photos" });
+    await expect(draw).resolves.toBeTruthy();
+    expect(await livePositions(b.id)).toEqual([0]);
+    const [row] = await db.select({ status: breaks.status }).from(breaks).where(sql`${breaks.id} = ${b.id}`);
+    expect(row.status).toBe("drawing");
+  });
+
+  it("finalise against requestDraw, unordered: the draw always lands; the photo lands or is refused as NotOpen", async () => {
+    for (let round = 0; round < ROUNDS; round++) {
+      const { host, b, ticketId } = await filledWithTicket();
+      const [rec, draw] = await Promise.allSettled([db.transaction(record(host.id, b.id, ticketId)), db.transaction((tx) => requestDraw(tx, c(host.id, "host"), { breakId: b.id }))]);
+      expect(draw.status, `round ${round}`).toBe("fulfilled");
+      if (rec.status === "rejected") expect(rec.reason, `round ${round}`).toBeInstanceOf(NotOpen);
+      expect(await livePositions(b.id), `round ${round}`).toEqual(rec.status === "fulfilled" ? [0] : []);
+    }
+    await db.transaction((tx) => assertInvariants(tx));
+  });
+
+  it("reorder racing remove: positions stay 0..n−1", async () => {
+    for (let round = 0; round < ROUNDS; round++) {
+      const { host, b, ids } = await db.transaction(async (tx) => {
+        const host = await makeUser(tx, { role: "host" });
+        const b = await openBreakWithLines(tx, { hostId: host.id });
+        const ids: string[] = [];
+        for (let i = 0; i < 4; i++) ids.push((await makePhoto(tx, { breakId: b.id, createdBy: host.id, position: i })).id);
+        return { host, b, ids };
+      });
+      const [reorder, remove] = await Promise.allSettled([
+        db.transaction((tx) => reorderPhotos(tx, c(host.id, "host"), { breakId: b.id, order: [...ids].reverse(), now: new Date() })),
+        db.transaction((tx) => removePhoto(tx, c(host.id, "host"), { photoId: ids[1], now: new Date() })),
+      ]);
+      expect(remove.status, `round ${round}`).toBe("fulfilled");
+      if (reorder.status === "rejected") expect(reorder.reason.message, `round ${round}`).toBe("The photos just changed. Try again.");
+      expect(await livePositions(b.id), `round ${round}`).toEqual([0, 1, 2]);
+    }
+  });
+});
+
+describe("rows gone by the time the break lock is ours", () => {
+  /** An open break with no claim and one photo, committed; and a holder of its row lock that deletes `what`. */
+  async function openWithPhoto() {
+    return db.transaction(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const b = await openBreakWithLines(tx, { hostId: host.id });
+      const photo = await makePhoto(tx, { breakId: b.id, createdBy: host.id, position: 0 });
+      const upload = await makeTicket(tx, { hostId: host.id, breakId: b.id, expiresAt: new Date(Date.now() + 300_000) });
+      return { host, b, photo, upload };
+    });
+  }
+  const lockThenDelete = (breakId: string, del: (tx: Tx) => Promise<unknown>) => gated(async (tx) => {
+    await tx.execute(sql`select id from breaks where id = ${breakId} for update`);
+    await del(tx);
+  });
+
+  it("a finalise whose upload row was deleted while it waited for the break is UploadNotFound", async () => {
+    const { host, b, upload } = await openWithPhoto();
+    const holder = lockThenDelete(b.id, (tx) => tx.delete(photoUploads).where(sql`${photoUploads.id} = ${upload.id}`));
+    await holder.ready;
+    const rec = db.transaction(record(host.id, b.id, upload.id)); // reads the upload unlocked, then waits on the break
+    await blockedOnLock();
+    holder.release();
+    await holder.done;
+    await expect(rec).rejects.toBeInstanceOf(UploadNotFound);
+    expect(await livePositions(b.id)).toEqual([0]);
+  });
+
+  it("a hide whose photo was deleted while it waited for the break is NotFound", async () => {
+    const { b, photo } = await openWithPhoto();
+    const holder = lockThenDelete(b.id, (tx) => tx.delete(breakPhotos).where(sql`${breakPhotos.id} = ${photo.id}`));
+    await holder.ready;
+    const hide = db.transaction((tx) => hidePhoto(tx, SYSTEM, { photoId: photo.id, reason: "Report 12", now: new Date() }));
+    await blockedOnLock();
+    holder.release();
+    await holder.done;
+    await expect(hide).rejects.toThrow(new NotFound("Photo not found"));
+    expect(await livePositions(b.id)).toEqual([]);
+  });
+});
+
+describe("two opens of one draft (I3; photos spec §5.4)", () => {
+  // Open A is refused (a finalise landed between its copy and its lock); open B commits. Both copied the same draft
+  // photo to the same `photos` keys. Whatever order their settling runs in, the live photo keeps a complete copy in the
+  // bucket its row names. Each step runs to completion, so every ordering of the steps is deterministic.
+  type Step = "settleA" | "commitB" | "settleB";
+  const orderings: Step[][] = [
+    ["settleA", "commitB", "settleB"], // A cleans up before B commits: the old code lost both copies here
+    ["commitB", "settleA", "settleB"],
+    ["commitB", "settleB", "settleA"],
+  ];
+
+  for (const order of orderings) {
+    it(`a live photo keeps a complete copy: ${order.join(" → ")}`, async () => {
+      const mem = createMemoryStorage();
+      const { host, b, photo } = await db.transaction(async (tx) => {
+        const host = await makeUser(tx, { role: "host" });
+        const b = await makeBreak(tx, { hostId: host.id });
+        return { host, b, photo: await seedPhoto(tx, mem, c(host.id, "host"), b.id) };
+      });
+      const caller = c(host.id, "host");
+      const a = await publishDraftPhotos(mem, caller, b.id);
+      const bb = await publishDraftPhotos(mem, caller, b.id);
+      const steps: Record<Step, () => Promise<unknown>> = {
+        settleA: () => settleOpenCopies(mem, b.id, a.prefixes, toFailure(new PhotosNotReady())),
+        commitB: () => db.transaction(async (tx) => { await assertPhotosPublished(tx, b.id, bb.ids); await openBreak(tx, caller, b.id); }),
+        settleB: () => settleOpenCopies(mem, b.id, bb.prefixes, null),
+      };
+      for (const s of order) await steps[s]();
+
+      const [row] = await db.select({ bucket: breakPhotos.bucket, removedAt: breakPhotos.removedAt }).from(breakPhotos)
+        .where(sql`${breakPhotos.id} = ${photo.photoId}`);
+      expect(row).toEqual({ bucket: "photos", removedAt: null });
+      for (const w of VARIANT_WIDTHS) expect(mem.files.has(`photos/${variantPath(photo.prefix, w)}`), `photos ${w}`).toBe(true);
+    });
+  }
+});

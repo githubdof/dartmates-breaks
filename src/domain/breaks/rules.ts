@@ -1,4 +1,8 @@
 import { InvalidInput } from "@/domain/errors";
+import { isUuid } from "@/lib/is-uuid";
+import { isItemCondition } from "./condition";
+
+export * from "./condition";
 
 /** Hard ceiling on lines per break. The UI is designed at this size; raise deliberately, not casually. */
 export const MAX_LINES = 50;
@@ -15,6 +19,19 @@ export function validateDraftInput(i: { lineCount: number; linePriceCents: numbe
 
 export function validateDraftForOpen(b: { status: string; lineCount: number }, rank1PrizeCount: number): void {
   if (rank1PrizeCount < 1) throw new InvalidInput("Add at least one item before opening");
+}
+
+/** The copy for a slot key the server did not make or that repeats: the form is stale, not mistyped. */
+export const STALE_FORM = "This form is out of date. Reload the page and try again.";
+
+/**
+ * Every named prize carries a slot key (a uuid, distinct within the break: photo tags point at it, photos spec §4.1)
+ * and a condition (§7, panel ruling 21).
+ */
+export function validatePrizes(rows: readonly { name: string; slotKey: string; condition: string }[]): void {
+  const keys = rows.map((r) => (typeof r.slotKey === "string" ? r.slotKey.toLowerCase() : ""));
+  if (!keys.every(isUuid) || new Set(keys).size !== keys.length) throw new InvalidInput(STALE_FORM);
+  if (!rows.every((r) => isItemCondition(r.condition))) throw new InvalidInput("Choose the condition of each prize");
 }
 
 export const SELF_CLAIM_SHARE = 0.1;

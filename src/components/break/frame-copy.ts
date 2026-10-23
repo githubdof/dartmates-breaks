@@ -1,5 +1,5 @@
 import type { ClaimMode } from "@/domain/breaks/rules";
-import { joinAnd, ordinal, plural } from "@/lib/list";
+import { joinAnd, plural } from "@/lib/list";
 import { daysSince, formatMonthYear } from "@/lib/time";
 import { formatMoney } from "@/lib/money";
 
@@ -55,19 +55,6 @@ export const pastText = (n: number) => (n === 0 ? "No past breaks yet." : `${n} 
 export function orList(items: readonly string[]): string {
   if (items.length <= 1) return items[0] ?? "";
   return `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
-}
-
-export function prizeLines(prizes: readonly { rank: number; itemId: string | null }[], items: readonly { id: string; name: string }[]): string[] {
-  const nameOf = new Map(items.map((i) => [i.id, i.name]));
-  const byRank = new Map<number, string[]>();
-  for (const p of prizes) {
-    const name = p.itemId ? nameOf.get(p.itemId) : undefined;
-    if (name) byRank.set(p.rank, [...(byRank.get(p.rank) ?? []), name]);
-  }
-  return [...byRank.entries()].sort(([a], [b]) => a - b).map(([rank, names]) => {
-    const who = rank === 1 ? "Top spot gets" : `${ordinal(rank)} place gets`;
-    return names.length === 1 ? `${who} ${names[0]}.` : `${who} a choice: ${orList(names)}.`;
-  });
 }
 
 const PICKING: Record<ClaimMode, string> = {

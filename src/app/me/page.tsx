@@ -3,6 +3,9 @@ import { requireCaller } from "@/auth/session";
 import { db } from "@/db/client";
 import { myLines } from "@/domain/lines/queries";
 import { myFlight } from "@/domain/users/queries";
+import { breakPhotos, type BreakPhotos, type PhotoView } from "@/domain/photos/queries";
+import { leadSrcs } from "@/photos/lead-srcs";
+import { photoStorage } from "@/storage/photo-storage";
 import { viewerZone } from "@/lib/zone";
 import { MyBreakCard } from "@/components/me/my-break-card";
 import { MeNotes } from "@/components/me/me-notes";
@@ -15,8 +18,23 @@ export default async function MyLinesPage() {
   const caller = await requireCaller("/me");
   const now = new Date();
   const zone = await viewerZone();
-  const { groups, flight } = await db.transaction(async (tx) => ({ groups: await myLines(tx, caller.id, now), flight: await myFlight(tx, caller.id) }));
-  const current = groups.filter((g) => !g.earlier).map((g) => toCardProps(g, now, zone, flight));
+  const { groups, flight, photos } = await db.transaction(async (tx) => {
+    const groups = await myLines(tx, caller.id, now);
+    // This caller holds a line in each break here, so they see what a holder sees. /me never marks a notice seen:
+    // the break page does, when the holder opens it.
+    const holder = { id: caller.id, isHost: false, isHolder: true, isAdmin: false };
+    const photos = new Map<string, BreakPhotos>();
+    for (const g of groups) if (!g.earlier) photos.set(g.breakId, await breakPhotos(tx, g.breakId, holder));
+    return { groups, flight: await myFlight(tx, caller.id), photos };
+  });
+  // A holder's live photos are public-bucket only, so the lead is a public URL (leadSrcs refuses anything else).
+  const leads = new Map<string, PhotoView>();
+  for (const [id, p] of photos) if (p.live[0]) leads.set(id, p.live[0]);
+  const srcs = await leadSrcs(photoStorage(), leads, 160);
+  const current = groups.filter((g) => !g.earlier).map((g) => {
+    const p = photos.get(g.breakId);
+    return toCardProps(g, now, zone, flight, { photo: srcs.get(g.breakId) ?? null, notice: p?.unseen ? p.notice : null });
+  });
   const earlier = groups.filter((g) => g.earlier).map((g) => toCardProps(g, now, zone, flight));
   return (
     <main className="mx-auto max-w-[600px] space-y-4 px-4 py-6 sm:px-6">

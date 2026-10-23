@@ -23,6 +23,13 @@ import { ShareButton } from "./share-button";
 import { Reveal } from "./reveal";
 import { Verify } from "./verify";
 import { wallViewport } from "@/app/wall";
+import { breakPhotos } from "@/domain/photos/queries";
+import { pagePhotos } from "@/photos/page-photos";
+import { holderSet, photoAudience, photoViewer } from "@/photos/viewer";
+import { photoStorage } from "@/storage/photo-storage";
+import { PrizesBlock } from "@/components/photos/prizes-block";
+import { placeRows } from "@/components/photos/prizes-model";
+import { ViewerRoot } from "@/components/photos/viewer-root";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -50,10 +57,13 @@ export default async function ResultPage({ params }: Props) {
     const res = await getDrawResult(tx, id);
     if (!res) return null;
     const page = await getBreakPage(tx, id);
-    return page ? { res, page } : null;
+    if (!page) return null;
+    // The holders of a drawn break are the owners of its entries. No Storage call inside the transaction.
+    const viewer = photoViewer(caller, { hostId: page.break.hostId, holderIds: holderSet(res.entries.map((e) => e.ownerId)) });
+    return { res, page, viewer, photos: await breakPhotos(tx, id, viewer) };
   });
   if (!data) notFound();
-  const { res, page } = data;
+  const { res, page, viewer, photos } = data;
   const handleOf: Record<number, string> = Object.fromEntries(res.entries.map((e) => [e.number, e.handleAtDraw]));
   // The viewer's view (§6): holders see flights, everyone else the host's kit. Won places are public here.
   const grid = shapeGrid(page, caller ? { id: caller.id, role: caller.role, globalUnpaid: 0 } : null, now);
@@ -79,10 +89,13 @@ export default async function ResultPage({ params }: Props) {
   const share = shareText({ state: "ran", topLine: top, topHandle: handleOf[top] || null, url: `${env().APP_URL}/b/${id}/result` });
   const relayUrl = `${QUICKNET.relays[0]}/${QUICKNET.chainHash}/public/${res.draw.beaconRound}`;
   const zone = await viewerZone();
+  const audience = photoAudience(viewer);
+  const pp = await pagePhotos(photoStorage(), photos, placeRows(page.prizes, page.items), { audience, tz: zone.tz });
   const when = (d: Date) => <LocalTime iso={d.toISOString()} fallback={formatDateTime(d, zone.tz, zone.labelled)} kind="datetime" />;
 
   return (
     <main data-wall className="mx-auto max-w-[600px] px-4 pb-8 sm:px-6">
+      <ViewerRoot photos={pp.viewer}>
       {/* Before first paint: hide the final state while the deal is about to play (no spoiler flash). */}
       <script dangerouslySetInnerHTML={{ __html: dealGateScript(id) }} />
       {res.draw.beaconSignature === "fake" && (
@@ -127,6 +140,9 @@ export default async function ResultPage({ params }: Props) {
                 </li>
               ))}
             </ol>
+            {(pp.places.length > 0 || pp.untagged.length > 0 || pp.removed.length > 0 || pp.notice) && (
+              <PrizesBlock places={pp.places} untagged={pp.untagged} removed={pp.removed} notice={pp.notice} noticeFirst={audience === "holder"} count={pp.count} />
+            )}
           </>
         }
       />
@@ -158,6 +174,7 @@ export default async function ResultPage({ params }: Props) {
           </ul>
         </section>
       )}
+      </ViewerRoot>
     </main>
   );
 }
