@@ -36,4 +36,5 @@ jobs:
       - run: pnpm test:concurrency
       - run: pnpm test:ci
       - run: pnpm build
+      - run: pnpm budget
       - run: pnpm audit --audit-level=high || true
