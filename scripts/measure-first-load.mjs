@@ -1,8 +1,8 @@
 // Measures the first-load JS of a route from a Turbopack build (Next 16): the root main files, the polyfills,
 // and the layout chain plus page entries of the route's client-reference manifest, each file gzipped once.
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 import { runInNewContext } from "node:vm";
 
@@ -76,15 +76,19 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === "--json" || k === "--check") a[k.slice(2)] = true;
-    else if (k === "--forbid") a.forbid.push(argv[++i]);
-    else if (["--route", "--dist", "--write-base", "--commit", "--html-url"].includes(k)) a[k.slice(2)] = argv[++i];
-    else throw new Error(`unknown argument ${k}`);
+    else if (k === "--forbid" || ["--route", "--dist", "--write-base", "--commit", "--html-url"].includes(k)) {
+      const v = argv[++i];
+      if (v === undefined || v.startsWith("--")) throw new Error(`usage: ${k} needs a value`);
+      if (k === "--forbid") a.forbid.push(v);
+      else a[k.slice(2)] = v;
+    } else throw new Error(`unknown argument ${k}`);
   }
   return a;
 }
 
 async function main() {
   const a = parseArgs(process.argv.slice(2));
+  if (a["write-base"] && !a.commit) throw new Error("usage: --write-base needs --commit <sha>");
   const route = a.route ?? "/b/[id]";
   const m = measureFirstLoad({ dist: a.dist, route, forbid: a.forbid });
   let failed = false;
@@ -99,7 +103,9 @@ async function main() {
   }
   // Optional: also prove the markers are absent from a served page (a running server), not only from the chunks.
   if (a["html-url"]) {
-    const html = await (await fetch(a["html-url"])).text();
+    const res = await fetch(a["html-url"]);
+    if (!res.ok) throw new Error(`${a["html-url"]} answered ${res.status}; the served HTML was not checked`);
+    const html = await res.text();
     for (const marker of a.forbid) {
       if (html.includes(marker)) {
         console.error(`forbidden marker ${marker} in served HTML of ${a["html-url"]}`);
@@ -123,7 +129,7 @@ async function main() {
   if (failed) process.exit(1);
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   main().catch((e) => {
     console.error(e.message);
     process.exit(1);

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -86,5 +87,28 @@ describe("checkAgainstBase", () => {
     expect(checkAgainstBase({ js: 10_000 }, { js: 8_000, allowanceJs: 4_036 })).toEqual({ ok: true, over: 0 });
     expect(checkAgainstBase({ js: 12_036 }, { js: 8_000, allowanceJs: 4_036 })).toEqual({ ok: true, over: 0 });
     expect(checkAgainstBase({ js: 12_100 }, { js: 8_000, allowanceJs: 4_036 })).toEqual({ ok: false, over: 64 });
+  });
+});
+
+describe("CLI", () => {
+  const script = join(__dirname, "../../scripts/measure-first-load.mjs");
+  const run = (...args: string[]) => {
+    try {
+      return { code: 0, out: execFileSync("node", [script, ...args], { encoding: "utf8", stdio: "pipe" }) };
+    } catch (e) {
+      return { code: (e as { status: number }).status, out: String((e as { stderr: Buffer }).stderr) };
+    }
+  };
+  it("exits 1 on --check when a forbidden marker is found, even under the allowance", () => {
+    const d = fakeDist({ root: ["r1.js"], page: ["pg.js"], text: { "pg.js": "data-photo-viewer-root" } });
+    const r = run("--check", "--dist", d, "--forbid", "data-photo-viewer-root");
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/forbidden marker/);
+    expect(run("--check", "--dist", d).code).toBe(0);
+  });
+  it("fails with a usage error on a flag without its value, and on --write-base without --commit", () => {
+    const d = fakeDist({ root: ["r1.js"], page: ["pg.js"] });
+    expect(run("--dist", d, "--forbid").code).toBe(1);
+    expect(run("--dist", d, "--write-base", join(d, "b.json")).out).toMatch(/--commit/);
   });
 });
