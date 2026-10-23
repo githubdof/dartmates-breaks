@@ -340,6 +340,7 @@ test.describe("photo journeys (Task 12b)", () => {
     await gotoReady(buyer, "/me");
     const myCard = buyer.getByTestId("my-break").filter({ hasText: replaceTitle });
     await expect(myCard.getByTestId("my-photo-notice")).toContainText("Lead photo replaced");
+    expect(await axeViolations(buyer, "buyer /me with the notice")).toEqual([]); // while the notice is unseen
 
     await gotoReady(buyer, replaceUrl);
     const plate = buyer.getByTestId("photo-plate");

@@ -44,10 +44,16 @@ export async function tagTile(page: Page, index: number, place: string): Promise
   await tileMenu(page, index, "Tag");
   await page.getByRole("group", { name: `Photo ${index} options` }).getByRole("radio", { name: place, exact: true }).check();
   const want = place !== "No tag";
-  const tagged = () => withDb(async (sql) => (await sql`select prize_slot from break_photos where id = ${photoId}::uuid`)[0]?.prize_slot != null);
-  await expect.poll(tagged, { timeout: 15_000, message: `photo ${index} becomes ${place}` }).toBe(want);
-  // A tag on a photo with its default description also rewrites that description, one action after the tag.
-  await page.waitForLoadState("networkidle");
+  const row = () => withDb(async (sql) => (await sql`select prize_slot, alt from break_photos where id = ${photoId}::uuid`)[0]);
+  const altBefore = (await row())?.alt as string;
+  await expect.poll(async () => (await row())?.prize_slot != null, { timeout: 15_000, message: `photo ${index} becomes ${place}` }).toBe(want);
+  // A photo still on its default description (the title or a prize name) has it rewritten one action after the tag.
+  const title = await page.inputValue("input[name=title]");
+  const names = await page.locator("input[name=prize1], input[name=prize2]").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
+  if (altBefore === title || names.includes(altBefore)) {
+    const expected = want ? place : title;
+    await expect.poll(async () => (await row())?.alt, { timeout: 15_000, message: `photo ${index} default description follows the tag` }).toBe(expected);
+  }
 }
 
 /** The same fields `composeBreak` fills, condition included, without submitting. `alternative` adds an "or" item. */
