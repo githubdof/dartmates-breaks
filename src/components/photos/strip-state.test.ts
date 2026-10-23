@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PhotoSrc } from "@/photos/urls";
 import {
-  canAddPhotos, defaultAlt, initStrip, limitNotice, nextToStart, NO_ROOM_NOTICE, NEED_FORM_NOTICE, readyIds, stripReducer, uploadsInFlight,
+  canAddPhotos, canUndo, defaultAlt, initStrip, limitNotice, nextToStart, NO_ROOM_NOTICE, NEED_FORM_NOTICE, readyIds, stripReducer, uploadsInFlight,
   type AddGate, type StripAction, type StripPhoto, type StripState,
 } from "./strip-state";
 
@@ -162,6 +162,27 @@ describe("removing", () => {
     const t = run(s, { type: "remove", key: "a" }); // a second removal replaces the record
     expect(t.removal).toEqual({ tile: base.tiles[0], index: 0 });
     expect(run(t, { type: "removalDone", photoId: "b" }).removal).toEqual(t.removal);
+  });
+  it("once the removal is handed to the server, Undo is gone: undo changes nothing (I2)", () => {
+    const base = ready3();
+    const s = run(base, { type: "remove", key: "b" }, { type: "committing", photoId: "b" });
+    expect(s.removal).toEqual({ tile: base.tiles[1], index: 1, committing: true });
+    expect(canUndo(s)).toBe(false);
+    expect(run(s, { type: "undo" })).toBe(s); // the photo does not come back while the server deletes it
+    expect(run(s, { type: "removalDone", photoId: "b" }).removal).toBeNull();
+  });
+  it("committing names its removal: another photo's commit leaves the current record undoable", () => {
+    const s = run(ready3(), { type: "remove", key: "b" });
+    expect(canUndo(s)).toBe(true);
+    const t = run(s, { type: "committing", photoId: "a" });
+    expect(t).toBe(s);
+    expect(canUndo(t)).toBe(true);
+  });
+  it("a failed commit still puts the tile back after committing", () => {
+    const s = run(ready3(), { type: "remove", key: "b" }, { type: "committing", photoId: "b" });
+    const f = run(s, { type: "removeFailed", removal: s.removal!, error: "Couldn't remove the photo. Try again." });
+    expect(keys(f)).toEqual(["a", "b", "c"]);
+    expect(f.removal).toBeNull();
   });
   it("removeFailed puts the tile back at its index and shows the error", () => {
     const base = ready3();

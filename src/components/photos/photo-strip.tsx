@@ -8,7 +8,7 @@ import { removalQueue, timers, type RemovalQueue } from "./removal-queue";
 import { guardUnload } from "./unload-guard";
 import { StripTile } from "./strip-tile";
 import {
-  NEED_FORM_NOTICE, defaultAlt, initStrip, nextToStart, readyIds, stripReducer, uploadsInFlight,
+  NEED_FORM_NOTICE, canUndo, defaultAlt, initStrip, nextToStart, readyIds, stripReducer, uploadsInFlight,
   type StripAction, type StripPhoto, type StripRemoval, type StripState, type StripTile as Tile,
 } from "./strip-state";
 
@@ -63,6 +63,7 @@ export function PhotoStrip(p: PhotoStripProps) {
   const commitRemoval = useCallback(async (item: StripRemoval) => {
     const id = item.tile.photoId;
     if (!id) return;
+    dispatch({ type: "committing", photoId: id }); // Undo goes: the server is deleting it now
     const r = await removePhotoAction(id).catch(() => failed);
     if (r.ok) {
       dispatch({ type: "removalDone", photoId: id });
@@ -259,7 +260,7 @@ export function PhotoStrip(p: PhotoStripProps) {
   function undo() {
     const cur = latest.current.state;
     // The held removal is released only if the photo really goes back; with no room it stays queued.
-    if (cur.removal && stripReducer(cur, { type: "undo" }).removal === null) queue.current?.undo();
+    if (canUndo(cur) && stripReducer(cur, { type: "undo" }).removal === null) queue.current?.undo();
     dispatch({ type: "undo" });
   }
 
@@ -298,7 +299,7 @@ export function PhotoStrip(p: PhotoStripProps) {
         {state.removal && !claimed && (
           <p className="flex items-center gap-3 text-small">
             <span>Photo removed.</span>
-            <Button variant="text" data-testid="photo-undo" onClick={undo}>Undo</Button>
+            {canUndo(state) && <Button variant="text" data-testid="photo-undo" onClick={undo}>Undo</Button>}
           </p>
         )}
       </div>

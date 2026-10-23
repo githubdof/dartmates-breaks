@@ -8,7 +8,8 @@ export type StripTile = {
   key: string; photoId: string | null; status: TileStatus; progress: number; preview: string | null; src: PhotoSrc | null;
   slot: string | null; alt: string; altEdited: boolean; error: string | null; retryable: boolean; autoRetried: boolean;
 };
-export type StripRemoval = { tile: StripTile; index: number };
+/** `committing`: the Undo window closed and the removal went to the server; it can no longer be undone. */
+export type StripRemoval = { tile: StripTile; index: number; committing?: true };
 export type StripState = { tiles: StripTile[]; notice: string | null; removal: StripRemoval | null; max: number };
 export type StripAction =
   | { type: "pick"; files: { key: string; preview: string; alt: string }[] }
@@ -22,6 +23,7 @@ export type StripAction =
   | { type: "tag"; key: string; slot: string | null; defaultAlt: string } | { type: "alt"; key: string; alt: string }
   | { type: "slots"; valid: string[] }
   | { type: "remove"; key: string } | { type: "undo" }
+  | { type: "committing"; photoId: string }
   | { type: "removalDone"; photoId: string }
   | { type: "removeFailed"; removal: StripRemoval; error: string }
   | { type: "notice"; text: string | null };
@@ -164,11 +166,13 @@ export function stripReducer(s: StripState, a: StripAction): StripState {
       return { ...s, tiles: s.tiles.filter((_, j) => j !== i), removal: { tile: s.tiles[i], index: i } };
     }
     case "undo": {
-      if (!s.removal) return s;
+      if (!canUndo(s)) return s;
       // Never past the limit: if the place was somehow taken, the photo stays out and the host is told.
       if (s.tiles.length >= s.max) return { ...s, notice: NO_ROOM_NOTICE };
-      return { ...s, tiles: insertReady(s.tiles, s.removal.tile, s.removal.index), removal: null };
+      return { ...s, tiles: insertReady(s.tiles, s.removal!.tile, s.removal!.index), removal: null };
     }
+    case "committing":
+      return canUndo(s) && s.removal!.tile.photoId === a.photoId ? { ...s, removal: { ...s.removal!, committing: true } } : s;
     case "removalDone":
       return s.removal && s.removal.tile.photoId === a.photoId ? { ...s, removal: null } : s;
     case "removeFailed": {
@@ -178,6 +182,11 @@ export function stripReducer(s: StripState, a: StripAction): StripState {
     }
     case "notice": return s.notice === a.text ? s : { ...s, notice: a.text };
   }
+}
+
+/** True while a removal waits out its Undo window and has not been handed to the server. */
+export function canUndo(s: StripState): boolean {
+  return s.removal !== null && !s.removal.committing;
 }
 
 /** Queued keys to start now: at most `limit` uploads at once, and a finishing tile still counts. */
