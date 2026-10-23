@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createMemoryStorage } from "../../tests/helpers/memory-storage";
 import type { PhotoView } from "@/domain/photos/queries";
 import type { BreakPage } from "@/domain/breaks/queries";
@@ -17,6 +17,15 @@ describe("toStripPhotos", () => {
     expect(out[0].src.src).toMatch(/\/photos\/.*-160\.webp$/);
     // The memory store signs as memory://sign/<bucket>/<path>?seconds=…; the real store's signed URL carries a token.
     expect(out[1].src.src).toMatch(/^memory:\/\/sign\/photos-draft\/.*-160\.webp\?seconds=600$/);
+  });
+  it("a draft photo whose signing fails drops out instead of throwing (I5)", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const s = { ...createMemoryStorage(), signedReadUrl: () => Promise.reject(new Error("signing down")) };
+      const out = await toStripPhotos(s, [view({ id: "p1", location: "photos" }), view({ id: "p2", location: "photos-draft" }), view({ id: "p3", location: "photos" })]);
+      expect(out.map((p) => p.photoId)).toEqual(["p1", "p3"]);
+      expect(spy).toHaveBeenCalled();
+    } finally { spy.mockRestore(); }
   });
 });
 

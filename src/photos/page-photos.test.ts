@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { BreakPhotos } from "@/domain/photos/queries";
 import { placeRows } from "@/components/photos/prizes-model";
@@ -80,6 +80,36 @@ describe("pagePhotos (the page's audience gate)", () => {
   it("the viewer's caption is the tagged place word and item name; untagged photos have none", async () => {
     const p = await pagePhotos(storage, withRemoved, rows, { audience: "other", tz: "UTC" });
     expect(p.viewer.map((v) => v.caption)).toEqual(["Top spot: Taylor Chronos 24g", null]);
+  });
+});
+
+describe("pagePhotos when Storage cannot sign (I5)", () => {
+  // A memory store whose signing always rejects, as a Storage outage or a timeout would.
+  const failing = () => ({ ...createMemoryStorage(), signedReadUrl: () => Promise.reject(new Error("signing down")) });
+  const quiet = () => vi.spyOn(console, "error").mockImplementation(() => {});
+
+  it("a removed photo whose signing fails keeps its Removed mark with no image; the page still renders", async () => {
+    const spy = quiet();
+    try {
+      for (const audience of ["holder", "host"] as const) {
+        const p = await pagePhotos(failing(), withRemoved, rows, { audience, tz: "UTC" });
+        expect(p.removed).toHaveLength(1);
+        expect(p.removed[0]).toMatchObject({ id: "R", photo: null, removedFallback: "Oct 21" });
+        expect(p.count).toBe(2); // the public photos need no signing
+      }
+      expect(spy).toHaveBeenCalled();
+    } finally { spy.mockRestore(); }
+  });
+  it("the host's draft photo whose signing fails drops out; the public ones stay in order", async () => {
+    const spy = quiet();
+    try {
+      const draft = { ...withRemoved, live: [live("L", "A", 0), live("D", null, 1, "photos-draft"), live("U", null, 2)] };
+      const p = await pagePhotos(failing(), draft, rows, { audience: "host", tz: "UTC" });
+      expect(p.count).toBe(2);
+      expect(p.viewer.map((v) => v.alt)).toEqual(["Alt L", "Alt U"]);
+      expect(p.untagged.map((u) => u.id)).toEqual(["U"]);
+      expect(JSON.stringify(p)).not.toContain(prefix("D"));
+    } finally { spy.mockRestore(); }
   });
 });
 

@@ -3,14 +3,19 @@ import type { StripPhoto } from "@/components/photos/strip-state";
 import type { StripPrize } from "@/components/photos/photo-strip";
 import type { BreakPage } from "@/domain/breaks/queries";
 import { ordinal } from "@/lib/list";
-import { photoSrc } from "./urls";
+import { photoSrcOrNull } from "./urls";
 import type { PhotoStorage } from "@/storage/photo-storage";
 
-/** A break's live photos as the strip shows them: the 160 px variant (signed for a draft's photos), in live order. */
-export function toStripPhotos(storage: PhotoStorage, live: readonly PhotoView[]): Promise<StripPhoto[]> {
-  return Promise.all(live.map(async (v): Promise<StripPhoto> => ({
-    photoId: v.id, src: await photoSrc(storage, v, 160), slot: v.slot, alt: v.alt,
-  })));
+/**
+ * A break's live photos as the strip shows them: the 160 px variant (signed for a draft's photos), in live order.
+ * A photo whose signing fails drops out rather than throwing the page.
+ */
+export async function toStripPhotos(storage: PhotoStorage, live: readonly PhotoView[]): Promise<StripPhoto[]> {
+  const out = await Promise.all(live.map(async (v): Promise<StripPhoto | null> => {
+    const src = await photoSrcOrNull(storage, v, 160);
+    return src && { photoId: v.id, src, slot: v.slot, alt: v.alt };
+  }));
+  return out.filter((p) => p !== null);
 }
 
 /** One tag choice per prize row in rank order: its slot, and its item's name as the label (else the place). */

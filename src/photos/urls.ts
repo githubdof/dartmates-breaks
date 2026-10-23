@@ -48,3 +48,16 @@ export async function photoSrc(
     alt: v.alt,
   };
 }
+
+/**
+ * `photoSrc` for a page render: a signing failure (an outage, a timeout) is logged and gives null, so one photo
+ * cannot take the page down. Callers degrade: a removed photo keeps its mark with no image, a live private one drops.
+ */
+export async function photoSrcOrNull(...args: Parameters<typeof photoSrc>): Promise<PhotoSrc | null> {
+  try {
+    return await photoSrc(...args);
+  } catch (e) {
+    console.error("photos: signing a read URL failed", e);
+    return null;
+  }
+}

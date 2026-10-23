@@ -4,7 +4,7 @@ import type { ViewerPhoto } from "@/components/photos/viewer-model";
 import { formatDateTime, formatShortDate } from "@/lib/time";
 import { BUCKETS } from "@/storage/buckets";
 import type { PhotoStorage } from "@/storage/photo-storage";
-import { photoSrc, type PhotoSrc } from "./urls";
+import { photoSrcOrNull, type PhotoSrc } from "./urls";
 
 export type PhotoAudience = "holder" | "host" | "other";
 export type PagePhotos = {
@@ -21,19 +21,26 @@ export async function pagePhotos(
   storage: PhotoStorage, photos: BreakPhotos, rows: ReturnType<typeof placeRows>, o: { audience: PhotoAudience; tz: string },
 ): Promise<PagePhotos> {
   const { audience, tz } = o;
-  const live = audience === "host" ? photos.live : photos.live.filter((p) => p.location === BUCKETS.public);
+  const allowed = audience === "host" ? photos.live : photos.live.filter((p) => p.location === BUCKETS.public);
   const withRemoved = audience === "host" || audience === "holder";
   const captionOf = new Map(rows.map((r) => [r.key, `${r.captionWord}: ${r.name}`]));
 
-  const [plates, viewerSrc, removed] = await Promise.all([
-    Promise.all(live.map((p) => photoSrc(storage, p, 160))),
-    Promise.all(live.map((p) => photoSrc(storage, p, 1600))),
+  // A signing failure never throws the page: a live private photo drops out, a removed one keeps its mark unimaged.
+  const [resolved, removed] = await Promise.all([
+    Promise.all(allowed.map(async (p) => {
+      const [plate, full] = await Promise.all([photoSrcOrNull(storage, p, 160), photoSrcOrNull(storage, p, 1600)]);
+      return plate && full ? { p, plate, full } : null;
+    })),
     Promise.all((withRemoved ? photos.removed : []).map(async (r): Promise<RemovedPlate> => ({
       id: r.id, alt: r.alt,
-      photo: r.prefix === null ? null : await photoSrc(storage, { location: r.location, prefix: r.prefix, width: r.width, height: r.height, alt: r.alt }, 160),
+      photo: r.prefix === null ? null : await photoSrcOrNull(storage, { location: r.location, prefix: r.prefix, width: r.width, height: r.height, alt: r.alt }, 160),
       removedIso: r.removedAt.toISOString(), removedFallback: formatShortDate(r.removedAt, tz),
     }))),
   ]);
+  const shown = resolved.filter((x) => x !== null);
+  const live = shown.map((x) => x.p);
+  const plates = shown.map((x) => x.plate);
+  const viewerSrc = shown.map((x) => x.full);
 
   const { places, untagged } = attachPlates(rows, live.map((p, i) => ({ id: p.id, slot: p.slot, photo: plates[i] })));
   const notice = photos.notice
