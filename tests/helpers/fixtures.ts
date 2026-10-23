@@ -61,7 +61,8 @@ export function newPrefix(breakId: string): string {
 
 /**
  * A break_photos row in any state, straight into the table, so tests can build states the commands would refuse.
- * Defaults: slot null, bucket "photos", path newPrefix(breakId), width 1600, height 1200, alt "Darts". The guard only
+ * Defaults: slot null, bucket "photos", path newPrefix(breakId) (a string `path` is used as the prefix, null drops it
+ * after the insert), width 1600, height 1200, alt "Darts". The guard only
  * inserts live rows in the bucket the break's status allows, so a removed or hidden row is inserted live (parked at
  * position -8, clear of the live index) and then removed or hidden, moving to `bucket` in that update.
  */
@@ -69,7 +70,7 @@ export async function makePhoto(tx: Tx, o: {
   breakId: string; createdBy: string; position: number; slot?: string | null;
   bucket?: PhotoLocation; removedAt?: Date; hiddenAt?: Date; path?: string | null; alt?: string;
 }): Promise<{ id: string; prefix: string }> {
-  const prefix = newPrefix(o.breakId);
+  const prefix = typeof o.path === "string" ? o.path : newPrefix(o.breakId);
   const gone = o.removedAt !== undefined || o.hiddenAt !== undefined;
   const [{ status }] = await tx.select({ status: breaks.status }).from(breaks).where(sql`${breaks.id} = ${o.breakId}`);
   const liveBucket = o.bucket && o.bucket !== "photo-archive" ? o.bucket : status === "draft" ? "photos-draft" : "photos";

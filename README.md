@@ -29,7 +29,7 @@ Environment variables:
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase project access |
 | `DRAW_KEY_V1` | 32 random bytes, base64; used for draw commitments |
 | `IP_HASH_KEY` | 32 random bytes, base64 (`openssl rand -base64 32`); HMAC key for the IP hashes stored on events |
-| `CRON_SECRET` | Shared secret protecting `/api/tick` |
+| `CRON_SECRET` | Shared secret protecting `/api/tick` and `/api/photos/cleanup` |
 | `APP_URL` | Public base URL of the app |
 | `ADMIN_EMAILS` | Optional comma-separated emails promoted to admin on sign-in |
 | `BEACON` | `fake` swaps the public randomness beacon for a deterministic one. Local, CI and e2e only; never set on Vercel (the app refuses to boot when `VERCEL_ENV` is set) |
@@ -131,6 +131,7 @@ Before testing or handing over a URL, check the stack:
 | `pnpm db:migrate` | Apply migrations (reads `ENV_FILE`, default `.env.local`) |
 | `pnpm supabase:start` / `pnpm supabase:stop` | Start / stop the local Supabase stack |
 | `pnpm exec tsx scripts/create-buckets.ts` | Create or align the four photo buckets and check Storage has no client policies |
+| `pnpm exec tsx scripts/hide-photo.ts <id> <reason> [--purge]` | Hide (or purge) a photo; see docs/runbooks/photos.md |
 
 ## Tests
 
@@ -142,7 +143,7 @@ Before testing or handing over a URL, check the stack:
 ## Deploy
 
 - Hosting: Vercel Pro (for per-minute cron) and Supabase Pro.
-- Set all variables from the table above in Vercel, except `BEACON` and `E2E_SECRET`, which must never be set on Vercel, not even for preview deploys. A draw made with the fake beacon shows a "Fake beacon — development only" warning on its result page. `CRON_SECRET` must match the secret the cron request sends to `/api/tick` (`vercel.json` schedules it every minute).
+- Set all variables from the table above in Vercel, except `BEACON` and `E2E_SECRET`, which must never be set on Vercel, not even for preview deploys. A draw made with the fake beacon shows a "Fake beacon — development only" warning on its result page. `CRON_SECRET` must match the secret the cron request sends to `/api/tick` (`vercel.json` schedules it every minute) and to `/api/photos/cleanup` (daily, 09:17 UTC).
 - Configure custom SMTP in Supabase Auth, for example Resend, so sign-in emails are deliverable.
 - Email templates: in the hosted Supabase dashboard (Authentication > Email Templates), paste `supabase/templates/magic_link.html` into "Magic Link" and `supabase/templates/confirmation.html` into "Confirm signup", with the subjects from `supabase/config.toml`. Both show the 6-digit code and a link to `/auth/callback`. The local stack picks them up from `config.toml` after `pnpm supabase stop && pnpm supabase start`.
 - Keep "Confirm email" ON in hosted Supabase Auth: admin promotion through `ADMIN_EMAILS` relies on a confirmed email.
