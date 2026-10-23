@@ -1,6 +1,15 @@
 import { describe, it, expect } from "vitest";
-import type { BreakPage } from "./queries";
+import { randomBytes, randomUUID } from "node:crypto";
+import { getBreakPage, type BreakPage } from "./queries";
 import type { Kit } from "@/domain/flights";
+import type { Tx } from "@/db/client";
+import { claimLines } from "@/domain/lines/commands";
+import { hidePhoto, issueUploadTicket, recordProcessedPhoto, removePhoto } from "@/domain/photos/commands";
+import { leadPhotos } from "@/domain/photos/queries";
+import type { PhotoLocation } from "@/domain/photos/types";
+import { SYSTEM, type Caller } from "@/domain/types";
+import { withTx } from "../../../tests/helpers/db";
+import { makeBreak, makeUser, openBreakWithLines } from "../../../tests/helpers/fixtures";
 import { ogCaption, ogHostedBy, ogModel } from "./og";
 
 const HOST = "00000000-0000-4000-8000-0000000000a1";
@@ -46,6 +55,7 @@ describe("ogModel (Review Focus 4)", () => {
         { number: 1, tone: "open" }, { number: 2, tone: "taken" }, { number: 3, tone: "taken" },
         { number: 4, tone: "paid" }, { number: 5, tone: "open" }, { number: 6, tone: "open" },
       ],
+      photo: null,
     });
     const text = JSON.stringify(m);
     expect(text).not.toContain("alice");
@@ -59,7 +69,7 @@ describe("ogModel (Review Focus 4)", () => {
   it("has no flight key (Review Focus 1)", () => {
     // A full BreakPage, flights and handles included, goes in: the model is rebuilt from line state only.
     const m = ogModel(page(lines, {}, { dark: "petrol", light: "orange" }), now)!;
-    expect(Object.keys(m).sort()).toEqual(["caption", "cells", "columns", "heat", "hostedBy", "kit", "title"]);
+    expect(Object.keys(m).sort()).toEqual(["caption", "cells", "columns", "heat", "hostedBy", "kit", "photo", "title"]);
     expect(m.kit).toEqual({ dark: "petrol", light: "orange" });
     expect(m.cells.every((c) => Object.keys(c).every((k) => ["number", "tone", "place"].includes(k)))).toBe(true);
     const text = JSON.stringify(m);
@@ -114,7 +124,7 @@ describe("the preview after the draw (§6: the bulls on the kit board)", () => {
   });
   it("carries only what a stranger may see: the keys of the model and of every cell", () => {
     const m = ogModel({ ...ran(), places: [{ number: 4, place: 1 }, { number: 2, place: 2 }, { number: 3, place: 3 }] }, now, { ranAt })!;
-    expect(Object.keys(m).sort()).toEqual(["caption", "cells", "columns", "heat", "hostedBy", "kit", "title"]);
+    expect(Object.keys(m).sort()).toEqual(["caption", "cells", "columns", "heat", "hostedBy", "kit", "photo", "title"]);
     for (const c of m.cells) expect(Object.keys(c).every((k) => ["number", "tone", "place"].includes(k))).toBe(true);
     const text = JSON.stringify(m);
     expect(text).not.toContain("alice");
@@ -142,4 +152,77 @@ describe("the model per status and kit (recorded ruling 25: the JSON, not PNG by
       for (const m of [empty, half, ran]) expect(JSON.stringify(m)).not.toMatch(/alice|pink|slim|flight/);
     });
   }
+});
+
+
+describe("the lead photo (photos spec §8.4)", () => {
+  const P = "00000000-0000-4000-8000-0000000000b1/AAAAAAAAAAAAAAAAAAAAAA";
+  const lead = (location: PhotoLocation) => ({ id: "00000000-0000-4000-8000-0000000000c1", prefix: P, location });
+  it("carries a published lead as its id and prefix only", () => {
+    const m = ogModel({ ...page(lines), lead: lead("photos") }, now)!;
+    expect(m.photo).toEqual({ id: "00000000-0000-4000-8000-0000000000c1", prefix: P });
+    expect(Object.keys(m.photo!).sort()).toEqual(["id", "prefix"]);
+  });
+  it("is null for a draft or an archived location, and with no lead", () => {
+    expect(ogModel({ ...page(lines), lead: lead("photos-draft") }, now)!.photo).toBeNull();
+    expect(ogModel({ ...page(lines), lead: lead("photo-archive") }, now)!.photo).toBeNull();
+    expect(ogModel({ ...page(lines), lead: null }, now)!.photo).toBeNull();
+    expect(ogModel(page(lines), now)!.photo).toBeNull();
+  });
+  // Regression pin: true before this task; the photo must not bring a holder, handle or flight in.
+  it("still has no holder, handle or flight anywhere, photo or not", () => {
+    const text = JSON.stringify(ogModel({ ...page(lines), lead: lead("photos") }, now));
+    expect(text).not.toMatch(/alice|pink|slim|flight|holder|owner|handle/);
+    expect(text).not.toContain(ALICE);
+  });
+});
+
+const as = (id: string, role: Caller["role"] = "host"): Caller => ({ id, role, onboarded: true, banned: false });
+/** A recorded photo (rows only): `photos` for an open break, `photos-draft` for a draft (ruling 7). */
+async function addPhoto(tx: Tx, host: { id: string }, breakId: string, location: "photos" | "photos-draft"): Promise<{ photoId: string }> {
+  const { ticketId } = await issueUploadTicket(tx, as(host.id), { breakId, now });
+  const prefix = `${breakId}/${randomBytes(16).toString("base64url")}`;
+  const { photoId } = await recordProcessedPhoto(tx, as(host.id), { ticketId, prefix, location, width: 1600, height: 1200, slot: null, alt: "Darts", now });
+  return { photoId };
+}
+const preview = async (tx: Tx, breakId: string) =>
+  ogModel({ ...(await getBreakPage(tx, breakId))!, lead: (await leadPhotos(tx, [breakId])).get(breakId) ?? null }, now);
+
+describe("the lead photo as the preview reads it (photos spec §8.4: hidden, removed, draft)", () => {
+  it("shows the live lead of an open break", async () => withTx(async (tx) => {
+    const host = await makeUser(tx, { role: "host" });
+    const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+    const { photoId } = await addPhoto(tx, host, b.id, "photos");
+    expect((await preview(tx, b.id))!.photo?.id).toBe(photoId);
+  }));
+  it("drops a hidden lead, and the next live photo leads", async () => withTx(async (tx) => {
+    const host = await makeUser(tx, { role: "host" });
+    const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+    const first = await addPhoto(tx, host, b.id, "photos");
+    const second = await addPhoto(tx, host, b.id, "photos");
+    await hidePhoto(tx, SYSTEM, { photoId: first.photoId, reason: "test", now });
+    expect((await preview(tx, b.id))!.photo?.id).toBe(second.photoId);
+    await hidePhoto(tx, SYSTEM, { photoId: second.photoId, reason: "test", now });
+    expect((await preview(tx, b.id))!.photo).toBeNull();
+  }));
+  it("drops a lead the host removed, before and after the first claim", async () => withTx(async (tx) => {
+    const host = await makeUser(tx, { role: "host" });
+    const buyer = await makeUser(tx);
+    const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+    const early = await addPhoto(tx, host, b.id, "photos");
+    expect((await removePhoto(tx, as(host.id), { photoId: early.photoId, now })).archive).toBe(false);
+    expect((await preview(tx, b.id))!.photo).toBeNull();
+    await claimLines(tx, as(buyer.id, "member"), { breakId: b.id, numbers: [1], batchId: randomUUID() });
+    const late = await addPhoto(tx, host, b.id, "photos");
+    expect((await preview(tx, b.id))!.photo?.id).toBe(late.photoId);
+    expect((await removePhoto(tx, as(host.id), { photoId: late.photoId, now })).archive).toBe(true);
+    expect((await preview(tx, b.id))!.photo).toBeNull();
+  }));
+  it("has no preview at all for a draft, whose photos are in photos-draft", async () => withTx(async (tx) => {
+    const host = await makeUser(tx, { role: "host" });
+    const b = await makeBreak(tx, { hostId: host.id, status: "draft" });
+    await addPhoto(tx, host, b.id, "photos-draft");
+    expect((await leadPhotos(tx, [b.id])).has(b.id)).toBe(false);
+    expect(await preview(tx, b.id)).toBeNull();
+  }));
 });
