@@ -109,6 +109,25 @@ It never deletes the last copy a row relies on: when the bucket a row relies on 
 run copies it into the row's bucket first and deletes nothing for that photo; the next run finds the bucket complete.
 A file no bucket holds any more is logged (`"missing"`) and skipped.
 
+Opening a break goes through the same gate: the draft originals and, for a refused open, the `photos` copies are
+removed only after a fresh read of the rows, so two opens of one draft racing each other never lose a live photo.
+
+### Two known windows where a removed photo can lose its archive copy
+
+Both are rare and need two things to happen within moments of each other. Each can only lose the **archive copy of a
+photo being removed**. A live photo is never affected.
+
+- **Two removals of one claimed photo (a double tap).** If the second removal's copy to `photo-archive` fails or races
+  the first while the first removal's archive copy has not committed yet, the second removal's cleanup can delete
+  files the first removal's row then names.
+- **A removal during cleanup's re-read.** The cleanup re-reads a prefix's rows, then lists and deletes. A removal that
+  starts in that gap, on a prefix that also has an orphan archive copy over 24 hours old, can have its fresh archive
+  copy deleted.
+
+What a host and the break's holders see in either case: the photo's "Removed" mark with no image. The cleanup logs
+`"missing"` for that prefix, and the hide script tolerates the missing files. There is nothing to repair; if a report
+needs the image, it is gone.
+
 A Storage call that fails (a listing, a removal, a copy) is logged with its bucket and prefix, counted in `failed`, and
 retried on the next run; the rest of the run goes on. When `failed` is above 0 the route answers 500 with the counts,
 so the cron shows red in Vercel. Look for the `"error"` log lines of that run.
