@@ -167,3 +167,16 @@ test("axe is clean on a break page with photos, with the viewer closed and open"
   await open(page, 3);
   expect((await new AxeBuilder({ page }).withTags(tags).include("[data-testid=photo-viewer]").analyze()).violations).toEqual([]);
 });
+
+test("a feed card's corner board clips its lamp, so no glow reaches the photo (spec §8.0)", async ({ page }) => {
+  await gotoReady(page, "/breaks");
+  const card = page.getByTestId("break-card").filter({ hasText: `Viewer one ${run}` });
+  const corner = card.getByTestId("card-corner");
+  await expect(corner).toBeVisible();
+  // The lamp extends 12 px past the board; overflow:hidden on the corner is what keeps that band off the plate.
+  expect(await corner.evaluate((el) => getComputedStyle(el).overflow)).toBe("hidden");
+  const lamp = corner.locator(".board-lamp");
+  expect(await lamp.count()).toBe(1);
+  const [c, l] = await Promise.all([corner.boundingBox(), lamp.boundingBox()]);
+  expect(l!.x).toBeLessThan(c!.x); // it does overflow the box, so the clip matters
+});

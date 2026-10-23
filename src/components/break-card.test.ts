@@ -48,6 +48,13 @@ describe("BreakCard (spec §8.1)", () => {
     const plate = card({ photo }).match(/<span[^>]*data-testid="plate"[\s\S]*?<\/span>/)![0];
     expect(plate).not.toMatch(/--kit-|board-lamp|data-flight|--fc/);
   });
+  it("clips the corner board's lamp to its own box so no glow tints the photo (spec §8.0)", () => {
+    const h = card({ photo });
+    expect(h).toMatch(/data-testid="card-corner"[^>]*class="[^"]*overflow-hidden|class="[^"]*overflow-hidden[^"]*"[^>]*data-testid="card-corner"/);
+    // the lamp is inside the clipping wrapper, after the plate
+    expect(h.indexOf("card-corner")).toBeGreaterThan(h.indexOf('data-testid="plate"'));
+    expect(h.indexOf("board-lamp")).toBeGreaterThan(h.indexOf("card-corner"));
+  });
   // Regression pin: the card link exists today; the photo must not take it over.
   it("still links the whole card to the break", () => expect(card({ photo })).toContain('href="/b/b1"'));
 });

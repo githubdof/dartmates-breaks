@@ -22,7 +22,8 @@ export function BreakCard({ b, cells, photo }: { b: FeedBreak; cells: ThumbCell[
           {photo ? (
             <>
               <Plate photo={photo} size={96} surface="board" decorative />
-              <span className="absolute right-0 bottom-0 block"><KitThumb cells={kitThumbCells(cells)} kit={b.kit} heat={b.heat} size={48} /></span>
+              {/* overflow-hidden clips the thumbnail's lamp (it extends 12 px past the board) so no glow tints the photo (spec §8.0). */}
+              <span data-testid="card-corner" className="absolute right-0 bottom-0 block overflow-hidden"><KitThumb cells={kitThumbCells(cells)} kit={b.kit} heat={b.heat} size={48} /></span>
             </>
           ) : (
             <KitThumb cells={kitThumbCells(cells)} kit={b.kit} heat={b.heat} size={96} />
