@@ -1,9 +1,14 @@
 "use client";
 import { useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { Sheet } from "@/components/sheet";
-import { PhotoStrip, type PhotoStripProps } from "./photo-strip";
+import type { PhotoStripProps } from "./photo-strip";
+
+// The strip (upload, shrink and removal-queue code) is host-only and mounts on the first open, so it loads then,
+// not with the break page every visitor downloads (the first-load budget, `pnpm budget`).
+const PhotoStrip = dynamic(() => import("./photo-strip").then((m) => m.PhotoStrip), { ssr: false });
 
 /**
  * The host's photo strip on an open or filled break. The strip mounts on the first open and stays mounted: it hides

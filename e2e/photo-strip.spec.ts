@@ -309,6 +309,7 @@ test("after a claim, Remove asks first; Keep keeps it, Remove photo removes at o
   await expect(buyer.getByTestId("owed")).toBeVisible();
   await gotoReady(page, url);
   await page.getByTestId("edit-photos").click();
+  await expect(page.getByTestId("photo-tile")).toHaveCount(2); // the strip loads on the first open
   const [first, second] = await order(page);
   await page.getByTestId("photo-options-1").click(); await page.getByRole("button", { name: "Remove" }).click();
   await expect(page.getByText("Buyers in this break will still see this photo, marked Removed.")).toBeVisible();
@@ -327,6 +328,7 @@ test("Edit photos: closing the sheet commits a removal still waiting on Undo", a
   const url = await composeBreakWithPhotos(page, { title: `Close ${run}`, photos: 2 });
   await gotoReady(page, url);
   await page.getByTestId("edit-photos").click();
+  await expect(page.getByTestId("photo-tile")).toHaveCount(2); // the strip loads on the first open
   const [first, second] = await order(page);
   await page.getByTestId("photo-options-1").click(); await page.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(page.getByTestId("photo-undo")).toBeVisible();
