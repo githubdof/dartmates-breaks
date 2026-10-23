@@ -1,6 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
-import { composeBreak, composeBreakWithPhotos, gotoReady, loginAs } from "./helpers";
+import { axeViolations, composeBreak, composeBreakWithPhotos, gotoReady, loginAs, ranBreak, signedIn } from "./helpers";
 import { ageClaims } from "./db";
 
 // The design's layout and accessibility claims, checked in a real browser (no jsdom). One 50-line open break
@@ -11,12 +10,6 @@ const run = Date.now();
 const hostEmail = `lh${run}@e2e.test`;
 const buyerHandle = `lb${run}`; // /test/login derives the handle from the email's local part
 let url = "";
-
-async function signedIn(browser: Browser, email: string, role: "member" | "host" = "member"): Promise<Page> {
-  const page = await (await browser.newContext()).newPage();
-  await loginAs(page, email, role);
-  return page;
-}
 
 async function anonymous(browser: Browser, width: number, height: number): Promise<Page> {
   const mobile = width < 640;
@@ -253,27 +246,6 @@ test("Enter in the composer never opens a break", async ({ browser }) => {
   await expect(host.getByText("Draft", { exact: true }).first()).toBeVisible();
   await expect(host.getByTestId("edit-draft")).toBeVisible();
 });
-
-/** A 2-line break the host runs to the end, for the result page: one buyer takes both lines and is ticked paid. */
-async function ranBreak(browser: Browser, host: Page): Promise<{ url: string; buyer: Page }> {
-  const ranUrl = await composeBreak(host, { title: `Layout ran ${run}`, lineCount: 2 });
-  const buyer = await signedIn(browser, `lr${run}@e2e.test`);
-  await gotoReady(buyer, ranUrl);
-  await buyer.getByTestId("claim-rest").click();
-  await expect(buyer.getByTestId("pay-amount")).toContainText("$10");
-  await host.goto(ranUrl);
-  await host.getByTestId("host-tools").click();
-  await host.getByTestId("ledger-paid").click();
-  await host.getByTestId("run-draw").click();
-  await host.getByTestId("finish-draw").click();
-  await expect(host.getByTestId("ledger-result")).toBeVisible();
-  return { url: ranUrl, buyer };
-}
-
-async function axeViolations(page: Page, where: string): Promise<string[]> {
-  const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
-  return r.violations.map((v) => `${where} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
-}
 
 test("axe finds no WCAG 2.1 A or AA violation on the main pages, the pay sheet and the ledger (D§7)", async ({ browser }) => {
   const found: string[] = [];
