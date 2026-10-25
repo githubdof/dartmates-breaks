@@ -101,6 +101,17 @@ hit and changed copy once; nothing else needed a decision.
     delaying the drop that lands from whichever render comes first;
   - keep the flight glyphs and the colour table out of the kit view (strangers, most first loads, never draw a flight);
   - compute `lampLayer` and the layout tiers on the server and pass them as props.
+- Under Turbopack the Plan C measurement stopped working (`app-build-manifest.json` is no longer written).
+  `scripts/measure-first-load.mjs` reads the route's client-reference manifest and the root files instead; on `ba809fd`
+  it measures js 203120, css 12268 (not comparable with the figures above). Plan D's allowance is the 4 036 B left of the
+  12 288 B; after Plan D js is 206803 (+3683 B), css 12571 (+303 B), 353 B inside the allowance. The absolute figure
+  includes the polyfill file, which modern browsers skip as `noModule`; the delta is unaffected. Plan D first measured
+  214952 B (+11832 B, 7796 B over): the host-only photo strip (upload, shrink and removal-queue code, a 13530 B gzip
+  chunk) was statically imported by `EditPhotosSheet`, so every visitor downloaded it. It now loads with `next/dynamic`
+  (`ssr: false`) when the host first opens the sheet; the viewer was already on demand. What stays in the page's first
+  load is the photo code that renders for everyone (`Plate`, `PrizesBlock`, the viewer button) and `NoticeSeen`
+  (about +3.7 KB together); the largest chunks are the framework and shared UI chunks (71805, 46238, 39520 B gzip),
+  then a 18751 B page chunk. The margin is thin: the next photo feature on this page should lazy-load first.
 
 ## Open bug reports (not yet reproduced)
 

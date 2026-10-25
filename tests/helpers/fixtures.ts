@@ -1,15 +1,16 @@
 import { randomUUID, randomBytes } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { users, breaks, breakItems, breakSecrets, prizes, lines, hostProfiles } from "@/db/schema";
+import { users, breaks, breakItems, breakSecrets, breakPhotos, photoUploads, prizes, lines, hostProfiles } from "@/db/schema";
 import type { Flight, Kit } from "@/domain/flights";
 import { commitment } from "@/crypto/commit";
 import { encryptSecret } from "@/crypto/secrets";
 import { FakeBeacon } from "@/crypto/beacon";
-import type { ClaimMode } from "@/domain/breaks/rules";
+import type { ClaimMode, ItemCondition } from "@/domain/breaks/rules";
 import { claimLines, markPaid } from "@/domain/lines/commands";
 import { requestDraw, finaliseDraw } from "@/domain/draws/commands";
 import { SYSTEM, type Caller } from "@/domain/types";
+import type { PhotoLocation } from "@/domain/photos/types";
 
 // Random, not Date.now(): parallel vitest workers would collide on the same millisecond.
 const uniq = () => randomBytes(6).toString("hex");
@@ -33,6 +34,74 @@ export async function makeUser(tx: Tx, opts: { role?: "member" | "host" | "admin
       .onConflictDoUpdate({ target: hostProfiles.userId, set: { kitDark: opts.kit.dark, kitLight: opts.kit.light } });
   }
   return { id, handle };
+}
+
+/** A composer prize: a fresh slot key unless given. */
+export const prize = (name: string, condition: ItemCondition = "new_in_box", slotKey: string = randomUUID()) => ({ name, slotKey, condition });
+
+/**
+ * A break_photos row straight into the table (Task 5's commands are not needed to test slots and deletes).
+ * bucket defaults to the one the break's status allows: "photos-draft" for a draft break, "photos" otherwise
+ * (Task 2 refuses any other insert). path `${breakId}/${22 url-safe chars}`, width 1600, height 1200, alt "Darts".
+ * Returns the row id.
+ */
+export async function photoRow(tx: Tx, o: { breakId: string; hostId: string; position: number; slot: string | null; bucket?: "photos-draft" | "photos" }): Promise<string> {
+  const bucket = o.bucket ?? ((await tx.select({ status: breaks.status }).from(breaks).where(sql`${breaks.id} = ${o.breakId}`))[0].status === "draft" ? "photos-draft" : "photos");
+  const [r] = await tx.insert(breakPhotos).values({
+    breakId: o.breakId, position: o.position, prizeSlot: o.slot, path: `${o.breakId}/${randomBytes(16).toString("base64url")}`,
+    bucket, width: 1600, height: 1200, alt: "Darts", createdBy: o.hostId,
+  }).returning({ id: breakPhotos.id });
+  return r.id;
+}
+
+/** A storage prefix as Task 6 makes it: `${breakId}/` + 22 url-safe base64 characters (128 bits). */
+export function newPrefix(breakId: string): string {
+  return `${breakId}/${randomBytes(16).toString("base64url")}`;
+}
+
+/**
+ * A break_photos row in any state, straight into the table, so tests can build states the commands would refuse.
+ * Defaults: slot null, bucket "photos", path newPrefix(breakId) (a string `path` is used as the prefix, null drops it
+ * after the insert), width 1600, height 1200, alt "Darts". The guard only
+ * inserts live rows in the bucket the break's status allows, so a removed or hidden row is inserted live (parked at
+ * position -8, clear of the live index) and then removed or hidden, moving to `bucket` in that update.
+ */
+export async function makePhoto(tx: Tx, o: {
+  breakId: string; createdBy: string; position: number; slot?: string | null;
+  bucket?: PhotoLocation; removedAt?: Date; hiddenAt?: Date; path?: string | null; alt?: string;
+}): Promise<{ id: string; prefix: string }> {
+  const prefix = typeof o.path === "string" ? o.path : newPrefix(o.breakId);
+  const gone = o.removedAt !== undefined || o.hiddenAt !== undefined;
+  const [{ status }] = await tx.select({ status: breaks.status }).from(breaks).where(sql`${breaks.id} = ${o.breakId}`);
+  const liveBucket = o.bucket && o.bucket !== "photo-archive" ? o.bucket : status === "draft" ? "photos-draft" : "photos";
+  const [r] = await tx.insert(breakPhotos).values({
+    breakId: o.breakId, position: gone ? -8 : o.position, prizeSlot: o.slot ?? null, path: prefix,
+    bucket: gone ? liveBucket : (o.bucket ?? "photos"), width: 1600, height: 1200, alt: o.alt ?? "Darts", createdBy: o.createdBy,
+  }).returning({ id: breakPhotos.id });
+  if (gone) {
+    await tx.update(breakPhotos).set({
+      position: o.position, removedAt: o.removedAt ?? null, hiddenAt: o.hiddenAt ?? null, bucket: o.bucket ?? liveBucket,
+    }).where(sql`${breakPhotos.id} = ${r.id}`);
+  }
+  // A path only ever changes to null (every copy gone), in an update of its own.
+  if (o.path === null) await tx.update(breakPhotos).set({ path: null }).where(sql`${breakPhotos.id} = ${r.id}`);
+  return { id: r.id, prefix };
+}
+
+/** A photo_uploads row (the grant a host gets before a photo is recorded), straight into the table. */
+export async function makeTicket(tx: Tx, o: { hostId: string; breakId: string; expiresAt: Date; consumedAt?: Date }): Promise<{ id: string }> {
+  const id = randomUUID();
+  await tx.insert(photoUploads).values({
+    id, hostId: o.hostId, breakId: o.breakId, incomingName: `${o.breakId}/${id}`, expiresAt: o.expiresAt, consumedAt: o.consumedAt ?? null,
+  });
+  return { id };
+}
+
+/** Adds an item and its prize at `rank`; returns the prize's slot key. */
+export async function addPrize(tx: Tx, breakId: string, rank: number, name: string): Promise<string> {
+  const [item] = await tx.insert(breakItems).values({ breakId, name }).returning();
+  const [p] = await tx.insert(prizes).values({ breakId, rank, itemId: item.id }).returning({ slotKey: prizes.slotKey });
+  return p.slotKey;
 }
 
 export async function makeBreak(tx: Tx, opts: { hostId: string; lineCount?: number; linePriceCents?: number; status?: string; kind?: string; claimMode?: ClaimMode }) {

@@ -1,17 +1,31 @@
 import { describe, it, expect } from "vitest";
+import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { withTx } from "../../../tests/helpers/db";
-import { makeUser, lineRows } from "../../../tests/helpers/fixtures";
-import { createDraft, openBreak, updateDraft, updateHostKit } from "./commands";
-import { getBreakPage } from "./queries";
-import { breaks, breakSecrets, events, hostProfiles } from "@/db/schema";
-import { InvalidInput, NotAuthorized, NotOpen } from "@/domain/errors";
+import { makeUser, lineRows, prize, photoRow, makePhoto } from "../../../tests/helpers/fixtures";
+import { breakPhotos as breakPhotos_ } from "@/domain/photos/queries";
+import { createDraft, deleteDraft, openBreak, updateDraft, updateHostKit } from "./commands";
+import { draftForEdit, getBreakPage } from "./queries";
+import { breaks, breakItems, breakPhotos, breakSecrets, events, hostProfiles, photoUploads, prizes } from "@/db/schema";
+import type { Tx } from "@/db/client";
+import { allowPhotoModeration } from "@/db/photo-moderation";
+import { InvalidInput, NotAuthorized, NotFound, NotOpen } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
 
 const asHost = (u: { id: string }): Caller => ({ id: u.id, role: "host", onboarded: true, banned: false });
 const asMember = (u: { id: string }): Caller => ({ id: u.id, role: "member", onboarded: true, banned: false });
 
-const input = { title: "Target Chronos", lineCount: 12, linePriceCents: 2000, items: [{ name: "Chronos 22g" }, { name: "Chronos 24g" }] };
+const input = { title: "Target Chronos", lineCount: 12, linePriceCents: 2000, items: [prize("Chronos 22g"), prize("Chronos 24g")] };
+
+/** Slot key -> item id, from the break's prizes. */
+async function slotItems(tx: Tx, breakId: string): Promise<Map<string, string>> {
+  const rows = await tx.select({ slotKey: prizes.slotKey, itemId: prizes.itemId }).from(prizes).where(sql`${prizes.breakId} = ${breakId}`);
+  return new Map(rows.map((r) => [r.slotKey, r.itemId!]));
+}
+async function photoSlot(tx: Tx, photoId: string): Promise<string | null> {
+  const [r] = await tx.select({ prizeSlot: breakPhotos.prizeSlot }).from(breakPhotos).where(sql`${breakPhotos.id} = ${photoId}`);
+  return r.prizeSlot;
+}
 
 describe("createDraft", () => {
   it("creates a draft with items and a rank-1 choice set", async () => {
@@ -70,7 +84,7 @@ describe("createDraft", () => {
   it("adds 2nd-place items as rank-2 prizes", async () => {
     await withTx(async (tx) => {
       const host = await makeUser(tx, { role: "host" });
-      const { breakId } = await createDraft(tx, asHost(host), { ...input, items: [{ name: "Chronos 22g" }], secondPlace: [{ name: "Flight pack" }, { name: "  " }] });
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, items: [prize("Chronos 22g")], secondPlace: [prize("Flight pack"), prize("  ")] });
       const page = (await getBreakPage(tx, breakId))!;
       expect(page.prizes.map((p) => p.rank)).toEqual([1, 2]);
       expect(page.items.map((i) => i.name).sort()).toEqual(["Chronos 22g", "Flight pack"]);
@@ -118,16 +132,32 @@ describe("openBreak", () => {
       await expect(openBreak(tx, asHost(host), breakId)).rejects.toBeInstanceOf(NotAuthorized);
     });
   });
+  it("moves every live photo from photos-draft to photos, positions kept, and leaves a removed one alone", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), input);
+      const a = await makePhoto(tx, { breakId, createdBy: host.id, position: 0, bucket: "photos-draft" });
+      const b = await makePhoto(tx, { breakId, createdBy: host.id, position: 1, bucket: "photos-draft" });
+      const gone = await makePhoto(tx, { breakId, createdBy: host.id, position: 2, removedAt: new Date(), bucket: "photo-archive" });
+      const [goneBefore] = await tx.select().from(breakPhotos).where(sql`${breakPhotos.id} = ${gone.id}`);
+      await openBreak(tx, asHost(host), breakId);
+      const rows = await tx.select().from(breakPhotos).where(sql`${breakPhotos.breakId} = ${breakId} and ${breakPhotos.removedAt} is null`).orderBy(breakPhotos.position);
+      expect(rows.map((r) => [r.id, r.position, r.bucket])).toEqual([[a.id, 0, "photos"], [b.id, 1, "photos"]]);
+      const [goneAfter] = await tx.select().from(breakPhotos).where(sql`${breakPhotos.id} = ${gone.id}`);
+      expect(goneAfter).toEqual(goneBefore);
+      expect((await breakPhotos_(tx, breakId, null)).live.map((p) => [p.id, p.location])).toEqual([[a.id, "photos"], [b.id, "photos"]]);
+    });
+  });
 });
 
 describe("updateDraft", () => {
   it("replaces a draft's settings and prizes and logs break.updated", async () => {
     await withTx(async (tx) => {
       const host = await makeUser(tx, { role: "host" });
-      const { breakId } = await createDraft(tx, asHost(host), { ...input, secondPlace: [{ name: "Flight pack" }] });
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, secondPlace: [prize("Flight pack")] });
       await updateDraft(tx, asHost(host), breakId, {
         title: "Target Chronos v2", lineCount: 20, linePriceCents: 500, claimMode: "straight",
-        items: [{ name: "Chronos 26g" }], secondPlace: [], paymentHandles: { venmo: "Jim-R" },
+        items: [prize("Chronos 26g")], secondPlace: [], paymentHandles: { venmo: "Jim-R" },
       });
       const page = (await getBreakPage(tx, breakId))!;
       expect(page.break).toMatchObject({
@@ -154,7 +184,7 @@ describe("updateDraft", () => {
       const host = await makeUser(tx, { role: "host" });
       const { breakId } = await createDraft(tx, asHost(host), input);
       await openBreak(tx, asHost(host), breakId);
-      await expect(updateDraft(tx, asHost(host), breakId, { ...input, items: [{ name: "Other" }] })).rejects.toBeInstanceOf(NotOpen);
+      await expect(updateDraft(tx, asHost(host), breakId, { ...input, items: [prize("Other")] })).rejects.toBeInstanceOf(NotOpen);
       expect((await getBreakPage(tx, breakId))!.items.map((i) => i.name).sort()).toEqual(["Chronos 22g", "Chronos 24g"]);
     });
   });
@@ -211,6 +241,173 @@ describe("updateDraft", () => {
       const { breakId } = await createDraft(tx, asHost(host), input);
       await expect(updateDraft(tx, asHost(host), breakId, { ...input, lineCount: 51 })).rejects.toBeInstanceOf(InvalidInput);
       await expect(updateDraft(tx, asHost(host), breakId, { ...input, claimMode: "random_only" as never })).rejects.toBeInstanceOf(InvalidInput);
+    });
+  });
+});
+
+describe("prize slots and condition", () => {
+  it("stores each prize's slot key and condition, in the composer's order", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const [a, b, c] = [prize("Chronos 22g"), prize("Chronos 24g", "used"), prize("Flight pack", "new_opened")];
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, items: [a, b], secondPlace: [c] });
+      const d = (await draftForEdit(tx, breakId))!;
+      expect(d.topSpot).toEqual([a, b]);
+      expect(d.secondPlace).toEqual([c]);
+    });
+  });
+  it("refuses a prize with no condition, a bad slot key, or a slot key used twice", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      await expect(createDraft(tx, asHost(host), { ...input, items: [{ ...prize("X"), condition: "mint" as never }] })).rejects.toThrow("Choose the condition of each prize");
+      await expect(createDraft(tx, asHost(host), { ...input, items: [prize("X", "used", "slot-1")] })).rejects.toThrow("This form is out of date. Reload the page and try again.");
+      const twice = randomUUID();
+      await expect(createDraft(tx, asHost(host), { ...input, items: [prize("X", "used", twice)], secondPlace: [prize("Y", "used", twice)] })).rejects.toBeInstanceOf(InvalidInput);
+    });
+  });
+  it("removing the first 'or' choice keeps the other two slots, their items and their photo tags", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const [a, b, c] = [prize("Chronos 22g"), prize("Chronos 24g", "used"), prize("Phantom 24g", "new_opened")];
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, items: [a, b, c] });
+      const before = await slotItems(tx, breakId);
+      const onB = await photoRow(tx, { breakId, hostId: host.id, position: 0, slot: b.slotKey });
+      const onC = await photoRow(tx, { breakId, hostId: host.id, position: 1, slot: c.slotKey });
+      await updateDraft(tx, asHost(host), breakId, { ...input, items: [a, c] });
+      expect((await draftForEdit(tx, breakId))!.topSpot).toEqual([a, c]);
+      const after = await slotItems(tx, breakId);
+      expect([...after.keys()].sort()).toEqual([a.slotKey, c.slotKey].sort());
+      expect(after.get(a.slotKey)).toBe(before.get(a.slotKey)); // updated in place, not reinserted
+      expect(after.get(c.slotKey)).toBe(before.get(c.slotKey));
+      expect(await photoSlot(tx, onC)).toBe(c.slotKey); // the Phantom photo still shows the Phantom
+      expect(await photoSlot(tx, onB)).toBeNull(); // a removed slot clears the tag
+    });
+  });
+  it("renames and re-conditions a kept slot in place and adds a new slot after the kept ones", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const [a, c, e] = [prize("Chronos 22g"), prize("Phantom 24g"), prize("Chronos 26g", "used")];
+      const { breakId } = await createDraft(tx, asHost(host), { ...input, items: [a, c] });
+      const before = await slotItems(tx, breakId);
+      const renamed = { ...a, name: "Chronos 22g steel", condition: "used" as const };
+      await updateDraft(tx, asHost(host), breakId, { ...input, items: [renamed, c, e] });
+      expect((await draftForEdit(tx, breakId))!.topSpot).toEqual([renamed, c, e]);
+      expect((await slotItems(tx, breakId)).get(a.slotKey)).toBe(before.get(a.slotKey));
+      const evs = await tx.select().from(events).where(sql`${events.breakId} = ${breakId} and ${events.type} = 'break.updated'`);
+      expect(evs).toHaveLength(1);
+    });
+  });
+  // Regression pin (ruling 41): Task 2's column sits under the existing items_mutation_guard, so this passes before
+  // Step 3. It pins that the condition freezes with its item and must stay green.
+  it("regression pin: freezes a prize's condition with its item after the first paid line", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      const { breakId } = await createDraft(tx, asHost(host), input);
+      await openBreak(tx, asHost(host), breakId);
+      await tx.execute(sql`update lines set owner_id = ${buyer.id}, claimed_at = now(), paid_at = now() where break_id = ${breakId} and number = 1`);
+      await expect(tx.execute(sql`update break_items set condition = 'used' where break_id = ${breakId}`))
+        .rejects.toMatchObject({ cause: { message: expect.stringMatching(/add-only after the first paid line/) } });
+    });
+  });
+});
+
+describe("createDraft with the composer's id", () => {
+  it("makes the break under that id once; a second call applies the input to the same row", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const id = randomUUID();
+      expect(await createDraft(tx, asHost(host), input, { breakId: id })).toEqual({ breakId: id });
+      expect(await createDraft(tx, asHost(host), { ...input, title: "Target Chronos v2" }, { breakId: id })).toEqual({ breakId: id });
+      const rows = await tx.select().from(breaks).where(sql`${breaks.id} = ${id}`);
+      expect(rows.map((r) => r.title)).toEqual(["Target Chronos v2"]);
+      const types = (await tx.select().from(events).where(sql`${events.breakId} = ${id}`)).map((e) => e.type).sort();
+      expect(types).toEqual(["break.created", "break.updated"]);
+      expect((await draftForEdit(tx, id))!.topSpot).toEqual(input.items); // same slots, no duplicate prizes
+    });
+  });
+  it("refuses another host's id, an admin's included, and changes nothing", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const other = await makeUser(tx, { role: "host" }); const admin = await makeUser(tx, { role: "admin" });
+      const id = randomUUID();
+      await createDraft(tx, asHost(host), input, { breakId: id });
+      await expect(createDraft(tx, asHost(other), { ...input, title: "Hijacked" }, { breakId: id })).rejects.toBeInstanceOf(NotAuthorized);
+      await expect(createDraft(tx, { ...asHost(admin), role: "admin" }, { ...input, title: "Hijacked" }, { breakId: id })).rejects.toBeInstanceOf(NotAuthorized);
+      expect((await draftForEdit(tx, id))!.title).toBe("Target Chronos");
+    });
+  });
+  it("refuses an id that is not a uuid, and the id of a break already open", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      await expect(createDraft(tx, asHost(host), input, { breakId: "b1" })).rejects.toBeInstanceOf(InvalidInput);
+      const id = randomUUID();
+      await createDraft(tx, asHost(host), input, { breakId: id });
+      await openBreak(tx, asHost(host), id);
+      await expect(createDraft(tx, asHost(host), input, { breakId: id })).rejects.toBeInstanceOf(NotOpen);
+    });
+  });
+});
+
+describe("deleteDraft", () => {
+  it("deletes the prizes, items, photo rows and tickets, keeps the events, and returns the photo locations", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), input);
+      await photoRow(tx, { breakId, hostId: host.id, position: 0, slot: input.items[0].slotKey }); // bucket defaults to photos-draft
+      await photoRow(tx, { breakId, hostId: host.id, position: 1, slot: null });
+      await tx.insert(photoUploads).values({ hostId: host.id, breakId, incomingName: `x-${randomUUID()}`, expiresAt: new Date(Date.now() + 300_000) });
+      const { photos } = await deleteDraft(tx, asHost(host), breakId);
+      expect(photos).toHaveLength(2);
+      expect(photos.every((p) => p.location === "photos-draft" && p.prefix.startsWith(`${breakId}/`))).toBe(true);
+      for (const t of [prizes, breakItems, breakPhotos, photoUploads]) {
+        expect(await tx.select().from(t).where(sql`${t.breakId} = ${breakId}`)).toHaveLength(0);
+      }
+      const [row] = await tx.select().from(breaks).where(sql`${breaks.id} = ${breakId}`);
+      expect(row.deletedAt).toBeInstanceOf(Date); // a tombstone: the row stays for its events
+      expect(row.status).toBe("draft");
+      const evs = await tx.select().from(events).where(sql`${events.breakId} = ${breakId}`);
+      expect(evs.map((e) => e.type)).toEqual(expect.arrayContaining(["break.created", "break.deleted"]));
+      expect(evs.find((e) => e.type === "break.deleted")!.payload).toEqual({ photos: 2 });
+    });
+  });
+  it("skips a photo row whose files are already gone (path null) in what it returns, and counts it in the event", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const { breakId } = await createDraft(tx, asHost(host), input);
+      await photoRow(tx, { breakId, hostId: host.id, position: 0, slot: null });
+      const hidden = await photoRow(tx, { breakId, hostId: host.id, position: 1, slot: null });
+      // An admin-hidden photo whose copies are all gone (ruling 10): only reachable under allowPhotoModeration.
+      await allowPhotoModeration(tx);
+      await tx.execute(sql`update break_photos set hidden_at = now(), bucket = 'photo-archive', path = null where id = ${hidden}`);
+      const { photos } = await deleteDraft(tx, asHost(host), breakId);
+      expect(photos).toHaveLength(1);
+      expect(photos[0].prefix).toMatch(new RegExp(`^${breakId}/`));
+      const [ev] = await tx.select().from(events).where(sql`${events.breakId} = ${breakId} and ${events.type} = 'break.deleted'`);
+      expect(ev.payload).toEqual({ photos: 2 });
+    });
+  });
+  it("is for the host or an admin, and only while the break is a draft", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const other = await makeUser(tx, { role: "host" }); const member = await makeUser(tx);
+      const admin = await makeUser(tx, { role: "admin" });
+      const a = await createDraft(tx, asHost(host), input);
+      await expect(deleteDraft(tx, asHost(other), a.breakId)).rejects.toBeInstanceOf(NotAuthorized);
+      await expect(deleteDraft(tx, asMember(member), a.breakId)).rejects.toBeInstanceOf(NotAuthorized);
+      expect(await deleteDraft(tx, { ...asHost(admin), role: "admin" }, a.breakId)).toEqual({ photos: [] });
+      const b = await createDraft(tx, asHost(host), input);
+      await openBreak(tx, asHost(host), b.breakId);
+      await expect(deleteDraft(tx, asHost(host), b.breakId)).rejects.toBeInstanceOf(NotOpen);
+    });
+  });
+  it("leaves a deleted draft unreachable: delete, edit, open and create-by-id all say not found", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" });
+      const id = randomUUID();
+      await createDraft(tx, asHost(host), input, { breakId: id });
+      await deleteDraft(tx, asHost(host), id);
+      await expect(deleteDraft(tx, asHost(host), id)).rejects.toBeInstanceOf(NotFound);
+      await expect(updateDraft(tx, asHost(host), id, input)).rejects.toBeInstanceOf(NotFound);
+      await expect(openBreak(tx, asHost(host), id)).rejects.toBeInstanceOf(NotFound);
+      await expect(createDraft(tx, asHost(host), input, { breakId: id })).rejects.toBeInstanceOf(NotFound);
     });
   });
 });

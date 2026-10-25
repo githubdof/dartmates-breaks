@@ -24,10 +24,13 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await host.goto("/host/new");
   await host.fill("input[name=title]", `J2 ${run}`);
   await host.locator("input[name=prize1]").first().fill("Chronos 22g");
+  await host.locator("select[name=prize1Condition]").first().selectOption("new_in_box");
   await host.getByRole("button", { name: "Add a choice" }).click();
   await host.locator("input[name=prize1]").nth(1).fill("Chronos 24g");
+  await host.locator("select[name=prize1Condition]").nth(1).selectOption("used");
   await host.getByRole("button", { name: "Add 2nd place" }).click();
   await host.fill("input[name=prize2]", "Flight pack");
+  await host.selectOption("select[name=prize2Condition]", "new_opened");
   await host.fill("input[name=lineCount]", "4");
   await host.fill("input[name=linePrice]", "5");
   await host.fill("input[name=venmo]", "@e2e-host");
@@ -40,14 +43,24 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   await host.getByTestId("edit-draft").click();
   await expect(host.locator("input[name=prize1]")).toHaveCount(2);
   await expect(host.locator("input[name=prize2]")).toHaveValue("Flight pack");
+  await expect(host.locator("select[name=prize1Condition]").first()).toHaveValue("new_in_box");
+  await expect(host.locator("select[name=prize1Condition]").nth(1)).toHaveValue("used");
+  await expect(host.locator("select[name=prize2Condition]")).toHaveValue("new_opened");
   await expect(host.getByRole("radio", { name: /^Pick only, no randoms/ })).toBeChecked();
   await host.getByRole("radio", { name: /^Straight fill/ }).check();
   await host.getByTestId("composer-open").click();
   await host.waitForURL(url);
   await host.locator("summary", { hasText: "Details" }).click();
-  // These three lines are Plan A's prizeLines / pickingText copy: a task that changes that wording updates them here.
-  await expect(host.getByText("Top spot gets a choice: Chronos 22g or Chronos 24g.").or(host.getByText("Top spot gets a choice: Chronos 24g or Chronos 22g."))).toBeVisible();
-  await expect(host.getByText("2nd place gets Flight pack.")).toBeVisible();
+  // The prizes now read in the Prizes block (one row per place); the picking line stays in Details (pickingText).
+  const places = host.getByTestId("prize-place");
+  await expect(places).toHaveCount(3);
+  await expect(places.nth(0)).toContainText("Top spot");
+  await expect(places.nth(1)).toContainText("Or");
+  await expect(places.nth(0)).toContainText(/Chronos 2[24]g/);
+  await expect(places.nth(1)).toContainText(/Chronos 2[24]g/);
+  expect(await places.nth(0).textContent()).not.toBe(await places.nth(1).textContent());
+  await expect(places.nth(2)).toContainText("2nd place");
+  await expect(places.nth(2)).toContainText("Flight pack");
   await expect(host.getByText("Straight fill. Lines go out in order.")).toBeVisible();
 
   // 3. Buyer A finds it in the feed, takes the next two lines, and pays later from My lines.

@@ -3,6 +3,9 @@ import { db } from "@/db/client";
 import { feedThumbs, latestRanBreak, listFeed } from "@/domain/breaks/feed";
 import { viewerZone } from "@/lib/zone";
 import { ButtonLink } from "@/components/button";
+import { leadPhotos } from "@/domain/photos/queries";
+import { leadSrcs } from "@/photos/lead-srcs";
+import { photoStorage } from "@/storage/photo-storage";
 import { BreakCard } from "@/components/break-card";
 import { KitThumb } from "@/components/kit-thumb";
 import { kitThumbCells } from "@/components/kit-thumb-model";
@@ -15,11 +18,12 @@ export const viewport = wallViewport;
 export default async function Home() {
   const now = new Date();
   const zone = await viewerZone();
-  const { hero, cards, thumbs } = await db.transaction(async (tx) => {
+  const { hero, cards, thumbs, leads } = await db.transaction(async (tx) => {
     const hero = await latestRanBreak(tx);
     const cards = await listFeed(tx, { sort: "newest", limit: 6, now });
-    return { hero, cards, thumbs: await feedThumbs(tx, cards.map((c) => c.id)) };
+    return { hero, cards, thumbs: await feedThumbs(tx, cards.map((c) => c.id)), leads: await leadPhotos(tx, cards.map((c) => c.id)) };
   });
+  const srcs = await leadSrcs(photoStorage(), leads, 160);
   return (
     // A wall route (Mosaic §8): data-wall switches on Task 1's wall background (recorded ruling 12), so its text takes the wall inks.
     <main data-wall className="mx-auto max-w-[600px] space-y-8 px-4 py-6 sm:px-6" style={{ color: "var(--board-text)" }}>
@@ -45,7 +49,7 @@ export default async function Home() {
       {cards.length > 0 && (
         <section aria-labelledby="open-now" className="space-y-3">
           <h2 id="open-now" className="text-headline font-semibold">Open now</h2>
-          <ul className="space-y-3">{cards.map((b) => <BreakCard key={b.id} b={b} cells={thumbs.get(b.id) ?? []} />)}</ul>
+          <ul className="space-y-3">{cards.map((b) => <BreakCard key={b.id} b={b} cells={thumbs.get(b.id) ?? []} photo={srcs.get(b.id) ?? null} />)}</ul>
         </section>
       )}
       {/* No contact address yet (design §8): the invite contact is deferred, so the line ends here. */}

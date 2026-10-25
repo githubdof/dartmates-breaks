@@ -114,16 +114,32 @@ port = 54324
 # sender_name = "Admin"
 
 [storage]
-enabled = false
+enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
 
-# Uncomment to configure local storage buckets
-# [storage.buckets.images]
-# public = false
-# file_size_limit = "50MiB"
-# allowed_mime_types = ["image/png", "image/jpeg"]
-# objects_path = "./images"
+# Photos (photos spec §5.5). src/storage/buckets.ts BUCKET_SETTINGS is the source; buckets.test.ts keeps these equal,
+# and scripts/create-buckets.ts creates the same buckets in production. No objects_path: nothing is seeded. No
+# storage.objects policy exists for anon or authenticated: every write is the service role or a signed upload URL.
+[storage.buckets.incoming]
+public = false
+file_size_limit = "5MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
+
+[storage.buckets.photos-draft]
+public = false
+file_size_limit = "5MiB"
+allowed_mime_types = ["image/webp"]
+
+[storage.buckets.photos]
+public = true
+file_size_limit = "5MiB"
+allowed_mime_types = ["image/webp"]
+
+[storage.buckets.photo-archive]
+public = false
+file_size_limit = "5MiB"
+allowed_mime_types = ["image/webp"]
 
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]

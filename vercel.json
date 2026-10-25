@@ -1,1 +1,4 @@
-{ "crons": [{ "path": "/api/tick", "schedule": "* * * * *" }] }
+{
+  "crons": [{ "path": "/api/tick", "schedule": "* * * * *" }, { "path": "/api/photos/cleanup", "schedule": "17 9 * * *" }],
+  "functions": { "src/app/api/photos/finalise/route.ts": { "maxDuration": 30 } }
+}

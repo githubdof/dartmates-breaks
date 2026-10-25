@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { MAX_LINES, CLAIM_MODES } from "@/domain/breaks/rules";
-import type { CreateDraftInput } from "@/domain/breaks/commands";
+import { isItemCondition } from "@/domain/breaks/condition";
+import type { CreateDraftInput, PrizeInput } from "@/domain/breaks/commands";
+import { isUuid } from "@/lib/is-uuid";
+
+const STALE_FORM = "This form is out of date. Reload the page and try again.";
 
 const schema = z.object({
   title: z.string().trim().min(1, "Add a title").max(120, "Title: at most 120 characters"),
@@ -42,8 +46,21 @@ export function parseComposer(form: FormData): ComposerParsed {
   const p = schema.safeParse(raw);
   if (!p.success) return { ok: false, error: p.error.issues[0]?.message ?? "Check the form and try again" };
   const d = p.data;
-  const items = d.prize1.map((s) => s.trim()).filter(Boolean).map((name) => ({ name }));
-  if (items.length === 0) return { ok: false, error: "Top spot: name the prize" };
+  if (!d.prize1.some((s) => s.trim() !== "")) return { ok: false, error: "Top spot: name the prize" };
+  const strings = (k: string) => form.getAll(k).filter((v): v is string => typeof v === "string");
+  const slots1 = strings("prize1Slot");
+  const conditions1 = strings("prize1Condition");
+  if (slots1.length !== d.prize1.length || conditions1.length !== d.prize1.length) return { ok: false, error: STALE_FORM };
+  const rows1 = d.prize1.map((name, i) => ({ name: name.trim(), slotKey: slots1[i], condition: conditions1[i] }));
+  const row2 = { name: d.prize2.trim(), slotKey: text("prize2Slot"), condition: text("prize2Condition") };
+  // Every posted slot is checked, blank rows included: a broken form is caught whichever row it is in.
+  const allSlots = [...slots1, ...(row2.slotKey !== "" || row2.name !== "" ? [row2.slotKey] : [])];
+  if (!allSlots.every(isUuid) || new Set(allSlots.map((s) => s.toLowerCase())).size !== allSlots.length) return { ok: false, error: STALE_FORM };
+  const named = [...rows1.filter((r) => r.name !== ""), ...(row2.name !== "" ? [row2] : [])];
+  const unconditioned = named.find((r) => !isItemCondition(r.condition));
+  if (unconditioned) return { ok: false, error: `${unconditioned.name}: choose its condition` };
+  const prize = (r: { name: string; slotKey: string; condition: string }): PrizeInput => ({ name: r.name, slotKey: r.slotKey, condition: r.condition as PrizeInput["condition"] });
+  const items = rows1.filter((r) => r.name !== "").map(prize);
   const venmo = d.venmo.trim();
   const paypal = d.paypal.trim();
   if (d.intent === "open" && !venmo && !paypal && !d.paymentInstructions.trim()) {
@@ -63,7 +80,7 @@ export function parseComposer(form: FormData): ComposerParsed {
       paymentInstructions: d.paymentInstructions,
       paymentHandles: { venmo, paypal }, // always sent, so clearing a handle sticks
       items,
-      secondPlace: d.prize2.trim() ? [{ name: d.prize2.trim() }] : [],
+      secondPlace: row2.name !== "" ? [prize(row2)] : [],
     },
   };
 }

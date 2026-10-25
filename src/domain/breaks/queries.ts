@@ -1,7 +1,7 @@
-import { sql, eq, asc, desc, and } from "drizzle-orm";
+import { sql, eq, asc, desc, and, isNull } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { breaks, breakItems, prizes, lines, users, hostProfiles } from "@/db/schema";
-import type { ClaimMode } from "./rules";
+import type { ClaimMode, ItemCondition } from "./rules";
 import { SYSTEM } from "@/domain/types";
 import { kitFor, type Kit } from "@/domain/flights";
 
@@ -17,8 +17,9 @@ export type BreakPage = {
   }[];
 };
 
+/** Null for an unknown break and for a deleted draft (photos spec §9). */
 export async function getBreakPage(tx: Tx, breakId: string): Promise<BreakPage | null> {
-  const [b] = await tx.select().from(breaks).where(eq(breaks.id, breakId));
+  const [b] = await tx.select().from(breaks).where(and(eq(breaks.id, breakId), isNull(breaks.deletedAt)));
   if (!b) return null;
   const [host] = await tx.select({
     id: users.id, handle: users.handle, displayName: users.displayName, paymentHandles: hostProfiles.paymentHandles,
@@ -67,12 +68,12 @@ export type LastBreakDefaults = {
   claimMode: ClaimMode; paymentInstructions: string;
 };
 
-/** The host's most recent main break: the composer starts from it (design §5.6, hosts run several a week). */
+/** The host's most recent main break, deleted drafts aside: the composer starts from it (design §5.6, hosts run several a week). */
 export async function lastBreakDefaults(tx: Tx, hostId: string): Promise<LastBreakDefaults | null> {
   const [r] = await tx.select({
     lineCount: breaks.lineCount, linePriceCents: breaks.linePriceCents, paymentWindowHours: breaks.paymentWindowHours,
     maxLinesPerUser: breaks.maxLinesPerUser, claimMode: breaks.claimMode, paymentInstructions: breaks.paymentInstructions,
-  }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"))).orderBy(desc(breaks.createdAt), desc(breaks.id)).limit(1);
+  }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"), isNull(breaks.deletedAt))).orderBy(desc(breaks.createdAt), desc(breaks.id)).limit(1);
   if (!r) return null;
   return { ...r, paymentInstructions: isGeneratedInstructions(r.paymentInstructions) ? "" : r.paymentInstructions };
 }
@@ -90,13 +91,13 @@ export async function hostKit(tx: Tx, hostId: string): Promise<{ kit: Kit; chose
 
 export type HostBreakRow = { id: string; title: string; status: string; lineCount: number; openedAt: Date | null; paid: number; taken: number };
 
-/** The host's main breaks for /host, newest first (minis wait for their own UI). Paid and taken count numbered lines only. */
+/** The host's main breaks for /host, newest first, deleted drafts left out (minis wait for their own UI). Paid and taken count numbered lines only. */
 export async function listHostBreaks(tx: Tx, hostId: string): Promise<HostBreakRow[]> {
   return tx.select({
     id: breaks.id, title: breaks.title, status: breaks.status, lineCount: breaks.lineCount, openedAt: breaks.openedAt,
     paid: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.paid_at is not null and l.number <= ${breaks.lineCount})`,
     taken: sql<number>`(select count(*)::int from lines l where l.break_id = ${breaks.id} and l.owner_id is not null and l.paid_at is null and l.number <= ${breaks.lineCount})`,
-  }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"))).orderBy(desc(breaks.createdAt), desc(breaks.id));
+  }).from(breaks).where(and(eq(breaks.hostId, hostId), eq(breaks.kind, "main"), isNull(breaks.deletedAt))).orderBy(desc(breaks.createdAt), desc(breaks.id));
 }
 
 export type HostProfile = {
@@ -135,18 +136,24 @@ export async function hostProfile(tx: Tx, handle: string): Promise<HostProfile |
 export type DraftForEdit = {
   id: string; hostId: string; status: string; title: string; description: string; lineCount: number; linePriceCents: number;
   paymentWindowHours: number; maxLinesPerUser: number | null; claimMode: ClaimMode; paymentInstructions: string;
-  topSpot: string[]; secondPlace: string[];
+  /** Each rank's prizes in the composer's order. */
+  topSpot: DraftPrize[]; secondPlace: DraftPrize[];
 };
+/** condition is null only on prizes made before conditions existed (photos spec §7). */
+export type DraftPrize = { slotKey: string; name: string; condition: ItemCondition | null };
 
-/** A break's editable fields and prize names by rank. The caller decides who may see it (drafts: the host and admins). */
+/**
+ * A break's editable fields and its prizes by rank, with their slot keys and conditions. Null for an unknown break and
+ * for a deleted draft. The caller decides who may see it (drafts: the host and admins).
+ */
 export async function draftForEdit(tx: Tx, breakId: string): Promise<DraftForEdit | null> {
-  const [b] = await tx.select().from(breaks).where(eq(breaks.id, breakId));
+  const [b] = await tx.select().from(breaks).where(and(eq(breaks.id, breakId), isNull(breaks.deletedAt)));
   if (!b) return null;
-  // Only the prize names: no lines, no holders.
-  const rows = await tx.select({ rank: prizes.rank, name: breakItems.name }).from(prizes)
+  // Only the prizes: no lines, no holders.
+  const rows = await tx.select({ rank: prizes.rank, slotKey: prizes.slotKey, name: breakItems.name, condition: breakItems.condition }).from(prizes)
     .innerJoin(breakItems, eq(breakItems.id, prizes.itemId)).where(eq(prizes.breakId, breakId))
     .orderBy(asc(prizes.rank), asc(breakItems.createdAt), asc(breakItems.id));
-  const names = (rank: number) => rows.filter((r) => r.rank === rank).map((r) => r.name);
+  const names = (rank: number): DraftPrize[] => rows.filter((r) => r.rank === rank).map(({ slotKey, name, condition }) => ({ slotKey, name, condition }));
   return {
     id: b.id, hostId: b.hostId, status: b.status, title: b.title, description: b.description, lineCount: b.lineCount, linePriceCents: b.linePriceCents,
     paymentWindowHours: b.paymentWindowHours, maxLinesPerUser: b.maxLinesPerUser, claimMode: b.claimMode, paymentInstructions: b.paymentInstructions,

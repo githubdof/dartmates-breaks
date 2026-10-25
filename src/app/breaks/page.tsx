@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { db } from "@/db/client";
 import { feedHosts, feedThumbs, listFeed } from "@/domain/breaks/feed";
+import { leadPhotos } from "@/domain/photos/queries";
+import { leadSrcs } from "@/photos/lead-srcs";
+import { photoStorage } from "@/storage/photo-storage";
 import { BreakCard } from "@/components/break-card";
 import { FeedFilters } from "@/components/feed-filters";
 import { FEED_CHIPS, feedHref, parseFeedParams, SORT_LABELS } from "./params";
@@ -16,10 +19,11 @@ type Props = { searchParams: Promise<{ sort?: string | string[]; host?: string |
 export default async function FeedPage({ searchParams }: Props) {
   const params = parseFeedParams(await searchParams);
   const now = new Date();
-  const { rows, thumbs, hosts } = await db.transaction(async (tx) => {
+  const { rows, thumbs, hosts, leads } = await db.transaction(async (tx) => {
     const rows = await listFeed(tx, { sort: params.sort, hostHandle: params.host, now });
-    return { rows, thumbs: await feedThumbs(tx, rows.map((r) => r.id)), hosts: await feedHosts(tx) };
+    return { rows, thumbs: await feedThumbs(tx, rows.map((r) => r.id)), hosts: await feedHosts(tx), leads: await leadPhotos(tx, rows.map((r) => r.id)) };
   });
+  const srcs = await leadSrcs(photoStorage(), leads, 160);
   const sorts = FEED_CHIPS.map((s) => ({ value: s, label: SORT_LABELS[s], href: feedHref({ ...params, sort: s }) }));
   const hostOptions = [
     { value: "", label: "All hosts", href: feedHref({ ...params, host: null }) },
@@ -38,7 +42,7 @@ export default async function FeedPage({ searchParams }: Props) {
       <FeedFilters sorts={sorts} sort={params.sort} hosts={showHosts ? hostOptions : null} host={params.host ?? ""} />
       {rows.length > 0 ? (
         <ul aria-label="Open breaks" className="space-y-3">
-          {rows.map((b) => <BreakCard key={b.id} b={b} cells={thumbs.get(b.id) ?? []} />)}
+          {rows.map((b) => <BreakCard key={b.id} b={b} cells={thumbs.get(b.id) ?? []} photo={srcs.get(b.id) ?? null} />)}
         </ul>
       ) : (
         <p style={{ color: "var(--board-text-2)" }} data-testid="feed-empty">

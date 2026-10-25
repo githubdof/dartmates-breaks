@@ -1,6 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
-import { composeBreak, gotoReady, loginAs } from "./helpers";
+import { axeViolations, composeBreak, composeBreakWithPhotos, gotoReady, loginAs, ranBreak, signedIn } from "./helpers";
 import { ageClaims } from "./db";
 
 // The design's layout and accessibility claims, checked in a real browser (no jsdom). One 50-line open break
@@ -11,12 +10,6 @@ const run = Date.now();
 const hostEmail = `lh${run}@e2e.test`;
 const buyerHandle = `lb${run}`; // /test/login derives the handle from the email's local part
 let url = "";
-
-async function signedIn(browser: Browser, email: string, role: "member" | "host" = "member"): Promise<Page> {
-  const page = await (await browser.newContext()).newPage();
-  await loginAs(page, email, role);
-  return page;
-}
 
 async function anonymous(browser: Browser, width: number, height: number): Promise<Page> {
   const mobile = width < 640;
@@ -29,6 +22,7 @@ test.beforeAll(async ({ browser }) => {
   await host.goto("/host/new");
   await host.fill("input[name=title]", "Layout fifty");
   await host.fill("input[name=prize1]", "Chronos 22g");
+  await host.selectOption("select[name=prize1Condition]", "new_in_box");
   await host.fill("input[name=venmo]", "@e2e-host");
   await host.fill("input[name=lineCount]", "50");
   await host.fill("input[name=linePrice]", "5");
@@ -244,6 +238,7 @@ test("Enter in the composer never opens a break", async ({ browser }) => {
   await host.goto("/host/new");
   await host.fill("input[name=title]", "Enter safety");
   await host.fill("input[name=prize1]", "Chronos 22g");
+  await host.selectOption("select[name=prize1Condition]", "new_in_box");
   await host.fill("input[name=venmo]", "@e2e-host");
   await host.locator("input[name=title]").press("Enter");
   await host.waitForURL(/\/b\//);
@@ -251,27 +246,6 @@ test("Enter in the composer never opens a break", async ({ browser }) => {
   await expect(host.getByText("Draft", { exact: true }).first()).toBeVisible();
   await expect(host.getByTestId("edit-draft")).toBeVisible();
 });
-
-/** A 2-line break the host runs to the end, for the result page: one buyer takes both lines and is ticked paid. */
-async function ranBreak(browser: Browser, host: Page): Promise<{ url: string; buyer: Page }> {
-  const ranUrl = await composeBreak(host, { title: `Layout ran ${run}`, lineCount: 2 });
-  const buyer = await signedIn(browser, `lr${run}@e2e.test`);
-  await gotoReady(buyer, ranUrl);
-  await buyer.getByTestId("claim-rest").click();
-  await expect(buyer.getByTestId("pay-amount")).toContainText("$10");
-  await host.goto(ranUrl);
-  await host.getByTestId("host-tools").click();
-  await host.getByTestId("ledger-paid").click();
-  await host.getByTestId("run-draw").click();
-  await host.getByTestId("finish-draw").click();
-  await expect(host.getByTestId("ledger-result")).toBeVisible();
-  return { url: ranUrl, buyer };
-}
-
-async function axeViolations(page: Page, where: string): Promise<string[]> {
-  const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
-  return r.violations.map((v) => `${where} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
-}
 
 test("axe finds no WCAG 2.1 A or AA violation on the main pages, the pay sheet and the ledger (D§7)", async ({ browser }) => {
   const found: string[] = [];
@@ -312,4 +286,96 @@ test("axe finds no WCAG 2.1 A or AA violation on the main pages, the pay sheet a
     found.push(...(await axeViolations(page, `${who} result page`)));
   }
   expect(found).toEqual([]);
+});
+
+// Task 8a: the lead photo's plate in the title band. One host with the longest handle and title the app allows,
+// a 50-line break without a photo and one with a photo, so the two can be measured against each other.
+test.describe("the break page with a photo (photos spec §8.2, Mosaic §8)", () => {
+  const longHandleEmail = `${"h".repeat(7)}${run}@e2e.test`; // 7 + 13 digits: a 20-character handle
+  const longTitle = "Taylor Chronos 24g ".repeat(7).slice(0, 120); // 120 characters, the composer's maximum
+  expect(longHandleEmail.split("@")[0]).toHaveLength(20);
+  expect(longTitle).toHaveLength(120);
+  let plainLong = "";
+  let photoLong = "";
+
+  async function signedInMobile(browser: Browser, email: string, width: number, height: number): Promise<Page> {
+    const page = await (await browser.newContext({ viewport: { width, height }, isMobile: true, hasTouch: true })).newPage();
+    await loginAs(page, email);
+    return page;
+  }
+
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(150_000);
+    const host = await signedIn(browser, longHandleEmail, "host");
+    plainLong = await composeBreak(host, { title: longTitle, lineCount: 50 });
+    photoLong = await composeBreakWithPhotos(host, { title: longTitle, photos: 1, lineCount: 50 });
+    const buyer = await signedIn(browser, `${buyerHandle}@e2e.test`);
+    await gotoReady(buyer, photoLong);
+    await buyer.getByTestId("cell-3").click();
+    await buyer.getByTestId("cell-9").click();
+    await buyer.getByTestId("claim-submit").click();
+    await expect(buyer.getByTestId("owed")).toBeVisible();
+  });
+
+  test("the plate sits in the title's 76 px band and never wraps the media row (390 and 360)", async ({ browser }) => {
+    for (const [w, h] of [[390, 664], [360, 640]] as const) {
+      const withPlate = await anonymous(browser, w, h); await withPlate.goto(photoLong);
+      const plain = await anonymous(browser, w, h); await plain.goto(plainLong);
+      const plate = (await withPlate.getByTestId("photo-plate").boundingBox())!;
+      const title = (await withPlate.locator("h1").boundingBox())!;
+      const media = (await withPlate.getByTestId("media-row").boundingBox())!;
+      expect(plate.width).toBeCloseTo(72, 0); expect(plate.height).toBeCloseTo(72, 0);
+      expect(plate.x + plate.width).toBeLessThanOrEqual(w - 16 + 0.5);
+      expect(title.x + title.width).toBeLessThanOrEqual(plate.x); // the title never runs under the plate
+      expect(media.y).toBeGreaterThanOrEqual(plate.y + plate.height - 0.5); // the media row is below the plate, full width
+      const mediaPlain = (await plain.getByTestId("media-row").boundingBox())!;
+      expect(media.height).toBeCloseTo(mediaPlain.height, 0); // the plate did not make it wrap
+      expect(media.y).toBeCloseTo(mediaPlain.y, 0); // the band is the same 76 px: nothing moved down
+      const legendA = (await withPlate.getByTestId("legend").boundingBox())!; const legendB = (await plain.getByTestId("legend").boundingBox())!;
+      expect(legendA.y).toBeCloseTo(legendB.y, 0);
+    }
+  });
+
+  test("the board, legend and 'You have …' line stay above the bar at 390 × 664 with a plate (holder)", async ({ browser }) => {
+    const page = await signedInMobile(browser, `${buyerHandle}@e2e.test`, 390, 664); await page.goto(photoLong);
+    const legend = (await page.getByRole("list", { name: "What the cells mean" }).boundingBox())!;
+    const line = (await page.getByTestId("you-have").boundingBox())!; const bar = (await page.locator("[data-sticky-bar]").boundingBox())!;
+    expect(legend.y + legend.height).toBeLessThanOrEqual(bar.y);
+    expect(line.y + line.height).toBeLessThanOrEqual(bar.y);
+    const grid = (await page.locator("[data-grid-rows]").first().boundingBox())!;
+    expect(grid.y + grid.height).toBeLessThanOrEqual(legend.y);
+  });
+
+  test("at 360 × 640 the legend sits at the fold with a plate, as without one", async ({ browser }) => {
+    const page = await anonymous(browser, 360, 640); await page.goto(photoLong);
+    expect((await page.getByTestId("legend").boundingBox())!.y).toBeLessThanOrEqual(640);
+  });
+
+  test("a stranger reads the count on the plate, and the Prizes block replaces the prize list in Details", async ({ browser }) => {
+    const page = await anonymous(browser, 390, 664); await page.goto(photoLong);
+    await expect(page.getByTestId("photo-plate")).toContainText("1 photo");
+    await expect(page.getByTestId("photo-plate")).not.toContainText("Updated");
+    await expect(page.getByTestId("prizes-block").getByRole("heading", { name: "Prizes" })).toBeVisible();
+    await expect(page.getByTestId("prize-place")).toHaveCount(1);
+    await expect(page.getByTestId("removed-plate")).toHaveCount(0);
+  });
+
+  test("an 800 × 600 photo is cropped to a square 64 × 64 image, on the title plate and in Prizes", async ({ browser }) => {
+    const page = await anonymous(browser, 390, 664); await gotoReady(page, photoLong);
+    for (const img of [page.getByTestId("photo-plate").locator("img"), page.getByTestId("prizes-block").locator("img").first()]) {
+      await img.scrollIntoViewIfNeeded();
+      // Measured only once decoded: before that Chrome sizes a lazy image from its attributes, which would hide the bug.
+      await expect.poll(() => img.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
+      const natural = await img.evaluate((i: HTMLImageElement) => i.naturalWidth / i.naturalHeight);
+      expect(natural).not.toBeCloseTo(1, 1); // the source is not square, so only the crop makes the box square
+      const box = (await img.boundingBox())!;
+      expect(box.width).toBeCloseTo(64, 0); expect(box.height).toBeCloseTo(64, 0);
+    }
+  });
+
+  test("a break with no photo has no plate and no empty Prizes plates", async ({ browser }) => {
+    const page = await anonymous(browser, 390, 664); await page.goto(plainLong);
+    await expect(page.getByTestId("photo-plate")).toHaveCount(0);
+    await expect(page.getByTestId("prizes-block").getByTestId("plate")).toHaveCount(0);
+  });
 });

@@ -1,25 +1,48 @@
-import { sql, eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { sql, eq, and, inArray, isNotNull } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { breaks, breakItems, prizes, breakSecrets, users, hostProfiles } from "@/db/schema";
-import { assertHostOf, assertOnboarded } from "@/auth/authz";
+import { breaks, breakItems, breakPhotos, photoUploads, prizes, breakSecrets, users, hostProfiles } from "@/db/schema";
+import { assertHostOf, assertOnboarded, lockBreak } from "@/auth/authz";
 import { appendEvent } from "@/domain/events";
 import { InvalidInput, NotAuthorized, NotOpen } from "@/domain/errors";
 import type { Caller } from "@/domain/types";
+import type { PhotoLocation } from "@/domain/photos/types";
 import { commitment } from "@/crypto/commit";
 import { newSecret, encryptSecret } from "@/crypto/secrets";
-import { validateDraftInput, validateDraftForOpen, isClaimMode, type ClaimMode } from "./rules";
+import { isUuid } from "@/lib/is-uuid";
+import { validateDraftInput, validateDraftForOpen, validatePrizes, isClaimMode, STALE_FORM, type ClaimMode, type ItemCondition } from "./rules";
 import { hostPaymentHandles } from "./queries";
 import { DARK_COLOURS, LIGHT_COLOURS, type FlightColour } from "@/domain/flights";
+
+/** A prize as the composer sends it: its slot key (photos spec §4.1) and its condition (§7). */
+export type PrizeInput = { name: string; slotKey: string; condition: ItemCondition };
 
 export type CreateDraftInput = {
   title: string; description?: string; lineCount: number; linePriceCents: number;
   paymentWindowHours?: number; maxLinesPerUser?: number | null; claimMode?: ClaimMode; paymentInstructions?: string;
   paymentHandles?: { venmo?: string; paypal?: string };
   /** Rank-1 prize items; several items mean the winner picks one. */
-  items: { name: string; variantSchema?: Record<string, string[]> | null; expectedShipAt?: Date | null }[];
-  /** Rank-2 prize items (blank names are skipped). */
-  secondPlace?: { name: string }[];
+  items: (PrizeInput & { variantSchema?: Record<string, string[]> | null; expectedShipAt?: Date | null })[];
+  /** Rank-2 prize items (blank names are skipped, their slots ignored). */
+  secondPlace?: PrizeInput[];
 };
+
+type PlacedPrize = { rank: 1 | 2; slotKey: string; name: string; condition: ItemCondition; variantSchema: Record<string, string[]> | null; expectedShipAt: Date | null };
+
+/** The input's prizes in the composer's order, each with its rank; blank 2nd-place names dropped, slot keys lower-cased. */
+function placedPrizes(input: Pick<CreateDraftInput, "items" | "secondPlace">): PlacedPrize[] {
+  return [
+    ...input.items.map((p) => ({ rank: 1 as const, p, variantSchema: p.variantSchema ?? null, expectedShipAt: p.expectedShipAt ?? null })),
+    ...(input.secondPlace ?? []).filter((p) => p.name.trim()).map((p) => ({ rank: 2 as const, p, variantSchema: null, expectedShipAt: null })),
+  ].map(({ rank, p, variantSchema, expectedShipAt }) => ({
+    rank, slotKey: p.slotKey.toLowerCase(), name: p.name.trim(), condition: p.condition, variantSchema, expectedShipAt,
+  }));
+}
+
+/** Slot keys must be uuids and distinct, and every named prize needs a condition (ruling R3.5). */
+function validateInputPrizes(input: Pick<CreateDraftInput, "items" | "secondPlace">): void {
+  validatePrizes([...input.items, ...(input.secondPlace ?? []).filter((p) => p.name.trim())]);
+}
 
 type Handles = { venmo?: string; paypal?: string };
 const cleanHandles = (h: Handles): Handles => {
@@ -68,39 +91,81 @@ export async function updateHostKit(tx: Tx, caller: Caller, p: { dark: FlightCol
   await appendEvent(tx, { actorId: caller.id, type: "host.profile_updated", payload: { changed: ["kit"] } });
 }
 
+/**
+ * One prize and its item. Each item is stamped with clock_timestamp(), not the transaction's now(), so the items of
+ * one save keep the composer's order (ruling R3.4).
+ */
+async function insertPrize(tx: Tx, breakId: string, p: PlacedPrize): Promise<void> {
+  const [it] = await tx.insert(breakItems).values({
+    breakId, name: p.name, variantSchema: p.variantSchema, expectedShipAt: p.expectedShipAt, condition: p.condition,
+    createdAt: sql`clock_timestamp()`,
+  }).returning({ id: breakItems.id });
+  await tx.insert(prizes).values({ breakId, rank: p.rank, itemId: it.id, slotKey: p.slotKey });
+}
+
 /** Rank-1 items (several make a choice) and rank-2 items (blank names skipped), each with its prize row. */
 async function insertPrizes(tx: Tx, breakId: string, input: Pick<CreateDraftInput, "items" | "secondPlace">): Promise<void> {
-  for (const item of input.items) {
-    const [it] = await tx.insert(breakItems).values({
-      breakId, name: item.name.trim(), variantSchema: item.variantSchema ?? null, expectedShipAt: item.expectedShipAt ?? null,
-    }).returning({ id: breakItems.id });
-    await tx.insert(prizes).values({ breakId, rank: 1, itemId: it.id });
+  for (const p of placedPrizes(input)) await insertPrize(tx, breakId, p);
+}
+
+/**
+ * A draft save keeps every slot it already has (photos spec §4.1): a kept slot's item and rank are updated in place, a
+ * new slot is inserted after the kept ones, and a removed slot loses its prize, its item and the photo tags that named
+ * it. Only for drafts: the items guard allows the updates and deletes because a draft has no paid line.
+ */
+async function syncPrizes(tx: Tx, breakId: string, input: Pick<CreateDraftInput, "items" | "secondPlace">): Promise<void> {
+  const wanted = placedPrizes(input);
+  const current = await tx.select({ id: prizes.id, rank: prizes.rank, slotKey: prizes.slotKey, itemId: prizes.itemId }).from(prizes)
+    .where(and(eq(prizes.breakId, breakId), isNotNull(prizes.itemId)));
+  const keep = new Set(wanted.map((p) => p.slotKey));
+  const removed = current.filter((c) => !keep.has(c.slotKey));
+  if (removed.length > 0) {
+    // The tag FK would also null these on the prize delete; clearing them first keeps the rule here, in one place.
+    await tx.update(breakPhotos).set({ prizeSlot: null })
+      .where(and(eq(breakPhotos.breakId, breakId), inArray(breakPhotos.prizeSlot, removed.map((r) => r.slotKey))));
+    await tx.delete(prizes).where(inArray(prizes.id, removed.map((r) => r.id)));
+    await tx.delete(breakItems).where(inArray(breakItems.id, removed.map((r) => r.itemId!)));
   }
-  for (const item of input.secondPlace ?? []) {
-    if (!item.name.trim()) continue;
-    const [it] = await tx.insert(breakItems).values({ breakId, name: item.name.trim() }).returning({ id: breakItems.id });
-    await tx.insert(prizes).values({ breakId, rank: 2, itemId: it.id });
+  const bySlot = new Map(current.map((c) => [c.slotKey, c]));
+  for (const p of wanted) {
+    const cur = bySlot.get(p.slotKey);
+    if (!cur) { await insertPrize(tx, breakId, p); continue; }
+    await tx.update(breakItems).set({ name: p.name, variantSchema: p.variantSchema, expectedShipAt: p.expectedShipAt, condition: p.condition })
+      .where(eq(breakItems.id, cur.itemId!));
+    if (cur.rank !== p.rank) await tx.update(prizes).set({ rank: p.rank }).where(eq(prizes.id, cur.id));
   }
 }
 
-export async function createDraft(tx: Tx, caller: Caller, input: CreateDraftInput): Promise<{ breakId: string }> {
+/**
+ * Creates a draft. With `opts.breakId` (the id the composer was given, photos spec §9) it is idempotent for the same
+ * host (ruling R3.2): if that break already exists, a draft of the caller's is saved as updateDraft would (one row, a
+ * `break.updated`, no second `break.created`); another caller's id is refused, an admin's included; a break that is no
+ * longer a draft is NotOpen and a deleted one NotFound. Two racing calls on one id serialise on the primary key.
+ */
+export async function createDraft(tx: Tx, caller: Caller, input: CreateDraftInput, opts: { breakId?: string } = {}): Promise<{ breakId: string }> {
   assertOnboarded(caller);
   if (caller.role !== "host" && caller.role !== "admin") throw new NotAuthorized("Only hosts can list a break");
   validateDraftInput(input);
   const claimMode = input.claimMode ?? "pick_or_random";
   if (!isClaimMode(claimMode)) throw new InvalidInput("Choose how buyers get lines");
+  validateInputPrizes(input);
+  if (opts.breakId !== undefined && !isUuid(opts.breakId)) throw new InvalidInput(STALE_FORM);
+  const handles = input.paymentHandles ? cleanHandles(input.paymentHandles) : null;
   let paymentInstructions = input.paymentInstructions?.trim() ?? "";
-  if (input.paymentHandles) {
-    const handles = cleanHandles(input.paymentHandles);
-    await savePaymentHandles(tx, caller.id, handles);
-    if (!paymentInstructions) paymentInstructions = defaultPaymentInstructions(handles);
-  }
+  if (handles && !paymentInstructions) paymentInstructions = defaultPaymentInstructions(handles);
+  // A concurrent insert of the same id waits here on the primary key and, once that commits, inserts nothing.
   const [b] = await tx.insert(breaks).values({
-    hostId: caller.id, kind: "main", title: input.title.trim(), description: input.description ?? "",
+    id: opts.breakId ?? randomUUID(), hostId: caller.id, kind: "main", title: input.title.trim(), description: input.description ?? "",
     lineCount: input.lineCount, linePriceCents: input.linePriceCents,
     paymentWindowHours: input.paymentWindowHours ?? 24, maxLinesPerUser: input.maxLinesPerUser ?? null,
     claimMode, allowRandomClaims: claimMode === "pick_or_random", paymentInstructions,
-  }).returning({ id: breaks.id });
+  }).onConflictDoNothing({ target: breaks.id }).returning({ id: breaks.id });
+  if (!b) {
+    const existing = await lockBreak(tx, opts.breakId!); // NotFound for a deleted draft
+    if (existing.hostId !== caller.id) throw new NotAuthorized("Only the host can do that");
+    return updateDraft(tx, caller, existing.id, input);
+  }
+  if (handles) await savePaymentHandles(tx, caller.id, handles);
   await insertPrizes(tx, b.id, input);
   await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.created", payload: { claimMode } });
   return { breakId: b.id };
@@ -119,6 +184,7 @@ export async function updateDraft(tx: Tx, caller: Caller, breakId: string, input
   validateDraftInput(input);
   const claimMode = input.claimMode ?? "pick_or_random";
   if (!isClaimMode(claimMode)) throw new InvalidInput("Choose how buyers get lines");
+  validateInputPrizes(input);
   let paymentInstructions = input.paymentInstructions?.trim() ?? "";
   if (caller.id === b.hostId) {
     if (input.paymentHandles) {
@@ -138,12 +204,30 @@ export async function updateDraft(tx: Tx, caller: Caller, breakId: string, input
     paymentWindowHours: input.paymentWindowHours ?? 24, maxLinesPerUser: input.maxLinesPerUser ?? null,
     claimMode, allowRandomClaims: claimMode === "pick_or_random", paymentInstructions,
   }).where(eq(breaks.id, b.id));
+  await syncPrizes(tx, b.id, input);
+  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.updated", payload: { claimMode, lineCount: input.lineCount, linePriceCents: input.linePriceCents } });
+  return { breakId: b.id };
+}
+
+/**
+ * Delete draft (photos spec §9): the host or an admin, drafts only. The prizes, items, photo rows and upload rows
+ * go; the break row stays as a tombstone (`deleted_at`) because its events reference it, and lockBreak then treats it
+ * as not found. Returns where every photo row's files are (rows whose files are already gone are skipped), for the
+ * caller to remove from Storage after the commit.
+ */
+export async function deleteDraft(tx: Tx, caller: Caller, breakId: string): Promise<{ photos: { location: PhotoLocation; prefix: string }[] }> {
+  assertOnboarded(caller);
+  const b = await assertHostOf(tx, caller, breakId); // locks the break row first
+  if (b.status !== "draft") throw new NotOpen(b.status);
+  const rows = await tx.select({ bucket: breakPhotos.bucket, path: breakPhotos.path }).from(breakPhotos).where(eq(breakPhotos.breakId, b.id));
+  await tx.delete(breakPhotos).where(eq(breakPhotos.breakId, b.id));
+  await tx.delete(photoUploads).where(eq(photoUploads.breakId, b.id));
   // Prizes reference items: delete them first. A draft has no paid line, so the items guard allows both.
   await tx.delete(prizes).where(eq(prizes.breakId, b.id));
   await tx.delete(breakItems).where(eq(breakItems.breakId, b.id));
-  await insertPrizes(tx, b.id, input);
-  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.updated", payload: { claimMode, lineCount: input.lineCount, linePriceCents: input.linePriceCents } });
-  return { breakId: b.id };
+  await tx.update(breaks).set({ deletedAt: new Date() }).where(eq(breaks.id, b.id));
+  await appendEvent(tx, { breakId: b.id, actorId: caller.id, type: "break.deleted", payload: { photos: rows.length } });
+  return { photos: rows.flatMap((r) => (r.path === null ? [] : [{ location: r.bucket, prefix: r.path }])) };
 }
 
 export async function openBreak(tx: Tx, caller: Caller, breakId: string): Promise<void> {
@@ -159,6 +243,10 @@ export async function openBreak(tx: Tx, caller: Caller, breakId: string): Promis
   const { ciphertext, keyId } = encryptSecret(secret, breakId);
   await tx.insert(breakSecrets).values({ breakId, ciphertext, keyId });
   await tx.update(breaks).set({ status: "open", openedAt: new Date(), seedCommitment: commitment(secret) }).where(sql`${breaks.id} = ${breakId}`);
+  // The live photos go public (photos spec §5.4): their variants were copied to `photos` before this transaction
+  // (Task 6). The photo guard allows photos-draft -> photos while the break is draft or open, so after the flip is fine.
+  await tx.update(breakPhotos).set({ bucket: "photos" })
+    .where(sql`${breakPhotos.breakId} = ${breakId} and ${breakPhotos.removedAt} is null and ${breakPhotos.hiddenAt} is null and ${breakPhotos.bucket} = 'photos-draft'`);
   await tx.execute(sql`insert into lines (break_id, number) select ${breakId}::uuid, generate_series(1, ${b.lineCount})`);
   await appendEvent(tx, { breakId, actorId: caller.id, type: "break.opened", payload: { lineCount: b.lineCount, linePriceCents: b.linePriceCents } });
 }

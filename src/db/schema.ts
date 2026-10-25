@@ -78,6 +78,13 @@ export const breaks = pgTable("breaks", {
   filledAt: timestamp("filled_at", { withTimezone: true }),
   cancelReason: text("cancel_reason"),
   relistedFromId: uuid("relisted_from_id"), // nullable now; relist is v1.1
+  /** Set by the claim commands the first time any line is claimed; never cleared (photos spec decision 12). */
+  firstClaimedAt: timestamp("first_claimed_at", { withTimezone: true }),
+  /** The latest photo change that counts (photos spec §6) and its sentence; set together, only after a first claim. */
+  photosUpdatedAt: timestamp("photos_updated_at", { withTimezone: true }),
+  photosUpdatedNote: text("photos_updated_note"),
+  /** Delete draft (photos spec §9): the row stays because its events reference it; set once, drafts only. */
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: createdAt(),
 }, (t) => [
   check("breaks_kind_chk", sql`${t.kind} in ('main','mini','free')`),
@@ -85,6 +92,8 @@ export const breaks = pgTable("breaks", {
   check("breaks_price_chk", sql`(${t.kind} = 'free' and ${t.linePriceCents} = 0) or (${t.kind} <> 'free' and ${t.linePriceCents} > 0)`),
   check("breaks_count_chk", sql`${t.lineCount} >= 2`),
   check("breaks_claim_mode_chk", sql`${t.claimMode} in ('pick_or_random','pick_only','straight')`),
+  check("breaks_photos_note_chk", sql`(${t.photosUpdatedAt} is null) = (${t.photosUpdatedNote} is null) and char_length(${t.photosUpdatedNote}) between 1 and 200`),
+  check("breaks_photos_note_claimed_chk", sql`${t.photosUpdatedAt} is null or ${t.firstClaimedAt} is not null`),
   index("breaks_host_active_idx").on(t.hostId).where(sql`${t.status} in ('open','filled','drawing')`),
 ]);
 
@@ -99,11 +108,11 @@ export const breakItems = pgTable("break_items", {
   id: id(),
   breakId: uuid("break_id").notNull().references(() => breaks.id),
   name: text("name").notNull(),
-  photoPaths: jsonb("photo_paths").$type<string[]>().notNull().default([]),
   variantSchema: jsonb("variant_schema").$type<Record<string, string[]> | null>(),
+  condition: text("condition").$type<"new_in_box" | "new_opened" | "used">(),
   expectedShipAt: timestamp("expected_ship_at", { withTimezone: true }),
   createdAt: createdAt(),
-});
+}, (t) => [check("break_items_condition_chk", sql`${t.condition} in ('new_in_box','new_opened','used')`)]);
 
 export const prizes = pgTable("prizes", {
   id: id(),
@@ -112,12 +121,61 @@ export const prizes = pgTable("prizes", {
   itemId: uuid("item_id").references(() => breakItems.id),
   parentBreakId: uuid("parent_break_id").references(() => breaks.id),
   spotCount: integer("spot_count"),
+  /** The stable key photo tags point at (photos spec §4.1); made by the composer, kept across draft saves. */
+  slotKey: uuid("slot_key").notNull().defaultRandom(),
   createdAt: createdAt(),
 }, (t) => [
   check("prizes_shape_chk", sql`(${t.itemId} is not null and ${t.parentBreakId} is null and ${t.spotCount} is null) or (${t.itemId} is null and ${t.parentBreakId} is not null and ${t.spotCount} > 0)`),
   uniqueIndex("prizes_item_uq").on(t.breakId, t.rank, t.itemId).where(sql`${t.itemId} is not null`),
   uniqueIndex("prizes_parent_uq").on(t.breakId, t.rank, t.parentBreakId).where(sql`${t.parentBreakId} is not null`),
+  uniqueIndex("prizes_slot_uq").on(t.breakId, t.slotKey),
 ]);
+
+/** Item photos (photos spec §4). Changed only by the photo commands, under the break row lock; see migration 0005's guards. */
+export const breakPhotos = pgTable("break_photos", {
+  id: id(),
+  breakId: uuid("break_id").notNull().references(() => breaks.id),
+  position: integer("position").notNull(), // 0 = the lead; live rows run 0..n-1
+  prizeSlot: uuid("prize_slot"), // prizes.slot_key of the same break, or null for "the lot" (hand-written FK in 0005)
+  path: text("path"), // `${breakId}/${22 url-safe chars}`, the variants' prefix; null once every copy is gone
+  bucket: text("bucket").$type<"photos-draft" | "photos" | "photo-archive">().notNull(),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  alt: text("alt").notNull(),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: createdAt(),
+  hiddenAt: timestamp("hidden_at", { withTimezone: true }),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+}, (t) => [
+  uniqueIndex("break_photos_live_position_uq").on(t.breakId, t.position).where(sql`${t.removedAt} is null and ${t.hiddenAt} is null`),
+  index("break_photos_break_idx").on(t.breakId),
+  check("break_photos_bucket_chk", sql`${t.bucket} in ('photos-draft','photos','photo-archive')`),
+  check("break_photos_position_chk", sql`${t.position} between -8 and 7`),
+  check("break_photos_alt_chk", sql`char_length(${t.alt}) between 1 and 120`),
+  check("break_photos_size_chk", sql`${t.width} > 0 and ${t.height} > 0`),
+  check("break_photos_path_chk", sql`${t.path} is null or ${t.path} ~ ('^' || ${t.breakId}::text || '/[A-Za-z0-9_-]{22}$')`),
+  // Panel ruling 26: a null path (every copy gone) only in photo-archive, on any row; retention of a cancelled break
+  // archives its live rows too, so live queries filter `path is not null and bucket <> 'photo-archive'`.
+  check("break_photos_gone_chk", sql`${t.path} is not null or ${t.bucket} = 'photo-archive'`),
+]);
+
+/** The upload ticket (photos spec §4, §5.2): issued with the signed upload URL, consumed once by finalise. */
+export const photoUploads = pgTable("photo_uploads", {
+  id: id(),
+  hostId: uuid("host_id").notNull().references(() => users.id),
+  breakId: uuid("break_id").notNull().references(() => breaks.id),
+  incomingName: text("incoming_name").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, (t) => [index("photo_uploads_open_idx").on(t.hostId, t.breakId).where(sql`${t.consumedAt} is null`)]);
+
+/** When a holder last saw the break's photo notice (photos spec §4, §6); written by a client-fired action, never during a render. */
+export const photoNoticesSeen = pgTable("photo_notices_seen", {
+  userId: uuid("user_id").notNull().references(() => users.id),
+  breakId: uuid("break_id").notNull().references(() => breaks.id),
+  seenAt: timestamp("seen_at", { withTimezone: true }).notNull(),
+}, (t) => [primaryKey({ columns: [t.userId, t.breakId] })]);
 
 export const lines = pgTable("lines", {
   breakId: uuid("break_id").notNull().references(() => breaks.id),

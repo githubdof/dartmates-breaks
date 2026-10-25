@@ -285,7 +285,7 @@ describe("markSent", () => {
       await markSent(tx, c(a), { breakId: b.id, numbers: [1, 2] }); // all already sent: no error, no event
       await expect(markSent(tx, c(bb), { breakId: b.id, numbers: [1] })).rejects.toBeInstanceOf(NotAuthorized);
       const evs = await tx.select().from(events).where(sql`${events.breakId} = ${b.id} and ${events.type} = 'line.sent'`)
-        .orderBy(sql`jsonb_array_length(${events.payload}->'numbers')`);
+        .orderBy(sql`(${events.payload}->'numbers'->>0)::int`);
       expect(evs.map((e) => e.payload)).toEqual([{ numbers: [1] }, { numbers: [2] }]);
     });
   });
@@ -678,6 +678,54 @@ describe("claimNext outside straight fill", () => {
       const host = await makeUser(tx, { role: "host" }); const a = await makeUser(tx);
       const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 6 });
       await expect(claimNext(tx, c(a), { breakId: b.id, count: 1, batchId: randomUUID() })).rejects.toThrow("This break lets you pick your lines");
+    });
+  });
+});
+
+describe("breaks.first_claimed_at (photos spec decision 12)", () => {
+  const firstClaimedAt = async (tx: Tx, id: string) => (await tx.select({ t: breaks.firstClaimedAt }).from(breaks).where(sql`${breaks.id} = ${id}`))[0].t;
+  const claims: { name: string; mode: "pick_or_random" | "straight"; run: (tx: Tx, breakId: string, u: { id: string }) => Promise<unknown> }[] = [
+    { name: "claimLines", mode: "pick_or_random", run: (tx, breakId, u) => claimLines(tx, c(u), { breakId, numbers: [3], batchId: randomUUID() }) },
+    { name: "claimRandom", mode: "pick_or_random", run: (tx, breakId, u) => claimRandom(tx, c(u), { breakId, count: 1, batchId: randomUUID() }) },
+    { name: "claimNext", mode: "straight", run: (tx, breakId, u) => claimNext(tx, c(u), { breakId, count: 1, batchId: randomUUID() }) },
+    { name: "claimAllOpen", mode: "pick_or_random", run: (tx, breakId, u) => claimAllOpen(tx, c(u), { breakId, batchId: randomUUID() }) },
+  ];
+
+  for (const k of claims) {
+    it(`is set by ${k.name}, in the claim's transaction, at the claim's time`, async () => {
+      await withTx(async (tx) => {
+        const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+        const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4, claimMode: k.mode });
+        expect(await firstClaimedAt(tx, b.id)).toBeNull();
+        await k.run(tx, b.id, buyer);
+        const claimed = (await lineRows(tx, b.id)).find((l) => l.ownerId === buyer.id)!;
+        expect(await firstClaimedAt(tx, b.id)).toEqual(claimed.claimedAt);
+      });
+    });
+  }
+
+  it("is kept when the only claim is released and another buyer claims later", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const one = await makeUser(tx); const two = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      await claimLines(tx, c(one), { breakId: b.id, numbers: [1], batchId: randomUUID() });
+      const first = await firstClaimedAt(tx, b.id);
+      await releaseLine(tx, c(one), { breakId: b.id, number: 1, reason: "withdrawn" });
+      expect((await lineRows(tx, b.id)).every((l) => l.ownerId === null)).toBe(true);
+      expect(await firstClaimedAt(tx, b.id)).toEqual(first);
+      await claimLines(tx, c(two), { breakId: b.id, numbers: [2], batchId: randomUUID() });
+      expect(await firstClaimedAt(tx, b.id)).toEqual(first);
+    });
+  });
+
+  it("never moves an earlier first claim", async () => {
+    await withTx(async (tx) => {
+      const host = await makeUser(tx, { role: "host" }); const buyer = await makeUser(tx);
+      const b = await openBreakWithLines(tx, { hostId: host.id, lineCount: 4 });
+      const earlier = new Date("2026-01-01T00:00:00Z"); // as the 0005 backfill leaves a break claimed before the migration
+      await tx.update(breaks).set({ firstClaimedAt: earlier }).where(sql`${breaks.id} = ${b.id}`);
+      await claimLines(tx, c(buyer), { breakId: b.id, numbers: [1], batchId: randomUUID() });
+      expect(await firstClaimedAt(tx, b.id)).toEqual(earlier);
     });
   });
 });

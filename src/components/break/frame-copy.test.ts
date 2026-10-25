@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { closesText, hostedByText, hostLabel, mediaText, orList, pastText, payWithinText, perPersonText, pickingText, prizeLines, hostRecordLines, hostRecordText, stallText, smallLineText, toGoText, trustText, youHaveText } from "./frame-copy";
+import { closesText, hostedByText, hostLabel, mediaText, orList, pastText, payWithinText, perPersonText, pickingText, hostRecordLines, hostRecordText, stallText, smallLineText, toGoText, trustText, youHaveText } from "./frame-copy";
 
 describe("frame copy", () => {
   it("counts and deadlines read as sentences, no middle dots", () => {
@@ -42,11 +42,7 @@ describe("frame copy", () => {
     expect(pastText(1)).toBe("1 past break.");
     expect(pastText(7)).toBe("7 past breaks.");
   });
-  it("describes prizes, choices and 2nd place", () => {
-    const items = [{ id: "a", name: "Chronos 22g" }, { id: "b", name: "Chronos 24g" }, { id: "c", name: "Flight pack" }];
-    expect(prizeLines([{ rank: 1, itemId: "a" }], items)).toEqual(["Top spot gets Chronos 22g."]);
-    expect(prizeLines([{ rank: 1, itemId: "a" }, { rank: 1, itemId: "b" }, { rank: 2, itemId: "c" }], items))
-      .toEqual(["Top spot gets a choice: Chronos 22g or Chronos 24g.", "2nd place gets Flight pack."]);
+  it("joins alternatives with or", () => {
     expect(orList(["a", "b", "c"])).toBe("a, b or c");
   });
   it("states the rules", () => {
