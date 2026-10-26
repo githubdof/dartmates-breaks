@@ -18,7 +18,7 @@ import { shapeGrid } from "@/domain/breaks/grid";
 import { placesOf, type Place } from "@/domain/draws/places";
 import { hostLabel } from "@/components/break/frame-copy";
 import { withPlaces } from "./board-cells";
-import { dealGateScript, placeLabel, topSpotText } from "./reveal-plan";
+import { placeLabel, topSpotText } from "./reveal-plan";
 import { ShareButton } from "./share-button";
 import { Reveal } from "./reveal";
 import { Verify } from "./verify";
@@ -96,8 +96,6 @@ export default async function ResultPage({ params }: Props) {
   return (
     <main data-wall className="mx-auto max-w-[600px] px-4 pb-8 sm:px-6">
       <ViewerRoot photos={pp.viewer}>
-      {/* Before first paint: hide the final state while the deal is about to play (no spoiler flash). */}
-      <script dangerouslySetInnerHTML={{ __html: dealGateScript(id) }} />
       {res.draw.beaconSignature === "fake" && (
         <div role="alert" data-testid="fake-beacon" className="mt-4 rounded-card border border-red bg-card px-4 py-3 text-small text-red">
           Test draw. This used stand-in randomness, so it proves nothing. Real draws never show this box.

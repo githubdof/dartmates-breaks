@@ -159,6 +159,14 @@ test("draft with a choice and 2nd place, edited and opened on straight fill; bro
   //    hands focus to Replay; Replay plays it again; Share falls back to a selectable field when the clipboard is
   //    blocked. A paused clock keeps the reveal on screen: install() alone lets time run, and a 4-line, two-prize reveal
   //    ends in about 3.3 s, so Skip would race it (the layout spec's pattern).
+  // Before hydration (JS blocked), the root layout's inline gate has already hidden the final state for this
+  // first-time viewer.
+  const cold = await a.context().newPage();
+  await cold.route(/\/_next\/static\/chunks\/.*\.js(\?|$)/, (r) => r.abort()); // the stylesheet shares the folder
+  await cold.goto(`${url}/result`);
+  await expect(cold.locator("html")).toHaveAttribute("data-deal", "1");
+  await expect(cold.getByTestId("winner")).toBeHidden();
+  await cold.close();
   const viewer = a;
   await viewer.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("blocked")) } });
