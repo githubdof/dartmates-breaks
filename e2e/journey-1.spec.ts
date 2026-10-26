@@ -53,6 +53,9 @@ test("host opens, buyers claim and pay, host draws, result verifies", async ({ b
   await host.getByTestId("finish-draw").click();
   await host.getByTestId("ledger-result").click();
   await expect(host.getByTestId("winner")).toContainText("Top spot: line", { timeout: 15_000 }); // server-rendered (text is present even while the deal hides it)
+  // A client navigation renders the page in the browser, where React leaves a <script> inert (and warns in dev): the
+  // pre-paint gate lives in the root layout, so the page content holds none.
+  await expect(host.locator("#content script")).toHaveCount(0);
   await expect(host.getByTestId("verify-status")).toContainText("Checked"); // runs on load
   await host.getByTestId("verify-fold").click();
   await host.getByTestId("verify-run").click();

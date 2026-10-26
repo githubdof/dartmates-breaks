@@ -8,6 +8,7 @@ import { Footer } from "@/components/shell/footer";
 import { TzCookie } from "@/components/tz-cookie";
 import { HydrationMark } from "@/components/hydration-mark";
 import { FlightSprite } from "@/components/grid/flight-sprite";
+import { dealGateScript } from "./b/[id]/result/reveal-plan";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,6 +29,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html lang="en" suppressHydrationWarning className={`${barlow.variable} ${barlowCondensed.variable} ${bigShoulders.variable}`}>
       {/* No bg-paper here: globals.css paints paper, and the wall where a route sets data-wall (a utility would beat it). */}
       <body className="min-h-dvh font-sans text-body text-ink antialiased">
+        {/* Before first paint of a result page: hide the final state while the deal is about to play (no spoiler flash). */}
+        <script dangerouslySetInnerHTML={{ __html: dealGateScript() }} />
         <a href="#content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:rounded-input focus:bg-card focus:px-4 focus:py-3 focus:text-ink">
           Skip to content
         </a>

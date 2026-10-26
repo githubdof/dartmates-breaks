@@ -83,14 +83,17 @@ export function bannerText(b: Banner, c: { hostName: string; lines: number; hand
   return placeCall(b.place, b.number, c.handleOf[b.number]);
 }
 
-export const seenKey = (breakId: string) => `breaks.reveal.${breakId}`;
+const SEEN_PREFIX = "breaks.reveal.";
+export const seenKey = (breakId: string) => `${SEEN_PREFIX}${breakId}`;
 export const topSpotText = (line: number) => `Top spot: line ${line}`;
 export const placeLabel = (rank: number) => (rank === 1 ? "Top spot" : ordinal(rank));
 
 /**
  * Inline, pre-paint: mark <html data-deal> when this viewer will see the reveal, so CSS hides the final state
  * until Reveal has set the board to house lights down (no spoiler flash). Removed by Reveal, or after 4 s whatever happens.
+ * The root layout runs it on every hard load, so it reads the break from the URL and does nothing off a result page: a
+ * <script> rendered by the page itself would be created inert (and warned about) on a client navigation.
  */
-export function dealGateScript(breakId: string): string {
-  return `try{if(!localStorage.getItem(${JSON.stringify(seenKey(breakId))})&&!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.dataset.deal="1";setTimeout(function(){delete document.documentElement.dataset.deal},4000)}}catch(e){}`;
+export function dealGateScript(): string {
+  return `try{var m=/^\\/b\\/([^/]+)\\/result\\/?$/.exec(location.pathname);if(m&&!localStorage.getItem(${JSON.stringify(SEEN_PREFIX)}+decodeURIComponent(m[1]))&&!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.dataset.deal="1";setTimeout(function(){delete document.documentElement.dataset.deal},4000)}}catch(e){}`;
 }

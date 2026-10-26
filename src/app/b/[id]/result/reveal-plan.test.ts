@@ -119,23 +119,24 @@ it("names places and keys the once-per-viewer flag by break", () => {
   expect(seenKey("b1")).toBe("breaks.reveal.b1");
 });
 
-it("gates the pre-paint hide on the same once-per-viewer key and on reduced motion", () => {
-  const js = dealGateScript("b1");
-  expect(js).toContain(JSON.stringify(seenKey("b1")));
+it("gates the pre-paint hide on reduced motion", () => {
+  const js = dealGateScript();
   expect(js).toContain("prefers-reduced-motion: reduce");
   expect(js).toContain("dataset.deal");
 });
 
 it("marks <html data-deal> only for a first-time viewer without reduced motion, lifts it after 4 s, and never throws", () => {
-  const runGate = (o: { seen: string | null; reduced: boolean; storageThrows?: boolean }) => {
+  const runGate = (o: { seen: string | null; reduced: boolean; storageThrows?: boolean; path?: string }) => {
     const dataset: Record<string, string> = {};
     const timers: (() => void)[] = [];
-    const localStorage = { getItem: () => { if (o.storageThrows) throw new Error("blocked"); return o.seen; } };
+    const keys: string[] = [];
+    const localStorage = { getItem: (k: string) => { keys.push(k); if (o.storageThrows) throw new Error("blocked"); return o.seen; } };
     const matchMedia = () => ({ matches: o.reduced });
     const document = { documentElement: { dataset } };
     const setTimeout = (fn: () => void) => { timers.push(fn); return 0; };
-    new Function("localStorage", "matchMedia", "document", "setTimeout", dealGateScript("b1"))(localStorage, matchMedia, document, setTimeout);
-    return { dataset, timers };
+    const location = { pathname: o.path ?? "/b/b1/result" };
+    new Function("localStorage", "matchMedia", "document", "setTimeout", "location", dealGateScript())(localStorage, matchMedia, document, setTimeout, location);
+    return { dataset, timers, keys };
   };
   const first = runGate({ seen: null, reduced: false });
   expect(first.dataset.deal).toBe("1");
@@ -144,4 +145,12 @@ it("marks <html data-deal> only for a first-time viewer without reduced motion, 
   expect(runGate({ seen: "1", reduced: false }).dataset.deal).toBeUndefined();
   expect(runGate({ seen: null, reduced: true }).dataset.deal).toBeUndefined();
   expect(() => runGate({ seen: null, reduced: false, storageThrows: true })).not.toThrow();
+  // The root layout runs it on every page: it keys the flag by the result page's break, and does nothing elsewhere.
+  expect(first.keys).toEqual([seenKey("b1")]);
+  expect(runGate({ seen: null, reduced: false, path: "/b/b1/result/" }).dataset.deal).toBe("1");
+  for (const path of ["/b/b1", "/b/b1/result.json", "/b/b1/result/x", "/me", "/"]) {
+    const other = runGate({ seen: null, reduced: false, path });
+    expect(other.dataset.deal).toBeUndefined();
+    expect(other.keys).toEqual([]);
+  }
 });
